@@ -105,10 +105,10 @@ class QuotaCard(HeaderCardWidget):
         self._set_loading(False)
         if progress_percent is not None:
             self.progress_bar.setValue(int(round(progress_percent * 10)))
-            color = self._resolve_color(progress_percent)
-            self.progress_bar.setCustomBarColor(color, color)
         else:
             self.progress_bar.setValue(0)
+        color = self._resolve_color(progress_percent)
+        self.progress_bar.setCustomBarColor(color, color)
 
         online_text = (online_device_count_text or "").strip()
         self.online_device_label.setText(f"在线设备数：{online_text or '-'}")
@@ -118,7 +118,9 @@ class QuotaCard(HeaderCardWidget):
         package_text = (included_package_text or "").strip()
         self.total_traffic_label.setText(self._build_total_traffic_rich_text(product_balance_text, package_text))
 
-    def _resolve_color(self, progress_percent: float) -> QColor:
+    def _resolve_color(self, progress_percent: float | None) -> QColor:
+        if progress_percent is None:
+            return themeColor()
         if progress_percent <= 50:
             return themeColor()
         if progress_percent <= 75:
@@ -227,9 +229,15 @@ class HomePage(QWidget):
         self._has_accounts = bool(accounts)
         if selected_index >= 0:
             self.account_combo.setCurrentIndex(selected_index)
+            auto_selected_index = -1
+            auto_selected_account_id = ""
         else:
-            self.account_combo.setCurrentIndex(-1)
+            auto_selected_index = 0 if accounts else -1
+            auto_selected_account_id = str(accounts[0][0]) if accounts else ""
+            self.account_combo.setCurrentIndex(auto_selected_index)
         self.account_combo.blockSignals(False)
+        if auto_selected_index >= 0 and auto_selected_account_id:
+            self.selected_account_changed.emit(auto_selected_account_id)
         self._update_login_controls()
 
     def update_quota_card(

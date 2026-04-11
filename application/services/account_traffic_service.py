@@ -4,10 +4,10 @@ from datetime import datetime
 
 from domain.models.account import PortalAccount
 from domain.models.traffic import AccountTrafficSnapshot
+from domain.policies.traffic_math import build_progress_percent
 from infrastructure.network.self_service_panel_client import SelfServicePanelClient
 from infrastructure.parsers.panel_home_parser import match_local_ip_device, parse_home_table, build_product_balance_texts
 from infrastructure.parsers.online_device_parser import parse_online_devices
-from domain.policies.traffic_math import parse_traffic_text_to_mb
 
 
 class AccountTrafficService:
@@ -79,7 +79,7 @@ class AccountTrafficService:
             queried_at=datetime.now(),
             online_devices=online_devices,
             matched_local_ip_device=matched_local,
-            progress_percent=self._build_progress_percent(used_traffic, billing_policy),
+            progress_percent=build_progress_percent(used_traffic, product_balance),
         )
 
     @staticmethod
@@ -91,10 +91,3 @@ class AccountTrafficService:
         other_accounts = [account for account in accounts if account.id != preferred_id]
         return [*preferred_accounts, *other_accounts]
 
-    @staticmethod
-    def _build_progress_percent(used_traffic: str, billing_policy: str) -> float | None:
-        used_mb = parse_traffic_text_to_mb(used_traffic)
-        total_mb = parse_traffic_text_to_mb(billing_policy)
-        if used_mb is None or total_mb is None or total_mb <= 0:
-            return None
-        return round(max(0.0, min(100.0, (used_mb / total_mb) * 100)), 1)

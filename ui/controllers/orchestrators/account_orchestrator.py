@@ -25,7 +25,7 @@ class AccountOrchestrator:
             return
 
         controller.account_store = controller._account_repo.load_store()
-        controller._recent_account_ids = controller._preferences_repo.mark_account_used(selected_account.id)
+        controller._recent_account_ids = controller._app_state_repo.mark_account_used(selected_account.id)
         self.reload_accounts()
         controller._log_service.log("INFO", f"登录目标账号已切换为：{selected_account.display_name}")
 
@@ -70,7 +70,7 @@ class AccountOrchestrator:
     def set_minimize_to_tray_on_close(self, enabled: bool) -> None:
         controller = self._controller
         controller.preferences.minimize_to_tray_on_close = bool(enabled)
-        controller._preferences_repo.set_minimize_to_tray_on_close(controller.preferences.minimize_to_tray_on_close)
+        controller._app_state_repo.set_minimize_to_tray_on_close(controller.preferences.minimize_to_tray_on_close)
         mode_text = "最小化到托盘" if controller.preferences.minimize_to_tray_on_close else "直接退出程序"
         controller._log_service.log("INFO", f"关闭窗口行为已设置为：{mode_text}")
         controller._presentation.emit_all_views()
@@ -78,7 +78,7 @@ class AccountOrchestrator:
     def set_auto_switch_account_on_traffic_exhausted(self, enabled: bool) -> None:
         controller = self._controller
         controller.preferences.auto_switch_account_on_traffic_exhausted = bool(enabled)
-        controller._preferences_repo.set_auto_switch_on_traffic_exhausted(
+        controller._app_state_repo.set_auto_switch_on_traffic_exhausted(
             controller.preferences.auto_switch_account_on_traffic_exhausted
         )
         if controller.preferences.auto_switch_account_on_traffic_exhausted:
@@ -91,7 +91,7 @@ class AccountOrchestrator:
         controller = self._controller
         controller.account_store = controller._account_repo.load_store()
         valid_account_ids = {account.id for account in controller.account_store.accounts}
-        controller._recent_account_ids = controller._preferences_repo.prune_recent_account_ids(valid_account_ids)
+        controller._recent_account_ids = controller._app_state_repo.prune_recent_account_ids(valid_account_ids)
         controller._traffic_snapshots = {
             account_id: snapshot
             for account_id, snapshot in controller._traffic_snapshots.items()

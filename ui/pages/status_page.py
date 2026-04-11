@@ -144,7 +144,8 @@ class AccountStatusCard(ElevatedCardWidget):
             self.progress_ring.setValue(0)
             self.progress_ring.setFormat("--")
             self.progress_ring.setTextVisible(True)
-            self.progress_ring.setCustomBarColor(themeColor(), themeColor())
+            ring_color = self._resolve_progress_ring_color(progress_percent)
+            self.progress_ring.setCustomBarColor(ring_color, ring_color)
             return
 
         normalized_percent = max(0.0, min(100.0, float(progress_percent)))
@@ -152,19 +153,18 @@ class AccountStatusCard(ElevatedCardWidget):
         self.progress_ring.setValue(int(round(display_percent * 10)))
         self.progress_ring.setFormat(f"{display_percent:.1f}%")
         self.progress_ring.setTextVisible(True)
-        ring_color = self._resolve_progress_ring_color(normalized_percent)
+        ring_color = self._resolve_progress_ring_color(progress_percent)
         self.progress_ring.setCustomBarColor(ring_color, ring_color)
 
-    def _resolve_progress_ring_color(self, progress_percent: float) -> QColor:
+    def _resolve_progress_ring_color(self, progress_percent: float | None) -> QColor:
+        if progress_percent is None:
+            return themeColor()
         if progress_percent <= 50:
             return themeColor()
-
         if progress_percent <= 75:
             return self._RING_WARNING_COLOR
-
         if progress_percent <= 90:
             return self._RING_DANGER_COLOR
-
         return self._RING_CRITICAL_COLOR
 
     @staticmethod
@@ -289,13 +289,14 @@ class StatusPage(QWidget):
 
         if summary.progress_percent is None:
             self.pool_progress_bar.setValue(0)
-            self.pool_progress_bar.setCustomBarColor(themeColor(), themeColor())
+            progress_color = self._resolve_pool_progress_color(summary.progress_percent)
+            self.pool_progress_bar.setCustomBarColor(progress_color, progress_color)
             if not summary.loading:
                 self.pool_progress_percent_label.setText("--")
         else:
             normalized_percent = max(0.0, min(100.0, float(summary.progress_percent)))
             self.pool_progress_bar.setValue(int(round(normalized_percent * 10)))
-            progress_color = self._resolve_pool_progress_color(normalized_percent)
+            progress_color = self._resolve_pool_progress_color(summary.progress_percent)
             self.pool_progress_bar.setCustomBarColor(progress_color, progress_color)
             if not summary.loading:
                 self.pool_progress_percent_label.setText(f"{normalized_percent:.1f}%")
@@ -309,7 +310,9 @@ class StatusPage(QWidget):
             )
         )
 
-    def _resolve_pool_progress_color(self, progress_percent: float) -> QColor:
+    def _resolve_pool_progress_color(self, progress_percent: float | None) -> QColor:
+        if progress_percent is None:
+            return themeColor()
         if progress_percent <= 50:
             return themeColor()
         if progress_percent <= 75:

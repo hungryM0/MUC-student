@@ -22,9 +22,6 @@ class RuntimePathsProvider:
     def get_app_state_path(self) -> Path:
         return self.get_app_data_dir() / "app_state.json"
 
-    def get_preferences_dir(self) -> Path:
-        return self.get_app_data_dir()
-
     def get_resource_base_dir(self) -> Path:
         if getattr(sys, "frozen", False):
             meipass = getattr(sys, "_MEIPASS", "")

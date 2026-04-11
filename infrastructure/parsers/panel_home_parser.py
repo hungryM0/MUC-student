@@ -5,7 +5,6 @@ import re
 from domain.models.traffic import OnlineDeviceRecord
 from infrastructure.parsers.online_device_parser import parse_online_devices
 
-
 BASE_PRODUCT_BALANCE_GB = 45.0
 
 

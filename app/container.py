@@ -28,7 +28,6 @@ from infrastructure.captcha_ocr_gateway import CaptchaOcrGateway
 from infrastructure.persistence.account_store_repository import AccountStoreRepository
 from infrastructure.persistence.app_state_repository import AppStateRepository
 from infrastructure.persistence.runtime_paths_provider import RuntimePathsProvider
-from infrastructure.persistence.user_preferences_repository import UserPreferencesRepository
 from ui.controllers.async_task_runner import AsyncTaskRunner
 from ui.controllers.main_window_controller import MainWindowController
 
@@ -44,7 +43,6 @@ def build_container() -> AppContainer:
     paths = RuntimePathsProvider()
     account_repo = AccountStoreRepository(paths)
     app_state_repo = AppStateRepository(paths)
-    preferences_repo = UserPreferencesRepository(paths)
     ocr_gateway = CaptchaOcrGateway()
     auth_transport = HttpTransport(settings)
     panel_transport = HttpTransport(settings)
@@ -60,8 +58,7 @@ def build_container() -> AppContainer:
         settings=settings,
         account_repo=account_repo,
         app_state_repo=app_state_repo,
-        preferences_repo=preferences_repo,
-        load_dashboard_use_case=LoadDashboardStateUseCase(account_repo, app_state_repo, preferences_repo),
+        load_dashboard_use_case=LoadDashboardStateUseCase(account_repo, app_state_repo),
         add_account_use_case=AddAccountUseCase(account_repo),
         edit_account_use_case=EditAccountUseCase(account_repo),
         delete_account_use_case=DeleteAccountUseCase(account_repo),

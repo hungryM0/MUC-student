@@ -61,6 +61,10 @@ class PresentationOrchestrator:
             traffic_refresh_running=controller._traffic_refresh_running,
             local_logout_running=controller._local_logout_running,
         )
-        controller.home_changed.emit(controller._view_mapper.build_home_page(state))
-        controller.status_changed.emit(controller._view_mapper.build_status_page(state))
+        home_view = controller._view_mapper.build_home_page(state)
+        status_view = controller._view_mapper.build_status_page(state)
+        controller.home_changed.emit(home_view)
+        controller.status_changed.emit(status_view)
         controller.settings_changed.emit(controller._view_mapper.build_settings_view(controller.settings, controller.preferences))
+        if controller._view_mapper.home_accounts_need_background_refresh(state):
+            controller.refresh_account_snapshots(force_refresh=True)

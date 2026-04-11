@@ -53,6 +53,22 @@ def format_megabytes(value_mb: float) -> str:
     return f"{mb * 1024:.2f}K"
 
 
+def build_progress_percent(used_traffic_text: str, total_traffic_text: str) -> float | None:
+    used_mb = parse_traffic_text_to_mb(used_traffic_text)
+    total_mb = parse_traffic_text_to_mb(total_traffic_text)
+    if used_mb is None or total_mb is None or total_mb <= 0:
+        return None
+    return round(max(0.0, min(100.0, (used_mb / total_mb) * 100)), 1)
+
+
+def build_remaining_traffic_text(total_traffic_text: str, used_traffic_text: str) -> str | None:
+    total_mb = parse_traffic_text_to_mb(total_traffic_text)
+    used_mb = parse_traffic_text_to_mb(used_traffic_text)
+    if total_mb is None or used_mb is None:
+        return None
+    return format_megabytes(max(0.0, total_mb - used_mb))
+
+
 def build_pool_quota_summary(
     account_store: AccountStore,
     snapshots: dict[str, AccountTrafficSnapshot],

@@ -43,7 +43,6 @@ class MainWindowController(QObject):
         settings,
         account_repo,
         app_state_repo,
-        preferences_repo,
         load_dashboard_use_case: LoadDashboardStateUseCase,
         add_account_use_case: AddAccountUseCase,
         edit_account_use_case: EditAccountUseCase,
@@ -62,7 +61,6 @@ class MainWindowController(QObject):
         self.settings = settings
         self._account_repo = account_repo
         self._app_state_repo = app_state_repo
-        self._preferences_repo = preferences_repo
         self._load_dashboard_use_case = load_dashboard_use_case
         self._add_account_use_case = add_account_use_case
         self._edit_account_use_case = edit_account_use_case

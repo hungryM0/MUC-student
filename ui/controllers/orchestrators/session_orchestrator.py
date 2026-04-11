@@ -98,7 +98,7 @@ class SessionOrchestrator:
         )
         controller._log_service.log("INFO", f"接口原始返回：{result.login_result.response_text or 'empty'}")
         if result.login_result.success:
-            controller._recent_account_ids = controller._preferences_repo.mark_account_used(
+            controller._recent_account_ids = controller._app_state_repo.mark_account_used(
                 controller.account_store.selected_account_id
             )
         controller._presentation.emit_all_views()
