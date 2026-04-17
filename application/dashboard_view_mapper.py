@@ -217,6 +217,8 @@ class DashboardViewMapper:
     def _snapshot_needs_refresh(snapshot: AccountTrafficSnapshot | None) -> bool:
         if snapshot is None:
             return True
+        if snapshot.status_text == "查询失败":
+            return False
         return build_remaining_traffic_text(snapshot.product_balance_text, snapshot.used_traffic_text) is None
 
     @staticmethod

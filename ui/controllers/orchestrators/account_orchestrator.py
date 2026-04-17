@@ -31,13 +31,40 @@ class AccountOrchestrator:
 
     def add_account(self, remark_name: str, username: str, password: str) -> None:
         controller = self._controller
-        try:
-            account = controller._add_account_use_case.execute(remark_name, username, password)
-        except ValueError as exc:
-            controller.warning_requested.emit("添加账号失败", str(exc))
+        if controller._closing:
             return
-        self.reload_accounts()
-        controller._log_service.log("SUCCESS", f"已添加账号：{account.display_name}")
+        if controller._account_validation_running:
+            controller.warning_requested.emit("添加账号失败", "上一条账号还在校验中，请稍等。")
+            return
+        controller._account_validation_running = True
+        controller._log_service.log("INFO", f"正在校验账号可用性：{username}")
+        controller._presentation.emit_all_views()
+        controller._runner.run(
+            lambda: controller._add_account_use_case.execute(remark_name, username, password),
+            self.on_add_account_success,
+            self.on_add_account_failure,
+        )
+
+    def on_add_account_success(self, result: object) -> None:
+        controller = self._controller
+        try:
+            if not isinstance(result, PortalAccount):
+                self.on_add_account_failure("添加账号返回值类型错误")
+                return
+            self.reload_accounts()
+            controller._log_service.log("SUCCESS", f"已添加账号：{result.display_name}")
+        finally:
+            controller._account_validation_running = False
+            controller._presentation.emit_all_views()
+
+    def on_add_account_failure(self, error_text: str) -> None:
+        controller = self._controller
+        try:
+            controller.warning_requested.emit("添加账号失败", error_text)
+            controller._log_service.log("ERROR", "添加账号失败", error=error_text)
+        finally:
+            controller._account_validation_running = False
+            controller._presentation.emit_all_views()
 
     def edit_account(self, account_id: str, remark_name: str, username: str, password: str) -> None:
         controller = self._controller

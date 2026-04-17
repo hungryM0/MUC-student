@@ -6,7 +6,7 @@ from application.dashboard_view_mapper import DashboardViewMapper
 from application.services.account_traffic_service import AccountTrafficService
 from application.services.log_service import LogService
 from application.use_cases.account_use_cases import (
-    AddAccountUseCase,
+    AddValidatedAccountUseCase,
     DeleteAccountUseCase,
     EditAccountUseCase,
     SelectAccountUseCase,
@@ -59,7 +59,7 @@ def build_container() -> AppContainer:
         account_repo=account_repo,
         app_state_repo=app_state_repo,
         load_dashboard_use_case=LoadDashboardStateUseCase(account_repo, app_state_repo),
-        add_account_use_case=AddAccountUseCase(account_repo),
+        add_account_use_case=AddValidatedAccountUseCase(account_repo, panel_client),
         edit_account_use_case=EditAccountUseCase(account_repo),
         delete_account_use_case=DeleteAccountUseCase(account_repo),
         select_account_use_case=SelectAccountUseCase(account_repo),

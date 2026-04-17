@@ -5,7 +5,7 @@ from PySide6.QtCore import QObject, Signal
 from application.dashboard_view_mapper import DashboardViewMapper
 from application.services.log_service import LogService
 from application.use_cases.account_use_cases import (
-    AddAccountUseCase,
+    AddValidatedAccountUseCase,
     DeleteAccountUseCase,
     EditAccountUseCase,
     SelectAccountUseCase,
@@ -44,7 +44,7 @@ class MainWindowController(QObject):
         account_repo,
         app_state_repo,
         load_dashboard_use_case: LoadDashboardStateUseCase,
-        add_account_use_case: AddAccountUseCase,
+        add_account_use_case: AddValidatedAccountUseCase,
         edit_account_use_case: EditAccountUseCase,
         delete_account_use_case: DeleteAccountUseCase,
         select_account_use_case: SelectAccountUseCase,
@@ -83,6 +83,7 @@ class MainWindowController(QObject):
 
         self._closing = False
         self._login_running = False
+        self._account_validation_running = False
         self._local_logout_running = False
         self._status_refresh_running = False
         self._traffic_refresh_running = False
