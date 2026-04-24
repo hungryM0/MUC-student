@@ -37,6 +37,7 @@ class MainWindow(FluentWindow):
             portal_url=self.settings.portal_url,
             traffic_portal_url=self.settings.traffic_portal_url,
             minimize_to_tray_on_close=self.controller.preferences.minimize_to_tray_on_close,
+            launch_on_startup=self.controller.preferences.launch_on_startup,
             auto_switch_account_on_traffic_exhausted=self.controller.preferences.auto_switch_account_on_traffic_exhausted,
             parent=self,
         )
@@ -63,6 +64,7 @@ class MainWindow(FluentWindow):
         self.status_page.logout_local_requested.connect(self.controller.logout_local_device_for_account)
         self.status_page.refresh_requested.connect(lambda: self.controller.refresh_status_page_data(force_quota_refresh=True))
         self.settings_page.minimize_to_tray_changed.connect(self.controller.set_minimize_to_tray_on_close)
+        self.settings_page.launch_on_startup_changed.connect(self.controller.set_launch_on_startup)
         self.settings_page.auto_switch_account_changed.connect(self.controller.set_auto_switch_account_on_traffic_exhausted)
 
         self.controller.home_changed.connect(self.home_page.apply_view_model)

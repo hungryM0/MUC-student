@@ -11,6 +11,7 @@ from infrastructure.persistence.runtime_paths_provider import RuntimePathsProvid
 
 class AppStateRepository:
     _KEY_MINIMIZE_TO_TRAY_ON_CLOSE = "minimize_to_tray_on_close"
+    _KEY_LAUNCH_ON_STARTUP = "launch_on_startup"
     _KEY_AUTO_SWITCH_ON_TRAFFIC_EXHAUSTED = "auto_switch_account_on_traffic_exhausted"
     _KEY_RECENT_ACCOUNT_IDS = "recent_account_ids"
     _MAX_RECENT_ACCOUNT_IDS = 20
@@ -32,6 +33,7 @@ class AppStateRepository:
         payload = self._load_payload()
         return UserPreferences(
             minimize_to_tray_on_close=bool(payload.get(self._KEY_MINIMIZE_TO_TRAY_ON_CLOSE, False)),
+            launch_on_startup=bool(payload.get(self._KEY_LAUNCH_ON_STARTUP, False)),
             auto_switch_account_on_traffic_exhausted=bool(payload.get(self._KEY_AUTO_SWITCH_ON_TRAFFIC_EXHAUSTED, False)),
             recent_account_ids=self._normalize_recent_account_ids(payload.get(self._KEY_RECENT_ACCOUNT_IDS, [])),
         )
@@ -51,6 +53,11 @@ class AppStateRepository:
     def set_minimize_to_tray_on_close(self, enabled: bool) -> None:
         payload = self._load_payload()
         payload[self._KEY_MINIMIZE_TO_TRAY_ON_CLOSE] = bool(enabled)
+        write_json_atomic(self._state_path, payload)
+
+    def set_launch_on_startup(self, enabled: bool) -> None:
+        payload = self._load_payload()
+        payload[self._KEY_LAUNCH_ON_STARTUP] = bool(enabled)
         write_json_atomic(self._state_path, payload)
 
     def set_auto_switch_on_traffic_exhausted(self, enabled: bool) -> None:

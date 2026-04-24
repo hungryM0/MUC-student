@@ -49,6 +49,7 @@ class AccountCardViewModel:
     username: str
     used_traffic_text: str
     product_balance_text: str
+    remaining_traffic_mb: float | None
     included_package_text: str
     online_device_count_text: str
     package_text: str
@@ -82,4 +83,5 @@ class SettingsViewModel:
     portal_url: str
     traffic_portal_url: str
     minimize_to_tray_on_close: bool
+    launch_on_startup: bool
     auto_switch_account_on_traffic_exhausted: bool

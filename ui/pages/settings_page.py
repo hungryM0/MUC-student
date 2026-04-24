@@ -37,6 +37,7 @@ class SettingsSectionCard(CardWidget):
 
 class SettingsPage(QWidget):
     minimize_to_tray_changed = Signal(bool)
+    launch_on_startup_changed = Signal(bool)
     auto_switch_account_changed = Signal(bool)
 
     def __init__(
@@ -44,6 +45,7 @@ class SettingsPage(QWidget):
         portal_url: str,
         traffic_portal_url: str,
         minimize_to_tray_on_close: bool,
+        launch_on_startup: bool,
         auto_switch_account_on_traffic_exhausted: bool,
         parent: QWidget | None = None,
     ) -> None:
@@ -53,6 +55,7 @@ class SettingsPage(QWidget):
             portal_url,
             traffic_portal_url,
             minimize_to_tray_on_close,
+            launch_on_startup,
             auto_switch_account_on_traffic_exhausted,
         )
 
@@ -61,6 +64,7 @@ class SettingsPage(QWidget):
         portal_url: str,
         traffic_portal_url: str,
         minimize_to_tray_on_close: bool,
+        launch_on_startup: bool,
         auto_switch_account_on_traffic_exhausted: bool,
     ) -> None:
         root = QVBoxLayout(self)
@@ -70,6 +74,7 @@ class SettingsPage(QWidget):
         root.addWidget(
             self._build_behavior_group(
                 minimize_to_tray_on_close=minimize_to_tray_on_close,
+                launch_on_startup=launch_on_startup,
                 auto_switch_account_on_traffic_exhausted=auto_switch_account_on_traffic_exhausted,
             )
         )
@@ -79,6 +84,7 @@ class SettingsPage(QWidget):
     def _build_behavior_group(
         self,
         minimize_to_tray_on_close: bool,
+        launch_on_startup: bool,
         auto_switch_account_on_traffic_exhausted: bool,
     ) -> SettingCardGroup:
         group = SettingCardGroup("设置", self)
@@ -93,6 +99,16 @@ class SettingsPage(QWidget):
         self._localize_switch_card(self.minimize_to_tray_card)
         self.minimize_to_tray_card.checkedChanged.connect(self.minimize_to_tray_changed.emit)
 
+        self.launch_on_startup_card = SwitchSettingCard(
+            FIF.POWER_BUTTON,
+            "开机自动启动",
+            "开启后，登录 Windows 时会自动启动本程序。",
+            parent=group,
+        )
+        self.launch_on_startup_card.setChecked(launch_on_startup)
+        self._localize_switch_card(self.launch_on_startup_card)
+        self.launch_on_startup_card.checkedChanged.connect(self.launch_on_startup_changed.emit)
+
         self.auto_switch_account_card = SwitchSettingCard(
             FIF.SYNC,
             "流量用完后自动切换账号",
@@ -104,6 +120,7 @@ class SettingsPage(QWidget):
         self.auto_switch_account_card.checkedChanged.connect(self.auto_switch_account_changed.emit)
 
         group.addSettingCard(self.minimize_to_tray_card)
+        group.addSettingCard(self.launch_on_startup_card)
         group.addSettingCard(self.auto_switch_account_card)
         return group
 
@@ -149,15 +166,19 @@ class SettingsPage(QWidget):
         self.portal_edit.setText(view_model.portal_url)
         self.traffic_portal_edit.setText(view_model.traffic_portal_url)
         self.minimize_to_tray_card.blockSignals(True)
+        self.launch_on_startup_card.blockSignals(True)
         self.auto_switch_account_card.blockSignals(True)
         self.minimize_to_tray_card.setChecked(view_model.minimize_to_tray_on_close)
+        self.launch_on_startup_card.setChecked(view_model.launch_on_startup)
         self.auto_switch_account_card.setChecked(view_model.auto_switch_account_on_traffic_exhausted)
         self.minimize_to_tray_card.switchButton.setText(
             "开启" if view_model.minimize_to_tray_on_close else "关闭"
         )
+        self.launch_on_startup_card.switchButton.setText("开启" if view_model.launch_on_startup else "关闭")
         self.auto_switch_account_card.switchButton.setText(
             "开启" if view_model.auto_switch_account_on_traffic_exhausted else "关闭"
         )
         self.minimize_to_tray_card.blockSignals(False)
+        self.launch_on_startup_card.blockSignals(False)
         self.auto_switch_account_card.blockSignals(False)
 

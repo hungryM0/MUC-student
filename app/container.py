@@ -28,6 +28,7 @@ from infrastructure.captcha_ocr_gateway import CaptchaOcrGateway
 from infrastructure.persistence.account_store_repository import AccountStoreRepository
 from infrastructure.persistence.app_state_repository import AppStateRepository
 from infrastructure.persistence.runtime_paths_provider import RuntimePathsProvider
+from infrastructure.system.startup_service import StartupService
 from ui.controllers.async_task_runner import AsyncTaskRunner
 from ui.controllers.main_window_controller import MainWindowController
 
@@ -49,6 +50,7 @@ def build_container() -> AppContainer:
     auth_client = AuthPortalClient(settings, auth_transport, ocr_gateway)
     panel_client = SelfServicePanelClient(settings, panel_transport, ocr_gateway)
     network_status_service = NetworkStatusService(settings)
+    startup_service = StartupService()
     traffic_service = AccountTrafficService(panel_client)
     log_service = LogService()
     view_mapper = DashboardViewMapper()
@@ -73,6 +75,7 @@ def build_container() -> AppContainer:
         refresh_snapshots_use_case=RefreshAccountSnapshotsUseCase(traffic_service),
         verify_online_account_use_case=VerifyOnlineAccountUseCase(traffic_service),
         logout_local_device_use_case=LogoutLocalDeviceUseCase(network_status_service, panel_client),
+        startup_service=startup_service,
         log_service=log_service,
         view_mapper=view_mapper,
         runner=runner,

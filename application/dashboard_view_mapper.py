@@ -123,6 +123,9 @@ class DashboardViewMapper:
                     username=account.username,
                     used_traffic_text=snapshot.used_traffic_text if snapshot else "-",
                     product_balance_text=snapshot.product_balance_text if snapshot else "-",
+                    remaining_traffic_mb=(
+                        self._build_remaining_traffic_mb(snapshot) if snapshot else None
+                    ),
                     included_package_text=snapshot.included_package_text if snapshot else "",
                     online_device_count_text=snapshot.online_device_count_text if snapshot else "-",
                     package_text=snapshot.package_text if snapshot else "-",
@@ -153,6 +156,7 @@ class DashboardViewMapper:
             portal_url=settings.portal_url,
             traffic_portal_url=settings.traffic_portal_url,
             minimize_to_tray_on_close=preferences.minimize_to_tray_on_close,
+            launch_on_startup=preferences.launch_on_startup,
             auto_switch_account_on_traffic_exhausted=preferences.auto_switch_account_on_traffic_exhausted,
         )
 
@@ -212,6 +216,14 @@ class DashboardViewMapper:
         if remaining_text is None:
             return "待刷新"
         return remaining_text
+
+    @staticmethod
+    def _build_remaining_traffic_mb(snapshot: AccountTrafficSnapshot) -> float | None:
+        total_mb = parse_traffic_text_to_mb(snapshot.product_balance_text)
+        used_mb = parse_traffic_text_to_mb(snapshot.used_traffic_text)
+        if total_mb is None or used_mb is None:
+            return None
+        return max(0.0, total_mb - used_mb)
 
     @staticmethod
     def _snapshot_needs_refresh(snapshot: AccountTrafficSnapshot | None) -> bool:

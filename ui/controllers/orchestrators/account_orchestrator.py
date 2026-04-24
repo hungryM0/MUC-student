@@ -102,6 +102,24 @@ class AccountOrchestrator:
         controller._log_service.log("INFO", f"关闭窗口行为已设置为：{mode_text}")
         controller._presentation.emit_all_views()
 
+    def set_launch_on_startup(self, enabled: bool) -> None:
+        controller = self._controller
+        previous_enabled = controller.preferences.launch_on_startup
+        controller.preferences.launch_on_startup = bool(enabled)
+        try:
+            controller._startup_service.set_launch_on_startup(controller.preferences.launch_on_startup)
+        except OSError as exc:
+            controller.preferences.launch_on_startup = previous_enabled
+            controller._log_service.log("ERROR", "开机自动启动设置失败", error=str(exc))
+            controller.warning_requested.emit("开机自动启动设置失败", str(exc))
+            controller._presentation.emit_all_views()
+            return
+
+        controller._app_state_repo.set_launch_on_startup(controller.preferences.launch_on_startup)
+        status_text = "开启" if controller.preferences.launch_on_startup else "关闭"
+        controller._log_service.log("INFO", f"已{status_text}：开机自动启动")
+        controller._presentation.emit_all_views()
+
     def set_auto_switch_account_on_traffic_exhausted(self, enabled: bool) -> None:
         controller = self._controller
         controller.preferences.auto_switch_account_on_traffic_exhausted = bool(enabled)

@@ -53,6 +53,7 @@ class MainWindowController(QObject):
         refresh_snapshots_use_case: RefreshAccountSnapshotsUseCase,
         verify_online_account_use_case: VerifyOnlineAccountUseCase,
         logout_local_device_use_case: LogoutLocalDeviceUseCase,
+        startup_service,
         log_service: LogService,
         view_mapper: DashboardViewMapper,
         runner: AsyncTaskRunner,
@@ -71,6 +72,7 @@ class MainWindowController(QObject):
         self._refresh_snapshots_use_case = refresh_snapshots_use_case
         self._verify_online_account_use_case = verify_online_account_use_case
         self._logout_local_device_use_case = logout_local_device_use_case
+        self._startup_service = startup_service
         self._log_service = log_service
         self._view_mapper = view_mapper
         self._runner = runner
@@ -147,6 +149,9 @@ class MainWindowController(QObject):
 
     def set_minimize_to_tray_on_close(self, enabled: bool) -> None:
         self._account.set_minimize_to_tray_on_close(enabled)
+
+    def set_launch_on_startup(self, enabled: bool) -> None:
+        self._account.set_launch_on_startup(enabled)
 
     def set_auto_switch_account_on_traffic_exhausted(self, enabled: bool) -> None:
         self._account.set_auto_switch_account_on_traffic_exhausted(enabled)

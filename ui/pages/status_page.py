@@ -13,8 +13,9 @@ from PySide6.QtWidgets import (
 from qfluentwidgets.common.icon import FluentIcon as FIF
 from qfluentwidgets.common.style_sheet import themeColor
 from qfluentwidgets.components.dialog_box.dialog import MessageBox
-from qfluentwidgets.components.widgets.button import PrimaryPushButton, PushButton
+from qfluentwidgets.components.widgets.button import PrimaryPushButton, PushButton, TransparentPushButton
 from qfluentwidgets.components.widgets.card_widget import ElevatedCardWidget
+from qfluentwidgets.components.widgets.combo_box import ComboBox
 from qfluentwidgets.components.widgets.label import (
     BodyLabel,
     CaptionLabel,
@@ -179,10 +180,49 @@ class AccountStatusCard(ElevatedCardWidget):
         )
 
 
+class ExhaustedAccountsSection(QWidget):
+    def __init__(self, count: int, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._count = count
+        self._build_ui()
+        self.set_collapsed(True)
+
+    def _build_ui(self) -> None:
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(12)
+
+        self.header_button = TransparentPushButton(self)
+        self.header_button.setCheckable(True)
+        self.header_button.toggled.connect(lambda checked: self.set_collapsed(not checked))
+
+        self.content = QWidget(self)
+        self.content_layout = QVBoxLayout(self.content)
+        self.content_layout.setContentsMargins(0, 0, 0, 0)
+        self.content_layout.setSpacing(12)
+
+        root.addWidget(self.header_button)
+        root.addWidget(self.content)
+
+    def add_card(self, card: AccountStatusCard) -> None:
+        self.content_layout.addWidget(card)
+
+    def set_collapsed(self, collapsed: bool) -> None:
+        self.content.setVisible(not collapsed)
+        self.header_button.setChecked(not collapsed)
+        icon = FIF.CHEVRON_RIGHT if collapsed else FIF.CHEVRON_DOWN_MED
+        action_text = "展开" if collapsed else "收起"
+        self.header_button.setIcon(icon)
+        self.header_button.setText(f"{action_text}已用尽账号（{self._count}）")
+
+
 class StatusPage(QWidget):
     _POOL_COLOR_WARNING = QColor("#f2b01e")
     _POOL_COLOR_DANGER = QColor("#f57c00")
     _POOL_COLOR_CRITICAL = QColor("#d13438")
+    _SORT_DEFAULT = "默认排序"
+    _SORT_REMAINING_DESC = "剩余量从高到低"
+    _SORT_NAME_ASC = "姓名 A-Z"
 
     add_account_requested = Signal()
     edit_account_requested = Signal(str)
@@ -193,6 +233,8 @@ class StatusPage(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("status-page")
+        self._sort_mode = self._SORT_DEFAULT
+        self._current_cards: list[AccountCardViewModel] = []
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -205,6 +247,16 @@ class StatusPage(QWidget):
         title.setTextColor(QColor("#202020"), QColor("#202020"))
         add_account_button = PrimaryPushButton("添加账号", self)
         add_account_button.clicked.connect(self.add_account_requested.emit)
+        sort_label = CaptionLabel("排序", self)
+        sort_label.setTextColor(QColor("#606060"), QColor("#606060"))
+        self.sort_combo = ComboBox(self)
+        self.sort_combo.addItems([
+            self._SORT_DEFAULT,
+            self._SORT_REMAINING_DESC,
+            self._SORT_NAME_ASC,
+        ])
+        self.sort_combo.setCurrentIndex(0)
+        self.sort_combo.currentTextChanged.connect(self._on_sort_mode_changed)
         self.refresh_button = PushButton(FIF.SYNC, "刷新状态", self)
         self.refresh_button.clicked.connect(self.refresh_requested.emit)
         self.refresh_loading_ring = IndeterminateProgressRing(self)
@@ -213,6 +265,8 @@ class StatusPage(QWidget):
         self.refresh_loading_ring.hide()
         title_row.addWidget(title)
         title_row.addStretch(1)
+        title_row.addWidget(sort_label)
+        title_row.addWidget(self.sort_combo)
         title_row.addWidget(self.refresh_button)
         title_row.addWidget(self.refresh_loading_ring)
         title_row.addWidget(add_account_button)
@@ -322,17 +376,76 @@ class StatusPage(QWidget):
         return self._POOL_COLOR_CRITICAL
 
     def set_accounts(self, cards: list[AccountCardViewModel]) -> None:
+        self._current_cards = list(cards)
+        self._render_account_cards(self._sort_cards(self._current_cards))
+
+    def _render_account_cards(self, cards: list[AccountCardViewModel]) -> None:
         self._clear_cards()
         self.empty_label.setVisible(not cards)
 
-        for card_data in cards:
-            card = AccountStatusCard(card_data, self.cards_container)
-            card.edit_requested.connect(self.edit_account_requested.emit)
-            card.delete_requested.connect(self._confirm_delete_account)
-            card.logout_local_requested.connect(self._confirm_logout_local_device)
-            self.cards_layout.addWidget(card)
+        current_online_cards = [card for card in cards if card.is_current_online_account]
+        active_cards = [
+            card
+            for card in cards
+            if not card.is_current_online_account and not self._is_exhausted_account(card)
+        ]
+        exhausted_cards = [card for card in cards if self._is_exhausted_account(card)]
+
+        for card_data in current_online_cards:
+            self.cards_layout.addWidget(self._create_account_card(card_data, self.cards_container))
+
+        if exhausted_cards:
+            self._add_exhausted_section(exhausted_cards)
+
+        for card_data in active_cards:
+            self.cards_layout.addWidget(self._create_account_card(card_data, self.cards_container))
 
         self.cards_layout.addStretch(1)
+
+    def _add_exhausted_section(self, exhausted_cards: list[AccountCardViewModel]) -> None:
+        exhausted_section = ExhaustedAccountsSection(len(exhausted_cards), self.cards_container)
+        for card_data in exhausted_cards:
+            exhausted_section.add_card(self._create_account_card(card_data, exhausted_section))
+        self.cards_layout.addWidget(exhausted_section)
+
+    def _create_account_card(
+        self,
+        card_data: AccountCardViewModel,
+        parent: QWidget,
+    ) -> AccountStatusCard:
+        card = AccountStatusCard(card_data, parent)
+        card.edit_requested.connect(self.edit_account_requested.emit)
+        card.delete_requested.connect(self._confirm_delete_account)
+        card.logout_local_requested.connect(self._confirm_logout_local_device)
+        return card
+
+    @staticmethod
+    def _is_exhausted_account(card_data: AccountCardViewModel) -> bool:
+        return card_data.progress_percent is not None and card_data.progress_percent >= 100
+
+    def _on_sort_mode_changed(self, sort_mode: str) -> None:
+        self._sort_mode = sort_mode or self._SORT_DEFAULT
+        self._render_account_cards(self._sort_cards(self._current_cards))
+
+    def _sort_cards(self, cards: list[AccountCardViewModel]) -> list[AccountCardViewModel]:
+        if self._sort_mode == self._SORT_REMAINING_DESC:
+            return sorted(cards, key=self._remaining_sort_key)
+        if self._sort_mode == self._SORT_NAME_ASC:
+            return sorted(cards, key=self._name_sort_key)
+        return list(cards)
+
+    @staticmethod
+    def _remaining_sort_key(card_data: AccountCardViewModel) -> tuple[bool, float, str]:
+        remaining_mb = card_data.remaining_traffic_mb
+        return (
+            remaining_mb is None,
+            -(remaining_mb if remaining_mb is not None else -1.0),
+            card_data.remark_name.casefold(),
+        )
+
+    @staticmethod
+    def _name_sort_key(card_data: AccountCardViewModel) -> tuple[str, str]:
+        return (card_data.remark_name.casefold(), card_data.username.casefold())
 
     def set_refreshing(self, refreshing: bool) -> None:
         if refreshing:
