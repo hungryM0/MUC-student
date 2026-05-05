@@ -5,7 +5,7 @@ import re
 from domain.models.traffic import OnlineDeviceRecord
 from infrastructure.parsers.online_device_parser import parse_online_devices
 
-BASE_PRODUCT_BALANCE_GB = 45.0
+FREE_PRODUCT_QUOTA_GB = 70.0
 
 
 def parse_home_table(html: str) -> tuple[str, str, str, str]:
@@ -70,7 +70,7 @@ def build_product_balance_texts(html: str) -> tuple[str, str]:
     for value_text, unit in matches:
         package_total_gb += convert_to_gigabytes(float(value_text), unit.upper())
 
-    total_gb = BASE_PRODUCT_BALANCE_GB + package_total_gb
+    total_gb = FREE_PRODUCT_QUOTA_GB + package_total_gb
     included_package_text = ""
     if package_total_gb > 0:
         included_package_text = f"含{package_total_gb:.2f}GB套餐流量"
