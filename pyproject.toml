@@ -1,0 +1,20 @@
+[project]
+name = "muc-student"
+version = "0.1.0"
+description = "适用于 MUC 的校园网多账号桌面应用"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "PySide6==6.11.1",
+    "PySide6-Fluent-Widgets==1.11.2",
+    "ddddocr==1.6.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.0.3",
+    "ruff==0.15.17",
+]
+
+[tool.uv]
+package = false

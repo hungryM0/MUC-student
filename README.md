@@ -1,11 +1,11 @@
 # MUC-student
 
-适用于MUC的校园网多账号拼车程序，基于 QFluentWidgets 组件库实现 GUI 视图。通过组团拼车可以共享校园网账号的流量配额，适合寝室内共享流量等使用场景。
+适用于MUC的校园网多账号拼车程序。
+
+通过组团拼车可以共享校园网账号的流量配额，适合寝室内共享流量等使用场景。
 
 > [!CAUTION]
 > 所有账号信息在本地明文存储，请勿将账号密码分享给不信任的人！
-
----
 
 ## 下载使用
 
@@ -19,11 +19,9 @@
 ```bash
 git clone https://github.com/hungryM0/MUC-student.git
 cd MUC-student
-pip install -r requirements.txt
-python main.py
+uv sync --locked --dev
+uv run python main.py
 ```
-
----
 
 ## 界面截图
 <img src="assets/home_page.png" alt="主页" width="600" height="400">
