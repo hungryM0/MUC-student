@@ -1,0 +1,4 @@
+interface:
+  display_name: "MUC OCR 链路"
+  short_description: "约束验证码识别顺序、资源路径和失败回退规则"
+  default_prompt: "Use $muc-student-ocr-pipeline to inspect or modify the OCR pipeline safely."

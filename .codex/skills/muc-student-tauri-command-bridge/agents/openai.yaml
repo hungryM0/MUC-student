@@ -1,0 +1,4 @@
+interface:
+  display_name: "MUC Tauri 桥接"
+  short_description: "梳理前端到 Rust 的 command 和事件桥接"
+  default_prompt: "Use $muc-student-tauri-command-bridge to add or debug a Tauri command bridge."
