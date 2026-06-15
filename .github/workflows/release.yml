@@ -1,15 +1,16 @@
-name: CI
+name: Release
 
 on:
   push:
-    branches:
-      - main
-  pull_request:
+    tags:
+      - "*"
   workflow_dispatch:
 
 jobs:
-  checks:
+  release-windows:
     runs-on: windows-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Pull repository
@@ -26,23 +27,32 @@ jobs:
         with:
           components: rustfmt
 
+      - name: Restore Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
       - name: Install frontend dependencies
         run: npm ci
 
       - name: Check frontend
         run: npm run check
 
-      - name: Build frontend
-        run: npm run build
-
       - name: Format Rust
         working-directory: src-tauri
         run: cargo fmt --check
 
-      - name: Check Rust
-        working-directory: src-tauri
-        run: cargo check
-
       - name: Test Rust
         working-directory: src-tauri
         run: cargo test
+
+      - name: Build and draft release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: ${{ github.ref_name }}
+          releaseBody: "自动构建的 Windows 安装包，详见附件。"
+          releaseDraft: true
+          prerelease: false
