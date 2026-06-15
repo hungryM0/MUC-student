@@ -1,6 +1,6 @@
 ---
 name: muc-student-architecture
-description: 规划或审查这个仓库的代码改动边界、模块落点、前后端联动路径和分层约束。用在改现有功能但还没确定该改哪里、需要先拆模块、涉及 Svelte 前端与 Tauri/Rust 联动、担心把 domain/application/infrastructure 打穿、或需要先梳理目录职责再动手的时候。
+description: 规划或审查这个仓库的代码改动边界、模块落点、前后端联动路径和分层约束。用在改现有功能但还没确定该改哪里、需要先拆模块、涉及 React 前端与 Tauri/Rust 联动、担心把 domain/application/infrastructure 打穿、或需要先梳理目录职责再动手的时候。
 ---
 
 # MUC Student Architecture
@@ -11,9 +11,12 @@ description: 规划或审查这个仓库的代码改动边界、模块落点、�
 
 先列出这次改动会碰到的层和入口：
 
-- 前端页面入口：`src/routes/`
+- React 挂载入口：`src/main.tsx`
+- React 应用壳：`src/App.tsx`
+- shadcn/ui 基础组件：`src/lib/components/ui/`
 - 前端通用组件：`src/lib/components/`
 - 前端功能逻辑：`src/lib/features/`
+- 前端 hooks：`src/lib/hooks/`
 - 前端状态：`src/lib/stores/`
 - 前端类型：`src/lib/types/`
 - Tauri 适配层：`src-tauri/src/adapters_tauri/`
@@ -27,36 +30,45 @@ description: 规划或审查这个仓库的代码改动边界、模块落点、�
 
 按这个顺序判断：
 
-1. 这是页面入口还是布局。
-放 `src/routes/`。这里不要堆业务。
+1. 这是 React 挂载入口。
+放 `src/main.tsx`。这里只挂载根组件和引入全局样式。
 
-2. 这是可复用界面片段。
+2. 这是应用壳、全局布局、页签切换或全局弹窗装配。
+放 `src/App.tsx`。这里不要堆业务流程。
+
+3. 这是 shadcn/ui 基础组件。
+放 `src/lib/components/ui/`。这里只放 UI 原语，不放业务。
+
+4. 这是可复用界面片段。
 放 `src/lib/components/`。只放显示层和轻交互。
 
-3. 这是某个页面或功能的业务逻辑。
+5. 这是某个页面或功能的业务逻辑。
 优先放 `src/lib/features/<feature>/`。不要继续把 `components` 写成垃圾场。
 
-4. 这是跨组件共享的前端状态。
+6. 这是 React hooks。
+放 `src/lib/hooks/`。
+
+7. 这是跨组件共享的前端状态。
 放 `src/lib/stores/`。
 
-5. 这是前后端传输类型或前端模型。
+8. 这是前后端传输类型或前端模型。
 放 `src/lib/types/`。
 
-6. 这是 Tauri command 暴露、事件桥接、桌面壳适配。
+9. 这是 Tauri command 暴露、事件桥接、桌面壳适配。
 放 `src-tauri/src/adapters_tauri/`。
 
-7. 这是用例编排、流程控制、DTO 组装。
+10. 这是用例编排、流程控制、DTO 组装。
 放 `src-tauri/src/application/`。
 
-8. 这是纯业务规则、领域模型、选择策略、计算逻辑。
+11. 这是纯业务规则、领域模型、选择策略、计算逻辑。
 放 `src-tauri/src/domain/`。这里别塞网络请求、文件读写、系统调用。
 
-9. 这是 HTTP、OCR、文件、凭据、系统、自启、解析器、持久化。
+12. 这是 HTTP、OCR、文件、凭据、系统、自启、解析器、持久化。
 放 `src-tauri/src/infrastructure/`。
 
 ## 硬规则
 
-- 不要手改 `.svelte-kit/`、`build/`、`src-tauri/gen/`。
+- 不要手改 `build/`、`src-tauri/gen/`。
 - 不要把密码写回 JSON。凭据继续走 `credential_vault`。
 - 改本地存储格式时，先补 `src-tauri/src/infrastructure/persistence/migration.rs`。
 - OCR provider 顺序不能偷改。固定是 `NativeRustOcrProvider` 然后 `ExternalWorkerOcrProvider`。
@@ -66,8 +78,8 @@ description: 规划或审查这个仓库的代码改动边界、模块落点、�
 
 先找前端入口，再顺着桥接链往下读：
 
-`src/routes` / `src/lib/components`
--> `src/lib/features` 或 `src/lib/stores`
+`src/App.tsx` / `src/lib/features` / `src/lib/components`
+-> `src/lib/hooks` / `src/lib/stores`
 -> Tauri `invoke` / 事件监听
 -> `src-tauri/src/adapters_tauri/`
 -> `src-tauri/src/application/`

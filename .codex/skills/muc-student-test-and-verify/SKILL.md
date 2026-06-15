@@ -13,7 +13,7 @@ description: 根据这个仓库的改动类型选择最小必要检查命令，�
 
 - `npm run check`
 
-如果改了构建链、SvelteKit 配置、路由或静态资源，再加：
+如果改了构建链、Vite 配置、React 入口、Tailwind/shadcn 配置或静态资源，再加：
 
 - `npm run build`
 

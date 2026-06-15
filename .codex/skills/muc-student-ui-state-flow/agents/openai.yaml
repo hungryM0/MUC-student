@@ -1,4 +1,4 @@
 interface:
   display_name: "MUC 前端状态流"
-  short_description: "规范 Svelte 前端状态、页面和 feature 落点"
+  short_description: "规范 React 前端状态、应用壳和 feature 落点"
   default_prompt: "Use $muc-student-ui-state-flow to add or refactor frontend state and UI flow."

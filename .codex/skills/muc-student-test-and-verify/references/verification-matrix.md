@@ -1,9 +1,9 @@
 # 验证矩阵
 
-## 前端页面、组件、store、type
+## 前端应用壳、feature、组件、hook、store、type
 
 - `npm run check`
-- 影响构建或路由时加 `npm run build`
+- 影响构建、React 入口、Tailwind/shadcn 配置或静态资源时加 `npm run build`
 
 ## Rust 领域、应用、基础设施
 

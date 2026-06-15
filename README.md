@@ -7,6 +7,12 @@
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=111111)
 ![shadcn/ui](https://img.shields.io/badge/shadcn%2Fui-111111?logo=shadcnui&logoColor=white)
 
+> [!NOTE]
+>
+> 这是一个前端学习练手项目。
+>
+> 仅供学习交流，**请不要将账号密码告诉不信任的人！**
+
 ## 界面截图
 
 | 主页 | 状态 |
