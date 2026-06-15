@@ -16,21 +16,34 @@ jobs:
       - name: Pull repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: astral-sh/setup-uv@v8
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          python-version: "3.13.14"
-          enable-cache: true
+          node-version: "22"
+          cache: npm
 
-      - name: Install dependencies
-        run: uv sync --locked --dev
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
 
-      - name: Ruff
-        run: uv run ruff check .
+      - name: Install frontend dependencies
+        run: npm ci
 
-      - name: Compile
-        run: uv run python -m compileall main.py app application domain infrastructure ui scripts
+      - name: Check frontend
+        run: npm run check
 
-      - name: Pytest
-        if: ${{ hashFiles('tests/**/*.py') != '' }}
-        run: uv run python -m pytest -q
+      - name: Build frontend
+        run: npm run build
+
+      - name: Format Rust
+        working-directory: src-tauri
+        run: cargo fmt --check
+
+      - name: Check Rust
+        working-directory: src-tauri
+        run: cargo check
+
+      - name: Test Rust
+        working-directory: src-tauri
+        run: cargo test

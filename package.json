@@ -1,0 +1,28 @@
+{
+  "name": "muc-student",
+  "version": "0.1.0",
+  "description": "适用于 MUC 的校园网多账号桌面应用",
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev --host 127.0.0.1 --port 1420",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.0"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-static": "^3.0.10",
+    "@sveltejs/kit": "^2.65.1",
+    "@sveltejs/vite-plugin-svelte": "^6.2.1",
+    "@tauri-apps/cli": "^2.11.2",
+    "@types/node": "^25.9.3",
+    "svelte": "^5.56.3",
+    "svelte-check": "^4.3.4",
+    "typescript": "^6.0.3",
+    "vite": "^7.2.7",
+    "vitest": "^4.0.15"
+  }
+}

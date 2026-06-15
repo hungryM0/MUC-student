@@ -1,36 +1,51 @@
 # MUC-student
 
-适用于MUC的校园网多账号拼车程序。
-
-通过组团拼车可以共享校园网账号的流量配额，适合寝室内共享流量等使用场景。
-
-> [!CAUTION]
-> 所有账号信息在本地明文存储，请勿将账号密码分享给不信任的人！
-
-## 下载使用
-
-### exe开箱即用
-
-> [!TIP]
-> 请从 [Release](https://github.com/hungryM0/MUC-student/releases/latest) 下载最新版本的可执行文件
-
-### 或从源码运行
-
-```bash
-git clone https://github.com/hungryM0/MUC-student.git
-cd MUC-student
-uv sync --locked --dev
-uv run python main.py
-```
-
-## 界面截图
-<img src="assets/home_page.png" alt="主页" width="600" height="400">
-<img src="assets/status_page.png" alt="状态" width="600" height="400">
-<img src="assets/Add.png" alt="添加账号" width="500" height="450">
-<img src="assets/settings.png" alt="设置" width="600" height="400">
+适用于 MUC 校园网多账号拼车的桌面应用，节省网费
 
 ## 功能
-- **多账号管理**：支持添加、编辑、删除多个校园网账号，方便共享使用
-- **自动切号**：支持当前账号流量耗尽时自动切号，保证网络持续可用 
-- **在线设备监控**：实时显示每个账号当前在线设备数量
-- **流量配额计算**：实时显示每个账号的剩余流量配额、购买的套餐信息
+
+- 多账号添加、编辑、删除、选择登录。
+- 校园网 HTTP 认证。
+- 自助面板状态刷新、在线设备查询、本机下线。
+- 流量配额汇总和账号配额展示。
+- 流量用尽后按最近使用优先策略自动切号。
+- 关闭到托盘、托盘恢复、开机自启。
+- 旧版本地数据首次启动自动迁移。
+- 密码写入 Windows Credential Manager，本地 JSON 不保存明文密码。
+
+## 本地开发
+
+```bash
+npm install
+npm run tauri -- dev
+```
+
+## 检查
+
+```bash
+npm run check
+npm run build
+cd src-tauri
+cargo check
+cargo test
+```
+
+## 打包
+
+```bash
+npm run tauri -- build
+```
+
+打包产物在：
+
+- `src-tauri/target/release/bundle/msi/`
+- `src-tauri/target/release/bundle/nsis/`
+
+## OCR
+
+OCR 按 provider 链执行：
+
+1. `NativeRustOcrProvider`
+2. `ExternalWorkerOcrProvider`
+
+原生模型和 worker 放在 `src-tauri/resources/ocr/`。

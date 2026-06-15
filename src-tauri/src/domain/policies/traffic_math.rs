@@ -1,0 +1,267 @@
+use std::cmp::Ordering;
+use std::collections::{BTreeMap, HashMap};
+
+use crate::domain::models::traffic::AccountTrafficSnapshot;
+use crate::domain::models::{AccountStore, PortalAccount};
+
+#[derive(Clone, Debug, Default)]
+pub struct RuntimeFlags {
+    pub login_running: bool,
+    pub refresh_running: bool,
+    pub logout_running: bool,
+    pub current_ip: String,
+    pub current_online_account_id: String,
+}
+
+pub fn build_auto_switch_candidate(
+    account_store: &AccountStore,
+    snapshots: &BTreeMap<String, AccountTrafficSnapshot>,
+    recent_account_ids: &[String],
+) -> Option<PortalAccount> {
+    let current_account = account_store
+        .accounts
+        .iter()
+        .find(|account| account.id == account_store.selected_account_id)?;
+
+    let current_snapshot = snapshots.get(&current_account.id)?;
+    if current_snapshot.progress_percent? < 100.0 {
+        return None;
+    }
+
+    let mut candidates: Vec<&PortalAccount> = account_store
+        .accounts
+        .iter()
+        .filter(|account| account.id != current_account.id)
+        .filter(|account| {
+            snapshots
+                .get(&account.id)
+                .and_then(|snapshot| snapshot.progress_percent)
+                .is_some_and(|percent| percent < 100.0)
+        })
+        .collect();
+
+    if candidates.is_empty() {
+        return None;
+    }
+
+    let rank_map: HashMap<&str, usize> = recent_account_ids
+        .iter()
+        .enumerate()
+        .map(|(idx, id)| (id.as_str(), idx))
+        .collect();
+
+    candidates.sort_by_key(|account| {
+        (
+            rank_map.get(account.id.as_str()).copied().unwrap_or(10_000),
+            account_store
+                .accounts
+                .iter()
+                .position(|item| item.id == account.id)
+                .unwrap_or(usize::MAX),
+        )
+    });
+
+    candidates.into_iter().next().cloned()
+}
+
+pub fn build_status_card_order(
+    account_store: &AccountStore,
+    snapshots: &BTreeMap<String, AccountTrafficSnapshot>,
+    current_online_account_id: &str,
+    order_snapshot: &[String],
+) -> Vec<String> {
+    let order_index: HashMap<&str, usize> = order_snapshot
+        .iter()
+        .enumerate()
+        .map(|(idx, id)| (id.as_str(), idx))
+        .collect();
+
+    let mut other_accounts: Vec<&PortalAccount> = account_store
+        .accounts
+        .iter()
+        .filter(|account| account.id != current_online_account_id)
+        .collect();
+
+    other_accounts.sort_by(|left, right| {
+        let left_progress = snapshots
+            .get(&left.id)
+            .and_then(|snapshot| snapshot.progress_percent);
+        let right_progress = snapshots
+            .get(&right.id)
+            .and_then(|snapshot| snapshot.progress_percent);
+        match (left_progress, right_progress) {
+            (Some(a), Some(b)) => b.partial_cmp(&a).unwrap_or(Ordering::Equal),
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            (None, None) => order_index
+                .get(left.id.as_str())
+                .copied()
+                .unwrap_or(usize::MAX)
+                .cmp(
+                    &order_index
+                        .get(right.id.as_str())
+                        .copied()
+                        .unwrap_or(usize::MAX),
+                ),
+        }
+        .then_with(|| {
+            order_index
+                .get(left.id.as_str())
+                .copied()
+                .unwrap_or(usize::MAX)
+                .cmp(
+                    &order_index
+                        .get(right.id.as_str())
+                        .copied()
+                        .unwrap_or(usize::MAX),
+                )
+        })
+    });
+
+    let mut final_order = Vec::new();
+    if !current_online_account_id.is_empty()
+        && account_store
+            .accounts
+            .iter()
+            .any(|account| account.id == current_online_account_id)
+    {
+        final_order.push(current_online_account_id.to_string());
+    }
+    final_order.extend(other_accounts.into_iter().map(|account| account.id.clone()));
+    final_order
+}
+
+pub fn build_pool_quota_summary(
+    account_store: &AccountStore,
+    snapshots: &BTreeMap<String, AccountTrafficSnapshot>,
+) -> (String, String, String, Option<f64>) {
+    let mut used_total_mb = 0.0;
+    let mut total_balance_gb = 0.0;
+    let mut included_package_total_gb = 0.0;
+    let mut has_used_value = false;
+    let mut has_total_value = false;
+
+    for account in &account_store.accounts {
+        let Some(snapshot) = snapshots.get(&account.id) else {
+            continue;
+        };
+
+        if let Some(used_mb) = parse_traffic_text_to_mb(&snapshot.used_traffic_text) {
+            used_total_mb += used_mb;
+            has_used_value = true;
+        }
+        if let Some(total_gb) = parse_traffic_text_to_gb(&snapshot.product_balance_text) {
+            total_balance_gb += total_gb;
+            has_total_value = true;
+        }
+        if let Some(included_gb) = extract_included_package_gb(&snapshot.included_package_text) {
+            included_package_total_gb += included_gb;
+        }
+    }
+
+    let used_text = if has_used_value {
+        format_megabytes(used_total_mb)
+    } else {
+        "-".to_string()
+    };
+    let total_text = if has_total_value {
+        format!("{total_balance_gb:.2}GB")
+    } else {
+        "-".to_string()
+    };
+    let included_text = if has_total_value && included_package_total_gb > 0.0 {
+        format!("含{included_package_total_gb:.2}GB套餐流量")
+    } else {
+        String::new()
+    };
+
+    let progress = if has_total_value && has_used_value && total_balance_gb > 0.0 {
+        Some(round_to(
+            ((used_total_mb / (total_balance_gb * 1024.0)) * 100.0).clamp(0.0, 100.0),
+            1,
+        ))
+    } else {
+        None
+    };
+
+    (used_text, total_text, included_text, progress)
+}
+
+pub fn build_progress_percent(used_traffic_text: &str, total_traffic_text: &str) -> Option<f64> {
+    let used_mb = parse_traffic_text_to_mb(used_traffic_text)?;
+    let total_mb = parse_traffic_text_to_mb(total_traffic_text)?;
+    if total_mb <= 0.0 {
+        return None;
+    }
+    Some(round_to(
+        ((used_mb / total_mb) * 100.0).clamp(0.0, 100.0),
+        1,
+    ))
+}
+
+pub fn build_remaining_traffic_text(
+    total_traffic_text: &str,
+    used_traffic_text: &str,
+) -> Option<String> {
+    let total_mb = parse_traffic_text_to_mb(total_traffic_text)?;
+    let used_mb = parse_traffic_text_to_mb(used_traffic_text)?;
+    Some(format_megabytes((total_mb - used_mb).max(0.0)))
+}
+
+pub fn parse_traffic_text_to_mb(text: &str) -> Option<f64> {
+    let normalized = text.trim().to_uppercase().replace(' ', "");
+    let re = regex::Regex::new(r"(\d+(?:\.\d+)?)(K|M|G|T|B)(?:YTE|YTES|B)?").ok()?;
+    let caps = re.captures(&normalized)?;
+    let value: f64 = caps.get(1)?.as_str().parse().ok()?;
+    match caps.get(2)?.as_str() {
+        "B" => Some(value / 1024.0 / 1024.0),
+        "K" => Some(value / 1024.0),
+        "M" => Some(value),
+        "G" => Some(value * 1024.0),
+        "T" => Some(value * 1024.0 * 1024.0),
+        _ => None,
+    }
+}
+
+pub fn parse_traffic_text_to_gb(text: &str) -> Option<f64> {
+    parse_traffic_text_to_mb(text).map(|mb| mb / 1024.0)
+}
+
+pub fn extract_included_package_gb(text: &str) -> Option<f64> {
+    let normalized = text.replace(' ', "");
+    let re = regex::Regex::new(r"含([0-9]+(?:\.[0-9]+)?)GB套餐流量").ok()?;
+    let caps = re.captures(&normalized)?;
+    caps.get(1)?.as_str().parse().ok()
+}
+
+pub fn format_megabytes(value_mb: f64) -> String {
+    let mb = value_mb.max(0.0);
+    if mb >= 1024.0 * 1024.0 {
+        format!("{:.2}T", mb / 1024.0 / 1024.0)
+    } else if mb >= 1024.0 {
+        format!("{:.2}G", mb / 1024.0)
+    } else if mb >= 1.0 {
+        format!("{:.2}M", mb)
+    } else {
+        format!("{:.2}K", mb * 1024.0)
+    }
+}
+
+fn round_to(value: f64, digits: i32) -> f64 {
+    let factor = 10f64.powi(digits.max(0));
+    (value * factor).round() / factor
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn calculates_progress_and_remaining_text() {
+        assert_eq!(build_progress_percent("1GB", "2GB"), Some(50.0));
+        assert_eq!(
+            build_remaining_traffic_text("2GB", "512MB"),
+            Some("1.50G".to_string())
+        );
+    }
+}
