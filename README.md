@@ -2,9 +2,10 @@
 
 适用于 MUC 校园网多账号拼车的桌面应用，节省网费
 
-![SvelteKit](https://img.shields.io/badge/SvelteKit-2-FF3E00?logo=svelte&logoColor=white)
-![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)
-![Rust](https://img.shields.io/badge/Rust-2021-000000?logo=rust&logoColor=white)
+![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)
+![Tauri](https://img.shields.io/badge/Tauri-24C8DB?logo=tauri&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=111111)
+![shadcn/ui](https://img.shields.io/badge/shadcn%2Fui-111111?logo=shadcnui&logoColor=white)
 
 ## 界面截图
 

@@ -1,7 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { get, writable } from 'svelte/store';
 import type {
   AccountDto,
   AccountInput,
@@ -14,49 +13,67 @@ import type {
   UiState
 } from '$lib/types/app';
 
-export const appSnapshot = writable<AppSnapshotDto | null>(null);
-export const uiState = writable<UiState>({
-  activePage: 'home',
-  loadingMessage: '',
-  error: null,
-  sortMode: 'default'
-});
-export const dialogState = writable<DialogState>({ type: 'none' });
+export type AppStoreState = {
+  appSnapshot: AppSnapshotDto | null;
+  uiState: UiState;
+  dialogState: DialogState;
+};
 
+let state: AppStoreState = {
+  appSnapshot: null,
+  uiState: {
+    activePage: 'home',
+    loadingMessage: '',
+    error: null,
+    sortMode: 'default'
+  },
+  dialogState: { type: 'none' }
+};
+
+const subscribers = new Set<() => void>();
 let eventListenersReady = false;
 let windowCloseReady = false;
 let unlisteners: UnlistenFn[] = [];
 
+export function subscribeAppStore(listener: () => void) {
+  subscribers.add(listener);
+  return () => subscribers.delete(listener);
+}
+
+export function getAppStoreSnapshot() {
+  return state;
+}
+
 export function setActivePage(activePage: UiState['activePage']) {
-  uiState.update((state) => ({ ...state, activePage }));
+  setUiState({ activePage });
 }
 
 export function setSortMode(sortMode: UiState['sortMode']) {
-  uiState.update((state) => ({ ...state, sortMode }));
+  setUiState({ sortMode });
 }
 
 export function clearError() {
-  uiState.update((state) => ({ ...state, error: null }));
+  setUiState({ error: null });
 }
 
 export function openCreateAccountDialog() {
-  dialogState.set({ type: 'account', mode: 'create' });
+  setDialogState({ type: 'account', mode: 'create' });
 }
 
 export function openEditAccountDialog(accountId: string) {
-  dialogState.set({ type: 'account', mode: 'edit', accountId });
+  setDialogState({ type: 'account', mode: 'edit', accountId });
 }
 
 export function openDeleteConfirm(accountId: string) {
-  dialogState.set({ type: 'confirmDelete', accountId });
+  setDialogState({ type: 'confirmDelete', accountId });
 }
 
 export function openLogoutConfirm(accountId: string) {
-  dialogState.set({ type: 'confirmLogout', accountId });
+  setDialogState({ type: 'confirmLogout', accountId });
 }
 
 export function closeDialog() {
-  dialogState.set({ type: 'none' });
+  setDialogState({ type: 'none' });
 }
 
 export async function initializeTauriBridge() {
@@ -66,26 +83,76 @@ export async function initializeTauriBridge() {
 
 export async function bootstrapApp() {
   await initializeTauriBridge();
+  if (!isTauriRuntime()) {
+    const snapshot = createBrowserPreviewSnapshot();
+    setSnapshot(snapshot);
+    return snapshot;
+  }
   return command<AppSnapshotDto>('bootstrapApp', undefined, '启动中...');
 }
 
-export function getAppSnapshot() {
+export function getBackendSnapshot() {
   return command<AppSnapshotDto>('getAppSnapshot');
 }
 
 export function selectAccount(accountId: string) {
+  if (!isTauriRuntime() && state.appSnapshot) {
+    const snapshot = { ...state.appSnapshot, selectedAccountId: accountId };
+    setSnapshot(snapshot);
+    return Promise.resolve(snapshot);
+  }
   return command<AppSnapshotDto>('selectAccount', { accountId }, '正在切换账号...');
 }
 
 export function createAccount(input: AccountInput) {
+  if (!isTauriRuntime() && state.appSnapshot) {
+    const id = crypto.randomUUID();
+    const snapshot = {
+      ...state.appSnapshot,
+      selectedAccountId: id,
+      accounts: [
+        ...state.appSnapshot.accounts,
+        {
+          id,
+          remarkName: input.remarkName,
+          username: input.username,
+          snapshot: null,
+          isCurrentOnline: false,
+          canLogoutLocalDevice: false
+        }
+      ]
+    };
+    setSnapshot(snapshot);
+    return Promise.resolve(snapshot);
+  }
   return command<AppSnapshotDto>('createAccount', { input }, '正在保存账号...');
 }
 
 export function updateAccount(input: AccountUpdateInput) {
+  if (!isTauriRuntime() && state.appSnapshot) {
+    const snapshot = {
+      ...state.appSnapshot,
+      accounts: state.appSnapshot.accounts.map((account) =>
+        account.id === input.accountId ? { ...account, remarkName: input.remarkName, username: input.username } : account
+      )
+    };
+    setSnapshot(snapshot);
+    return Promise.resolve(snapshot);
+  }
   return command<AppSnapshotDto>('updateAccount', { input }, '正在保存账号...');
 }
 
 export function deleteAccount(accountId: string) {
+  if (!isTauriRuntime() && state.appSnapshot) {
+    const accounts = state.appSnapshot.accounts.filter((account) => account.id !== accountId);
+    const snapshot = {
+      ...state.appSnapshot,
+      accounts,
+      selectedAccountId: state.appSnapshot.selectedAccountId === accountId ? accounts[0]?.id ?? '' : state.appSnapshot.selectedAccountId
+    };
+    setSnapshot(snapshot);
+    return Promise.resolve(snapshot);
+  }
   return command<AppSnapshotDto>('deleteAccount', { accountId }, '正在删除账号...');
 }
 
@@ -102,6 +169,11 @@ export function logoutLocalDevice() {
 }
 
 export function updatePreferences(input: PreferenceInput) {
+  if (!isTauriRuntime() && state.appSnapshot) {
+    const snapshot = { ...state.appSnapshot, preferences: input };
+    setSnapshot(snapshot);
+    return Promise.resolve(snapshot);
+  }
   return command<AppSnapshotDto>('updatePreferences', { input }, '正在保存设置...');
 }
 
@@ -109,34 +181,54 @@ export function findAccount(snapshot: AppSnapshotDto | null, accountId: string):
   return snapshot?.accounts.find((account) => account.id === accountId) ?? null;
 }
 
+function setSnapshot(appSnapshot: AppSnapshotDto | null) {
+  state = { ...state, appSnapshot };
+  emit();
+}
+
+function setUiState(patch: Partial<UiState>) {
+  state = { ...state, uiState: { ...state.uiState, ...patch } };
+  emit();
+}
+
+function setDialogState(dialogState: DialogState) {
+  state = { ...state, dialogState };
+  emit();
+}
+
+function emit() {
+  for (const subscriber of subscribers) subscriber();
+}
+
 async function initializeAppEvents() {
+  if (!isTauriRuntime()) return;
   if (eventListenersReady) return;
   eventListenersReady = true;
 
   unlisteners = [
     await listen<AppSnapshotDto>('app://state-updated', (event) => {
-      appSnapshot.set(event.payload);
+      setSnapshot(event.payload);
     }),
     await listen<LogItemDto>('app://log-appended', (event) => {
       appendLogIfNeeded(event.payload);
     }),
     await listen<string>('app://task-started', (event) => {
-      uiState.update((state) => ({ ...state, loadingMessage: taskLabel(event.payload) }));
+      setUiState({ loadingMessage: taskLabel(event.payload) });
     }),
     await listen<string>('app://task-finished', () => {
-      uiState.update((state) => ({ ...state, loadingMessage: '' }));
+      setUiState({ loadingMessage: '' });
     })
   ];
 }
 
 async function initializeWindowCloseHandler() {
+  if (!isTauriRuntime()) return;
   if (windowCloseReady) return;
   windowCloseReady = true;
 
   const window = getCurrentWindow();
   const unlisten = await window.onCloseRequested(async (event) => {
-    const snapshot = get(appSnapshot);
-    if (!snapshot?.preferences.minimizeToTrayOnClose) return;
+    if (!state.appSnapshot?.preferences.minimizeToTrayOnClose) return;
     event.preventDefault();
     await window.hide();
   });
@@ -144,31 +236,29 @@ async function initializeWindowCloseHandler() {
 }
 
 async function command<T>(name: string, args?: Record<string, unknown>, loadingMessage = ''): Promise<T> {
-  uiState.update((state) => ({ ...state, error: null, loadingMessage }));
+  setUiState({ error: null, loadingMessage });
   try {
     const result = await invoke<T>(name, args);
     if (isSnapshot(result)) {
-      appSnapshot.set(result);
+      setSnapshot(result);
     }
     return result;
   } catch (error) {
     const appError = toAppError(error);
-    uiState.update((state) => ({ ...state, error: appError }));
+    setUiState({ error: appError });
     throw appError;
   } finally {
-    uiState.update((state) => ({ ...state, loadingMessage: '' }));
+    setUiState({ loadingMessage: '' });
   }
 }
 
 function appendLogIfNeeded(log: LogItemDto) {
-  appSnapshot.update((snapshot) => {
-    if (!snapshot) return snapshot;
-    const exists = snapshot.logs.some(
-      (item) => item.timestamp === log.timestamp && item.level === log.level && item.message === log.message
-    );
-    if (exists) return snapshot;
-    return { ...snapshot, logs: [...snapshot.logs, log].slice(-500) };
-  });
+  if (!state.appSnapshot) return;
+  const exists = state.appSnapshot.logs.some(
+    (item) => item.timestamp === log.timestamp && item.level === log.level && item.message === log.message
+  );
+  if (exists) return;
+  setSnapshot({ ...state.appSnapshot, logs: [...state.appSnapshot.logs, log].slice(-500) });
 }
 
 function isSnapshot(value: unknown): value is AppSnapshotDto {
@@ -196,6 +286,114 @@ function taskLabel(task: string) {
   if (task === 'refresh') return '正在刷新状态...';
   if (task === 'logout') return '正在下线本机...';
   return '正在处理...';
+}
+
+function isTauriRuntime() {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+}
+
+function createBrowserPreviewSnapshot(): AppSnapshotDto {
+  const now = new Date().toISOString();
+  return {
+    network: {
+      isOnline: true,
+      statusText: '预览在线',
+      ip: '10.18.24.16',
+      checkedAt: now
+    },
+    selectedAccountId: 'acc-1',
+    currentOnlineAccountId: 'acc-1',
+    accounts: [
+      {
+        id: 'acc-1',
+        remarkName: '主力账号',
+        username: '20260001',
+        isCurrentOnline: true,
+        canLogoutLocalDevice: true,
+        snapshot: {
+          accountId: 'acc-1',
+          usedTrafficText: '18.4 GB',
+          productBalanceText: '30 GB',
+          includedPackageText: '月包',
+          onlineDeviceCountText: '2',
+          packageText: '校园网套餐',
+          statusText: '正常',
+          detailText: '',
+          queriedAt: now,
+          onlineDevices: [],
+          matchedLocalIpDevice: null,
+          progressPercent: 61.3
+        }
+      },
+      {
+        id: 'acc-2',
+        remarkName: '备用账号',
+        username: '20260002',
+        isCurrentOnline: false,
+        canLogoutLocalDevice: false,
+        snapshot: {
+          accountId: 'acc-2',
+          usedTrafficText: '4.2 GB',
+          productBalanceText: '30 GB',
+          includedPackageText: '月包',
+          onlineDeviceCountText: '0',
+          packageText: '校园网套餐',
+          statusText: '正常',
+          detailText: '',
+          queriedAt: now,
+          onlineDevices: [],
+          matchedLocalIpDevice: null,
+          progressPercent: 14
+        }
+      },
+      {
+        id: 'acc-3',
+        remarkName: '已用尽',
+        username: '20260003',
+        isCurrentOnline: false,
+        canLogoutLocalDevice: false,
+        snapshot: {
+          accountId: 'acc-3',
+          usedTrafficText: '30 GB',
+          productBalanceText: '30 GB',
+          includedPackageText: '月包',
+          onlineDeviceCountText: '0',
+          packageText: '校园网套餐',
+          statusText: '已用尽',
+          detailText: '',
+          queriedAt: now,
+          onlineDevices: [],
+          matchedLocalIpDevice: null,
+          progressPercent: 100
+        }
+      }
+    ],
+    poolQuota: {
+      usedTrafficText: '52.6 GB',
+      productBalanceText: '90 GB',
+      includedPackageText: '三账号',
+      progressPercent: 58.4
+    },
+    loginState: {
+      running: false,
+      lastLoginTime: now,
+      resultText: '登录成功',
+      message: ''
+    },
+    refreshState: {
+      running: false,
+      lastQuotaRefreshTime: now
+    },
+    preferences: {
+      minimizeToTrayOnClose: true,
+      launchOnStartup: false,
+      autoSwitchAccountOnTrafficExhausted: true
+    },
+    logs: [
+      { timestamp: now, level: 'Info', message: '浏览器预览模式已加载' },
+      { timestamp: now, level: 'Info', message: '真实桌面环境会连接 Tauri 后端' }
+    ]
+  };
 }
 
 export function disposeTauriBridge() {
