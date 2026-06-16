@@ -5,7 +5,7 @@ pub mod infrastructure;
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager,
+    Manager, WindowEvent,
 };
 
 use crate::application::backend::{AccountInput, AccountUpdateInput, Backend, PreferenceInput};
@@ -135,6 +135,22 @@ pub fn run() {
                 })
                 .build(app)?;
             if let Some(window) = app_handle.get_webview_window("main") {
+                let backend = app_handle.state::<Backend>().inner().clone();
+                let window_for_close = window.clone();
+                window.on_window_event(move |event| {
+                    if let WindowEvent::CloseRequested { api, .. } = event {
+                        let should_minimize_to_tray = {
+                            let snapshot = backend.get_snapshot().ok();
+                            snapshot
+                                .map(|item| item.preferences.minimize_to_tray_on_close)
+                                .unwrap_or(false)
+                        };
+                        if should_minimize_to_tray {
+                            api.prevent_close();
+                            let _ = window_for_close.hide();
+                        }
+                    }
+                });
                 let _ = window.show();
             }
             Ok(())

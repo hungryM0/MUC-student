@@ -10,7 +10,6 @@ use crate::application::dto::{
 use crate::application::error::{AppError, AppResult};
 use crate::application::runtime::{AppRuntimeState, SharedRuntimeState};
 use crate::application::services::account_traffic_service::AccountTrafficService;
-use crate::application::services::log_service::LogService;
 use crate::domain::models::traffic::AccountTrafficSnapshot;
 use crate::domain::models::{CachedTrafficSnapshot, NetworkStatus, PortalAccount, UserPreferences};
 use crate::domain::policies::account_selection::find_current_online_account;
@@ -98,7 +97,7 @@ impl Backend {
             account_repo.clone(),
             app_state_repo.clone(),
         );
-        let migrated = migration.migrate_if_needed()?;
+        let _migrated = migration.migrate_if_needed()?;
         let account_store = account_repo.ensure_store()?;
         let app_state = app_state_repo.load_state()?;
         let preferences = app_state_repo.load_preferences()?;
@@ -125,7 +124,6 @@ impl Backend {
             preferences: preferences.clone(),
             network: NetworkStatus::default(),
             snapshots,
-            logs: Vec::new(),
             selected_account_id: account_store.selected_account_id.clone(),
             current_online_account_id: account_store.current_online_account_id.clone(),
             login_running: false,
@@ -144,20 +142,15 @@ impl Backend {
             network_status_service,
             startup_service,
         };
-        if migrated {
-            backend.log("INFO", "已自动迁移旧版账号数据，密码已写入 Windows 凭据库")?;
-        }
         Ok(backend)
     }
 
     pub async fn bootstrap_app(&self) -> AppResult<AppSnapshotDto> {
         self.refresh_runtime_from_disk()?;
-        self.log("INFO", "应用已启动")?;
         let snapshot = self.emit_state()?;
         let backend = self.clone();
         tokio::spawn(async move {
-            if let Err(err) = backend.run_refresh(false).await {
-                let _ = backend.log("ERROR", format!("自动刷新状态失败：{err}"));
+            if backend.run_refresh(false).await.is_err() {
                 let _ = backend.emit_state();
             }
         });
@@ -172,10 +165,6 @@ impl Backend {
         let account = self.account_repo.select_account(&account_id)?;
         self.app_state_repo.mark_account_used(&account.id)?;
         self.refresh_runtime_from_disk()?;
-        self.log(
-            "INFO",
-            format!("登录目标账号已切换为：{}", account.display_name()),
-        )?;
         self.emit_state()
     }
 
@@ -196,7 +185,7 @@ impl Backend {
             .account_repo
             .add_account(&remark_name, &username, &password)?;
         self.refresh_runtime_from_disk()?;
-        self.log("SUCCESS", format!("已添加账号：{}", account.display_name()))?;
+        let _ = account;
         self.emit_state()
     }
 
@@ -237,7 +226,7 @@ impl Backend {
             new_password.as_deref(),
         )?;
         self.refresh_runtime_from_disk()?;
-        self.log("SUCCESS", format!("已更新账号：{}", account.display_name()))?;
+        let _ = account;
         self.emit_state()
     }
 
@@ -251,7 +240,7 @@ impl Backend {
                 state.current_online_account_id.clear();
             }
         }
-        self.log("INFO", format!("已删除账号：{}", account.display_name()))?;
+        let _ = account;
         self.emit_state()
     }
 
@@ -266,7 +255,6 @@ impl Backend {
             .set_launch_on_startup(preferences.launch_on_startup)?;
         self.app_state_repo.save_preferences(&preferences)?;
         self.refresh_runtime_from_disk()?;
-        self.log("INFO", "偏好设置已保存")?;
         self.emit_state()
     }
 
@@ -323,10 +311,6 @@ impl Backend {
             .get_selected_account(&store)
             .ok_or_else(|| AppError::Validation("当前没有可用账号，请先添加账号".to_string()))?;
         let target = self.account_repo.load_account_with_password(&selected)?;
-        self.log(
-            "INFO",
-            format!("开始 HTTP 认证，账号={}", target.account.display_name()),
-        )?;
 
         let network = self.network_status_service.detect_network_status();
         {
@@ -355,19 +339,8 @@ impl Backend {
                     self.panel_client
                         .logout_local_device(&current_with_password, local_ip)
                         .await?;
-                    self.log(
-                        "INFO",
-                        format!("切号前已先下线当前账号本机设备：{}", current.display_name()),
-                    )?;
                 }
-            } else {
-                self.log(
-                    "INFO",
-                    format!("没在任何账号在线列表里找到本机 IP（{local_ip}），跳过预下线"),
-                )?;
             }
-        } else {
-            self.log("INFO", "未识别到本机内网 IP，跳过预下线")?;
         }
 
         let mut login_result = self.auth_client.verify_login(&target).await?;
@@ -402,35 +375,6 @@ impl Backend {
             self.app_state_repo.mark_account_used(&target.account.id)?;
         }
         self.refresh_runtime_from_disk()?;
-        self.log(
-            if login_result.success {
-                "SUCCESS"
-            } else {
-                "ERROR"
-            },
-            login_result.message,
-        )?;
-        self.log(
-            "INFO",
-            format!(
-                "HTTP 登录参数：ac_id={}, user_ip={}, nas_ip={}, user_mac={}",
-                login_result.hidden_fields.ac_id,
-                login_result.hidden_fields.user_ip,
-                login_result.hidden_fields.nas_ip,
-                login_result.hidden_fields.user_mac
-            ),
-        )?;
-        self.log(
-            "INFO",
-            format!(
-                "接口原始返回：{}",
-                if login_result.response_text.is_empty() {
-                    "empty"
-                } else {
-                    &login_result.response_text
-                }
-            ),
-        )?;
         Ok(())
     }
 
@@ -451,18 +395,16 @@ impl Backend {
             .get_account_by_id(&store, &current_id)
             .ok_or_else(|| AppError::NotFound("找不到当前在线账号".to_string()))?;
         let account = self.account_repo.load_account_with_password(&account)?;
-        let message = self
+        self
             .panel_client
             .logout_local_device(&account, &network.ip)
             .await?;
-        self.log("SUCCESS", message)?;
         self.run_refresh(true).await?;
         Ok(())
     }
 
     async fn run_refresh(&self, force: bool) -> AppResult<AppSnapshotDto> {
         if !force && self.is_quota_refresh_in_cooldown() {
-            self.log("INFO", "距离上次配额刷新未满 30 分钟，跳过自动刷新")?;
             return self.emit_state();
         }
         {
@@ -546,7 +488,6 @@ impl Backend {
             state.account_store.current_online_account_id = current_online_id;
         }
         self.try_auto_switch().await?;
-        self.log("SUCCESS", "状态刷新完成")?;
         Ok(())
     }
 
@@ -573,16 +514,7 @@ impl Backend {
         self.account_repo.select_account(&target.id)?;
         self.app_state_repo.mark_account_used(&target.id)?;
         self.refresh_runtime_from_disk()?;
-        if let Some(current) = current {
-            self.log(
-                "INFO",
-                format!(
-                    "检测到 {} 流量已用完，已自动切换到：{}",
-                    current.display_name(),
-                    target.display_name()
-                ),
-            )?;
-        }
+        let _ = current;
         Ok(())
     }
 
@@ -642,23 +574,7 @@ impl Backend {
             login_state,
             refresh_state,
             preferences: PreferenceDto::from(&state.preferences),
-            logs: state.logs.clone(),
         })
-    }
-
-    fn log(&self, level: impl Into<String>, message: impl Into<String>) -> AppResult<()> {
-        let entry = LogService::entry(level, message);
-        {
-            let mut state = self.state.write();
-            state.logs.push(entry.clone());
-            if state.logs.len() > 500 {
-                let overflow = state.logs.len() - 500;
-                state.logs.drain(0..overflow);
-            }
-        }
-        self.app
-            .emit("app://log-appended", entry)
-            .map_err(|err| AppError::System(format!("发送日志事件失败：{err}")))
     }
 
     fn emit_state(&self) -> AppResult<AppSnapshotDto> {
@@ -682,10 +598,6 @@ impl Backend {
     }
 
     async fn validate_panel_credentials(&self, account: AccountWithPassword) -> AppResult<()> {
-        self.log(
-            "INFO",
-            format!("正在校验自助面板账号：{}", account.account.display_name()),
-        )?;
         self.panel_client
             .fetch_authenticated_html(&account, "/home")
             .await?;

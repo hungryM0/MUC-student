@@ -39,26 +39,26 @@ export function StatusPanel({ snapshot, sortMode, busy, onSortMode, onAdd, onEdi
 
   return (
     <section className="panel-in flex min-h-0 flex-1 flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-xl font-semibold">状态</h2>
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs text-muted-foreground font-medium">已添加 {snapshot.accounts.length} 个账号</span>
+        <div className="flex items-center gap-2">
           <Select value={sortMode} onValueChange={(value) => onSortMode(value as UiState['sortMode'])}>
-            <SelectTrigger className="w-44">
+            <SelectTrigger className="w-36 h-8 text-xs rounded-md border-border/60 hover:bg-muted/40 cursor-pointer">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="default">默认排序</SelectItem>
-              <SelectItem value="remainingDesc">剩余量从高到低</SelectItem>
-              <SelectItem value="nameAsc">姓名 A-Z</SelectItem>
+              <SelectItem value="default" className="text-xs">默认排序</SelectItem>
+              <SelectItem value="remainingDesc" className="text-xs">剩余量高→低</SelectItem>
+              <SelectItem value="nameAsc" className="text-xs">姓名 A-Z</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="secondary" disabled={busy || snapshot.refreshState.running} onClick={onRefresh}>
-            <RefreshCcw />
+          <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 rounded-md cursor-pointer hover:bg-muted/80" disabled={busy || snapshot.refreshState.running} onClick={onRefresh}>
+            <RefreshCcw className="size-3.5" />
             刷新
           </Button>
-          <Button disabled={busy} onClick={onAdd}>
-            <Plus />
-            添加
+          <Button size="sm" className="h-8 text-xs gap-1.5 rounded-md cursor-pointer" disabled={busy} onClick={onAdd}>
+            <Plus className="size-3.5" />
+            添加账号
           </Button>
         </div>
       </div>

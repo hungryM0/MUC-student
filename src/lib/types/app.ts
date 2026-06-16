@@ -60,12 +60,6 @@ export type PoolQuotaDto = {
   progressPercent: number | null;
 };
 
-export type LogItemDto = {
-  timestamp: string;
-  level: string;
-  message: string;
-};
-
 export type AppSnapshotDto = {
   network: NetworkStatus;
   accounts: AccountDto[];
@@ -75,7 +69,6 @@ export type AppSnapshotDto = {
   loginState: LoginStateDto;
   refreshState: RefreshStateDto;
   preferences: PreferenceDto;
-  logs: LogItemDto[];
 };
 
 export type AppErrorDto = {
@@ -100,7 +93,7 @@ export type AccountUpdateInput = {
 export type PreferenceInput = PreferenceDto;
 
 export type UiState = {
-  activePage: 'home' | 'status' | 'settings';
+  activePage: 'home' | 'settings';
   loadingMessage: string;
   error: AppErrorDto | null;
   sortMode: 'default' | 'remainingDesc' | 'nameAsc';

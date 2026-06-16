@@ -52,14 +52,6 @@ pub struct PoolQuotaDto {
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-pub struct LogItemDto {
-    pub timestamp: DateTime<Local>,
-    pub level: String,
-    pub message: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
 pub struct AppSnapshotDto {
     pub network: NetworkStatus,
     pub accounts: Vec<AccountDto>,
@@ -69,7 +61,6 @@ pub struct AppSnapshotDto {
     pub login_state: LoginStateDto,
     pub refresh_state: RefreshStateDto,
     pub preferences: PreferenceDto,
-    pub logs: Vec<LogItemDto>,
 }
 
 impl From<&UserPreferences> for PreferenceDto {

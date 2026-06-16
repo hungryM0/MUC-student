@@ -1,6 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { getCurrentWindow } from '@tauri-apps/api/window';
 import type {
   AccountDto,
   AccountInput,
@@ -8,7 +7,6 @@ import type {
   AppErrorDto,
   AppSnapshotDto,
   DialogState,
-  LogItemDto,
   PreferenceInput,
   UiState
 } from '$lib/types/app';
@@ -32,7 +30,6 @@ let state: AppStoreState = {
 
 const subscribers = new Set<() => void>();
 let eventListenersReady = false;
-let windowCloseReady = false;
 let unlisteners: UnlistenFn[] = [];
 
 export function subscribeAppStore(listener: () => void) {
@@ -78,7 +75,6 @@ export function closeDialog() {
 
 export async function initializeTauriBridge() {
   await initializeAppEvents();
-  await initializeWindowCloseHandler();
 }
 
 export async function bootstrapApp() {
@@ -209,9 +205,6 @@ async function initializeAppEvents() {
     await listen<AppSnapshotDto>('app://state-updated', (event) => {
       setSnapshot(event.payload);
     }),
-    await listen<LogItemDto>('app://log-appended', (event) => {
-      appendLogIfNeeded(event.payload);
-    }),
     await listen<string>('app://task-started', (event) => {
       setUiState({ loadingMessage: taskLabel(event.payload) });
     }),
@@ -219,20 +212,6 @@ async function initializeAppEvents() {
       setUiState({ loadingMessage: '' });
     })
   ];
-}
-
-async function initializeWindowCloseHandler() {
-  if (!isTauriRuntime()) return;
-  if (windowCloseReady) return;
-  windowCloseReady = true;
-
-  const window = getCurrentWindow();
-  const unlisten = await window.onCloseRequested(async (event) => {
-    if (!state.appSnapshot?.preferences.minimizeToTrayOnClose) return;
-    event.preventDefault();
-    await window.hide();
-  });
-  unlisteners.push(unlisten);
 }
 
 async function command<T>(name: string, args?: Record<string, unknown>, loadingMessage = ''): Promise<T> {
@@ -250,15 +229,6 @@ async function command<T>(name: string, args?: Record<string, unknown>, loadingM
   } finally {
     setUiState({ loadingMessage: '' });
   }
-}
-
-function appendLogIfNeeded(log: LogItemDto) {
-  if (!state.appSnapshot) return;
-  const exists = state.appSnapshot.logs.some(
-    (item) => item.timestamp === log.timestamp && item.level === log.level && item.message === log.message
-  );
-  if (exists) return;
-  setSnapshot({ ...state.appSnapshot, logs: [...state.appSnapshot.logs, log].slice(-500) });
 }
 
 function isSnapshot(value: unknown): value is AppSnapshotDto {
@@ -388,11 +358,7 @@ function createBrowserPreviewSnapshot(): AppSnapshotDto {
       minimizeToTrayOnClose: true,
       launchOnStartup: false,
       autoSwitchAccountOnTrafficExhausted: true
-    },
-    logs: [
-      { timestamp: now, level: 'Info', message: '浏览器预览模式已加载' },
-      { timestamp: now, level: 'Info', message: '真实桌面环境会连接 Tauri 后端' }
-    ]
+    }
   };
 }
 
@@ -400,5 +366,4 @@ export function disposeTauriBridge() {
   for (const unlisten of unlisteners) unlisten();
   unlisteners = [];
   eventListenersReady = false;
-  windowCloseReady = false;
 }

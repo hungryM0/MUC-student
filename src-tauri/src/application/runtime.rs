@@ -10,7 +10,6 @@ pub struct AppRuntimeState {
     pub preferences: UserPreferences,
     pub network: NetworkStatus,
     pub snapshots: std::collections::BTreeMap<String, AccountTrafficSnapshot>,
-    pub logs: Vec<crate::application::dto::LogItemDto>,
     pub selected_account_id: String,
     pub current_online_account_id: String,
     pub login_running: bool,
