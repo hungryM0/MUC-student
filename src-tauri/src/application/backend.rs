@@ -18,6 +18,7 @@ use crate::domain::policies::traffic_math::{
 };
 use crate::infrastructure::network::auth_portal_client::AuthPortalClient;
 use crate::infrastructure::network::http_transport::HttpTransport;
+use crate::infrastructure::network::legacy_portal_client::LegacyPortalClient;
 use crate::infrastructure::network::network_status_service::NetworkStatusService;
 use crate::infrastructure::network::self_service_panel_client::SelfServicePanelClient;
 use crate::infrastructure::ocr::{
@@ -41,6 +42,7 @@ pub struct Backend {
     account_repo: AccountRepository,
     app_state_repo: AppStateRepository,
     auth_client: AuthPortalClient,
+    legacy_portal_client: LegacyPortalClient,
     panel_client: SelfServicePanelClient,
     traffic_service: AccountTrafficService,
     network_status_service: Arc<NetworkStatusService>,
@@ -108,9 +110,12 @@ impl Backend {
         let worker_ocr = Arc::new(ExternalWorkerOcrProvider::new(paths.ocr_worker_path()));
         let ocr_chain = Arc::new(OcrProviderChain::new(native_ocr, worker_ocr));
         let auth_transport = HttpTransport::new(settings.clone());
+        let legacy_portal_transport = HttpTransport::new(settings.clone());
         let panel_transport = HttpTransport::new(settings.clone());
         let auth_client =
             AuthPortalClient::new(settings.clone(), auth_transport, ocr_chain.clone());
+        let legacy_portal_client =
+            LegacyPortalClient::new(settings.clone(), legacy_portal_transport);
         let panel_client = SelfServicePanelClient::new(
             settings.clone(),
             panel_transport,
@@ -140,6 +145,7 @@ impl Backend {
             account_repo,
             app_state_repo,
             auth_client,
+            legacy_portal_client,
             panel_client,
             traffic_service,
             network_status_service,
@@ -356,16 +362,28 @@ impl Backend {
             Some(network.ip.as_str())
         };
 
-        let all_accounts = self
-            .account_repo
-            .load_accounts_with_passwords(&store.accounts)?;
         if let Some(local_ip) = local_ip {
-            let snapshots = self
-                .traffic_service
-                .fetch_balances(&all_accounts, Some(local_ip))
-                .await;
-            let current_online = find_current_online_account(&store.accounts, &snapshots);
+            let current_online = if let Some(account) = self
+                .detect_current_online_account_fast(&store.accounts, local_ip)
+                .await
+            {
+                Some(account)
+            } else {
+                let all_accounts = self
+                    .account_repo
+                    .load_accounts_with_passwords(&store.accounts)?;
+                let snapshots = self
+                    .traffic_service
+                    .fetch_balances(&all_accounts, Some(local_ip))
+                    .await;
+                find_current_online_account(&store.accounts, &snapshots)
+            };
             if let Some(current) = current_online {
+                {
+                    let mut state = self.state.write();
+                    state.current_online_account_id = current.id.clone();
+                    state.account_store.current_online_account_id = current.id.clone();
+                }
                 if current.id != target.account.id {
                     let current_with_password =
                         self.account_repo.load_account_with_password(&current)?;
@@ -428,8 +446,7 @@ impl Backend {
             .get_account_by_id(&store, &current_id)
             .ok_or_else(|| AppError::NotFound("找不到当前在线账号".to_string()))?;
         let account = self.account_repo.load_account_with_password(&account)?;
-        self
-            .panel_client
+        self.panel_client
             .logout_local_device(&account, &network.ip)
             .await?;
         self.run_refresh(true).await?;
@@ -487,8 +504,18 @@ impl Backend {
             .fetch_balances(&accounts, local_ip)
             .await;
         let snapshot_map = AccountTrafficService::to_snapshot_map(snapshots);
-        let mut current_online_id = String::new();
+        let mut current_online_id = if let Some(local_ip) = local_ip {
+            self.detect_current_online_account_fast(&store.accounts, local_ip)
+                .await
+                .map(|account| account.id)
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
         for account in &store.accounts {
+            if !current_online_id.is_empty() {
+                break;
+            }
             if snapshot_map
                 .get(&account.id)
                 .and_then(|snapshot| snapshot.matched_local_ip_device.as_ref())
@@ -522,6 +549,21 @@ impl Backend {
         }
         self.try_auto_switch().await?;
         Ok(())
+    }
+
+    async fn detect_current_online_account_fast(
+        &self,
+        accounts: &[PortalAccount],
+        local_ip: &str,
+    ) -> Option<PortalAccount> {
+        let online_info = self.legacy_portal_client.fetch_online_info().await.ok()?;
+        if online_info.ip.trim() != local_ip.trim() {
+            return None;
+        }
+        accounts
+            .iter()
+            .find(|account| username_matches(&account.username, &online_info.username))
+            .cloned()
     }
 
     async fn try_auto_switch(&self) -> AppResult<()> {
@@ -709,5 +751,28 @@ fn require_input_text(value: &str, field_name: &str) -> AppResult<String> {
         Err(AppError::Validation(format!("{field_name}不能为空")))
     } else {
         Ok(clean.to_string())
+    }
+}
+
+fn username_matches(stored: &str, online: &str) -> bool {
+    let stored = stored.trim();
+    let online = online.trim();
+    if stored.eq_ignore_ascii_case(online) {
+        return true;
+    }
+    let stored_base = stored.split('@').next().unwrap_or(stored).trim();
+    let online_base = online.split('@').next().unwrap_or(online).trim();
+    !stored_base.is_empty() && stored_base.eq_ignore_ascii_case(online_base)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::username_matches;
+
+    #[test]
+    fn username_match_accepts_provider_suffix_difference() {
+        assert!(username_matches("13377235977@deep", "13377235977"));
+        assert!(username_matches("13377235977", "13377235977@deep"));
+        assert!(!username_matches("13377235978@deep", "13377235977"));
     }
 }
