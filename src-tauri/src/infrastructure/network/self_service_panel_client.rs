@@ -12,6 +12,7 @@ use crate::infrastructure::parsers::portal_page_parser::{
     normalize_captcha_code, parse_yii_login_form,
 };
 use crate::infrastructure::persistence::account_repository::AccountWithPassword;
+use crate::infrastructure::persistence::panel_session_repository::PanelSessionRepository;
 use crate::infrastructure::settings::AppSettings;
 
 #[derive(Clone)]
@@ -19,6 +20,7 @@ pub struct SelfServicePanelClient {
     settings: AppSettings,
     transport: HttpTransport,
     ocr_chain: std::sync::Arc<OcrProviderChain>,
+    session_repo: PanelSessionRepository,
 }
 
 impl SelfServicePanelClient {
@@ -28,11 +30,13 @@ impl SelfServicePanelClient {
         settings: AppSettings,
         transport: HttpTransport,
         ocr_chain: std::sync::Arc<OcrProviderChain>,
+        session_repo: PanelSessionRepository,
     ) -> Self {
         Self {
             settings,
             transport,
             ocr_chain,
+            session_repo,
         }
     }
 
@@ -54,6 +58,40 @@ impl SelfServicePanelClient {
         } else {
             self.settings.traffic_portal_url.clone()
         };
+        let target_path = if path.trim().is_empty() {
+            "/home"
+        } else {
+            path.trim()
+        };
+
+        let saved_cookies = self
+            .session_repo
+            .load_session(&account.account.id)?
+            .into_iter()
+            .collect::<HashMap<_, _>>();
+        if !saved_cookies.is_empty() {
+            let session_response = self
+                .transport
+                .request(
+                    "GET",
+                    &join_url(&target_url, target_path),
+                    HashMap::new(),
+                    String::new(),
+                    saved_cookies,
+                    5,
+                )
+                .await?;
+            if is_traffic_home_page(&session_response.text) {
+                self.persist_session(account, &session_response.cookies)?;
+                return Ok(session_response);
+            }
+            if !is_yii_login_page(&session_response.text) {
+                self.persist_session(account, &session_response.cookies)?;
+                return Ok(session_response);
+            }
+            self.session_repo.clear_session(&account.account.id)?;
+        }
+
         let page_response = self
             .transport
             .request(
@@ -65,13 +103,8 @@ impl SelfServicePanelClient {
                 5,
             )
             .await?;
-        let target_path = if path.trim().is_empty() {
-            "/home"
-        } else {
-            path.trim()
-        };
-
         if is_traffic_home_page(&page_response.text) {
+            self.persist_session(account, &page_response.cookies)?;
             return Ok(page_response);
         }
         if is_yii_login_page(&page_response.text) {
@@ -93,6 +126,7 @@ impl SelfServicePanelClient {
                     )
                     .await?;
                 if is_yii_login_page(&response.text) {
+                    self.session_repo.clear_session(&account.account.id)?;
                     return Err(AppError::Network(
                         "登录态失效，访问目标页面时被重定向回登录页".to_string(),
                     ));
@@ -103,6 +137,7 @@ impl SelfServicePanelClient {
                     )));
                 }
             }
+            self.persist_session(account, &response.cookies)?;
             return Ok(response);
         }
 
@@ -118,6 +153,7 @@ impl SelfServicePanelClient {
             )
             .await?;
         if is_traffic_home_page(&retry_response.text) {
+            self.persist_session(account, &retry_response.cookies)?;
             return Ok(retry_response);
         }
         if is_yii_login_page(&retry_response.text) {
@@ -176,6 +212,7 @@ impl SelfServicePanelClient {
                 3,
             )
             .await?;
+        self.persist_session(account, &logout_response.cookies)?;
 
         let verify_url = join_url(&home_response.final_url, "/home");
         let mut verify_cookies = logout_response.cookies;
@@ -195,6 +232,7 @@ impl SelfServicePanelClient {
                 )
                 .await?;
             verify_cookies = verify_response.cookies.clone();
+            self.persist_session(account, &verify_cookies)?;
             if !parse_online_devices(&verify_response.text)
                 .iter()
                 .any(|record| record.ip.trim() == local_ip)
@@ -235,7 +273,7 @@ impl SelfServicePanelClient {
             let captcha_code = normalize_captcha_code(
                 &self
                     .ocr_chain
-                    .recognize_for_login(&captcha_response.raw_body)
+                    .recognize_for_login(&captcha_response.raw_body, form.captcha_sum_hint)
                     .await?,
             );
             if captcha_code.len() < 4 {
@@ -254,7 +292,7 @@ impl SelfServicePanelClient {
                         &self.settings.traffic_portal_url,
                         HashMap::new(),
                         String::new(),
-                        HashMap::new(),
+                        current_page.cookies.clone(),
                         5,
                     )
                     .await?;
@@ -278,6 +316,7 @@ impl SelfServicePanelClient {
                 )
                 .await?;
             if !is_yii_login_page(&response.text) {
+                self.persist_session(account, &response.cookies)?;
                 return Ok(response);
             }
             let error_text = extract_yii_error_message(&response.text);
@@ -295,6 +334,14 @@ impl SelfServicePanelClient {
         Err(AppError::Ocr(format!(
             "验证码连续识别失败，已重试 10 次，最后错误：{last_error}"
         )))
+    }
+
+    fn persist_session(
+        &self,
+        account: &AccountWithPassword,
+        cookies: &HashMap<String, String>,
+    ) -> AppResult<()> {
+        self.session_repo.save_session(&account.account.id, cookies)
     }
 
     fn build_form_headers(&self, referer_url: &str) -> HashMap<String, String> {

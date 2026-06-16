@@ -28,6 +28,7 @@ use crate::infrastructure::persistence::account_repository::{
 };
 use crate::infrastructure::persistence::app_state_repository::AppStateRepository;
 use crate::infrastructure::persistence::migration::MigrationService;
+use crate::infrastructure::persistence::panel_session_repository::PanelSessionRepository;
 use crate::infrastructure::persistence::runtime_paths::RuntimePaths;
 use crate::infrastructure::security::credential_vault::{CredentialVault, WindowsCredentialVault};
 use crate::infrastructure::settings::AppSettings;
@@ -101,19 +102,21 @@ impl Backend {
         let account_store = account_repo.ensure_store()?;
         let app_state = app_state_repo.load_state()?;
         let preferences = app_state_repo.load_preferences()?;
+        let panel_session_repo = PanelSessionRepository::new(paths.clone());
 
-        let native_ocr = Arc::new(NativeRustOcrProvider::new(
-            paths.ocr_detection_model_path(),
-            paths.ocr_recognition_model_path(),
-        ));
+        let native_ocr = Arc::new(NativeRustOcrProvider::new(paths.ddddocr_model_path()));
         let worker_ocr = Arc::new(ExternalWorkerOcrProvider::new(paths.ocr_worker_path()));
         let ocr_chain = Arc::new(OcrProviderChain::new(native_ocr, worker_ocr));
         let auth_transport = HttpTransport::new(settings.clone());
         let panel_transport = HttpTransport::new(settings.clone());
         let auth_client =
             AuthPortalClient::new(settings.clone(), auth_transport, ocr_chain.clone());
-        let panel_client =
-            SelfServicePanelClient::new(settings.clone(), panel_transport, ocr_chain);
+        let panel_client = SelfServicePanelClient::new(
+            settings.clone(),
+            panel_transport,
+            ocr_chain,
+            panel_session_repo,
+        );
         let traffic_service = AccountTrafficService::new(panel_client.clone());
         let network_status_service = Arc::new(NetworkStatusService::new(settings));
         let startup_service = StartupService::new(app.clone());
@@ -260,6 +263,36 @@ impl Backend {
 
     pub async fn refresh_dashboard(&self) -> AppResult<AppSnapshotDto> {
         self.run_refresh(true).await
+    }
+
+    pub async fn import_legacy_accounts(&self) -> AppResult<AppSnapshotDto> {
+        let migration = MigrationService::new(
+            self.account_repo.paths().clone(),
+            self.account_repo.vault().clone(),
+            self.account_repo.clone(),
+            self.app_state_repo.clone(),
+        );
+        let imported = migration.import_legacy_if_current_store_empty()?;
+        if !imported {
+            let has_current_accounts = !self.account_repo.load_store()?.accounts.is_empty();
+            let has_legacy_files = self.account_repo.paths().legacy_accounts_path().exists()
+                || self.account_repo.paths().legacy_app_state_path().exists();
+            if has_current_accounts {
+                return Err(AppError::Conflict(
+                    "开发环境已有账号数据，已跳过旧 accounts.json 导入".to_string(),
+                ));
+            }
+            if !has_legacy_files {
+                return Err(AppError::NotFound(
+                    "根目录没找到可导入的旧 accounts.json 或 app_state.json".to_string(),
+                ));
+            }
+            return Err(AppError::Validation(
+                "旧数据未导入，检查根目录旧文件格式对不对".to_string(),
+            ));
+        }
+        self.refresh_runtime_from_disk()?;
+        self.emit_state()
     }
 
     pub async fn login_selected_account(&self) -> AppResult<AppSnapshotDto> {

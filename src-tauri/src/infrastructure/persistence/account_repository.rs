@@ -37,6 +37,14 @@ impl AccountRepository {
         Self { paths, vault }
     }
 
+    pub fn paths(&self) -> &RuntimePaths {
+        &self.paths
+    }
+
+    pub fn vault(&self) -> &Arc<dyn CredentialVault> {
+        &self.vault
+    }
+
     pub fn load_store(&self) -> AppResult<AccountStore> {
         let path = self.paths.accounts_path();
         let file: AccountStoreFile = read_json(&path)?;

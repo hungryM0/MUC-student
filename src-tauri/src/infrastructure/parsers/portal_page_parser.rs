@@ -96,6 +96,7 @@ pub fn parse_yii_login_form(html: &str, page_url: &str) -> AppResult<YiiLoginFor
         csrf_value,
         captcha_url: join_url(page_url, &captcha),
         action_url: join_url(page_url, &action),
+        captcha_sum_hint: extract_captcha_sum_hint(html),
     })
 }
 
@@ -150,4 +151,11 @@ pub fn join_url(base_url: &str, path: &str) -> String {
         .and_then(|base| base.join(path))
         .map(|url| url.to_string())
         .unwrap_or_else(|_| path.to_string())
+}
+
+fn extract_captcha_sum_hint(html: &str) -> Option<u32> {
+    let re = regex::Regex::new(r#""hash"\s*:\s*(\d+)"#).expect("valid regex");
+    re.captures(html)
+        .and_then(|caps| caps.get(1))
+        .and_then(|matched| matched.as_str().parse::<u32>().ok())
 }

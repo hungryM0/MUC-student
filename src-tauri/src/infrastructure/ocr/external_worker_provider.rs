@@ -24,7 +24,7 @@ impl OcrProvider for ExternalWorkerOcrProvider {
         "external-worker"
     }
 
-    async fn recognize(&self, image_bytes: &[u8]) -> AppResult<String> {
+    async fn recognize(&self, image_bytes: &[u8], _expected_sum: Option<u32>) -> AppResult<String> {
         if !self.worker_path.exists() {
             return Err(AppError::Ocr(format!(
                 "OCR worker 不存在：{}",

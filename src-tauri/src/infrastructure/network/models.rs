@@ -25,4 +25,5 @@ pub struct YiiLoginFormData {
     pub csrf_value: String,
     pub captcha_url: String,
     pub action_url: String,
+    pub captcha_sum_hint: Option<u32>,
 }

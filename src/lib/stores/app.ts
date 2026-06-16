@@ -84,7 +84,18 @@ export async function bootstrapApp() {
     setSnapshot(snapshot);
     return snapshot;
   }
-  return command<AppSnapshotDto>('bootstrapApp', undefined, '启动中...');
+  const snapshot = await command<AppSnapshotDto>('bootstrapApp', undefined, '启动中...');
+  if (snapshot.accounts.length === 0) {
+    try {
+      return await command<AppSnapshotDto>('importLegacyAccounts', undefined, '正在导入旧账号...');
+    } catch (error) {
+      const appError = toAppError(error);
+      if (appError.code !== 'NOT_FOUND' && appError.code !== 'TASK_CONFLICT') {
+        throw appError;
+      }
+    }
+  }
+  return snapshot;
 }
 
 export function getBackendSnapshot() {
@@ -92,84 +103,42 @@ export function getBackendSnapshot() {
 }
 
 export function selectAccount(accountId: string) {
-  if (!isTauriRuntime() && state.appSnapshot) {
-    const snapshot = { ...state.appSnapshot, selectedAccountId: accountId };
-    setSnapshot(snapshot);
-    return Promise.resolve(snapshot);
-  }
+  if (!isTauriRuntime()) return rejectPreviewAction();
   return command<AppSnapshotDto>('selectAccount', { accountId }, '正在切换账号...');
 }
 
 export function createAccount(input: AccountInput) {
-  if (!isTauriRuntime() && state.appSnapshot) {
-    const id = crypto.randomUUID();
-    const snapshot = {
-      ...state.appSnapshot,
-      selectedAccountId: id,
-      accounts: [
-        ...state.appSnapshot.accounts,
-        {
-          id,
-          remarkName: input.remarkName,
-          username: input.username,
-          snapshot: null,
-          isCurrentOnline: false,
-          canLogoutLocalDevice: false
-        }
-      ]
-    };
-    setSnapshot(snapshot);
-    return Promise.resolve(snapshot);
-  }
+  if (!isTauriRuntime()) return rejectPreviewAction();
   return command<AppSnapshotDto>('createAccount', { input }, '正在保存账号...');
 }
 
 export function updateAccount(input: AccountUpdateInput) {
-  if (!isTauriRuntime() && state.appSnapshot) {
-    const snapshot = {
-      ...state.appSnapshot,
-      accounts: state.appSnapshot.accounts.map((account) =>
-        account.id === input.accountId ? { ...account, remarkName: input.remarkName, username: input.username } : account
-      )
-    };
-    setSnapshot(snapshot);
-    return Promise.resolve(snapshot);
-  }
+  if (!isTauriRuntime()) return rejectPreviewAction();
   return command<AppSnapshotDto>('updateAccount', { input }, '正在保存账号...');
 }
 
 export function deleteAccount(accountId: string) {
-  if (!isTauriRuntime() && state.appSnapshot) {
-    const accounts = state.appSnapshot.accounts.filter((account) => account.id !== accountId);
-    const snapshot = {
-      ...state.appSnapshot,
-      accounts,
-      selectedAccountId: state.appSnapshot.selectedAccountId === accountId ? accounts[0]?.id ?? '' : state.appSnapshot.selectedAccountId
-    };
-    setSnapshot(snapshot);
-    return Promise.resolve(snapshot);
-  }
+  if (!isTauriRuntime()) return rejectPreviewAction();
   return command<AppSnapshotDto>('deleteAccount', { accountId }, '正在删除账号...');
 }
 
 export function loginSelectedAccount() {
+  if (!isTauriRuntime()) return rejectPreviewAction();
   return command<AppSnapshotDto>('loginSelectedAccount', undefined, '正在登录...');
 }
 
 export function refreshDashboard() {
+  if (!isTauriRuntime()) return rejectPreviewAction();
   return command<AppSnapshotDto>('refreshDashboard', undefined, '正在刷新状态...');
 }
 
 export function logoutLocalDevice() {
+  if (!isTauriRuntime()) return rejectPreviewAction();
   return command<AppSnapshotDto>('logoutLocalDevice', undefined, '正在下线本机...');
 }
 
 export function updatePreferences(input: PreferenceInput) {
-  if (!isTauriRuntime() && state.appSnapshot) {
-    const snapshot = { ...state.appSnapshot, preferences: input };
-    setSnapshot(snapshot);
-    return Promise.resolve(snapshot);
-  }
+  if (!isTauriRuntime()) return rejectPreviewAction();
   return command<AppSnapshotDto>('updatePreferences', { input }, '正在保存设置...');
 }
 
@@ -256,6 +225,16 @@ function taskLabel(task: string) {
   if (task === 'refresh') return '正在刷新状态...';
   if (task === 'logout') return '正在下线本机...';
   return '正在处理...';
+}
+
+function rejectPreviewAction(): Promise<never> {
+  const error = {
+    code: 'PREVIEW_ONLY',
+    message: '浏览器预览不接真实校园网流程',
+    detail: '要测试登录、下线、切号，请用 `npm run tauri -- dev` 启动桌面壳。'
+  } satisfies AppErrorDto;
+  setUiState({ error });
+  return Promise.reject(error);
 }
 
 function isTauriRuntime() {

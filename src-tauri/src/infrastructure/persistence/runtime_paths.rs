@@ -36,6 +36,10 @@ impl RuntimePaths {
         self.app_data_dir.join("app_state.json")
     }
 
+    pub fn panel_sessions_path(&self) -> PathBuf {
+        self.app_data_dir.join("panel_sessions.json")
+    }
+
     pub fn legacy_accounts_path(&self) -> PathBuf {
         self.legacy_root.join("accounts.json")
     }
@@ -56,18 +60,11 @@ impl RuntimePaths {
         &self.resource_base_dir
     }
 
-    pub fn ocr_detection_model_path(&self) -> PathBuf {
+    pub fn ddddocr_model_path(&self) -> PathBuf {
         self.resource_base_dir
             .join("resources")
             .join("ocr")
-            .join("text-detection.rten")
-    }
-
-    pub fn ocr_recognition_model_path(&self) -> PathBuf {
-        self.resource_base_dir
-            .join("resources")
-            .join("ocr")
-            .join("text-recognition.rten")
+            .join("common_old.onnx")
     }
 
     pub fn ocr_worker_path(&self) -> PathBuf {

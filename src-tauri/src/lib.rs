@@ -64,6 +64,13 @@ async fn refresh_dashboard(
     state.refresh_dashboard().await.into_command_result()
 }
 
+#[tauri::command(rename = "importLegacyAccounts", rename_all = "camelCase")]
+async fn import_legacy_accounts(
+    state: tauri::State<'_, Backend>,
+) -> Result<crate::application::AppSnapshotDto, AppErrorDto> {
+    state.import_legacy_accounts().await.into_command_result()
+}
+
 #[tauri::command(rename = "logoutLocalDevice", rename_all = "camelCase")]
 async fn logout_local_device(
     state: tauri::State<'_, Backend>,
@@ -163,6 +170,7 @@ pub fn run() {
             delete_account,
             login_selected_account,
             refresh_dashboard,
+            import_legacy_accounts,
             logout_local_device,
             update_preferences,
             get_app_snapshot,

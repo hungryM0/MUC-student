@@ -152,7 +152,7 @@ impl AuthPortalClient {
             let captcha_code = normalize_captcha_code(
                 &self
                     .ocr_chain
-                    .recognize_for_login(&captcha_response.raw_body)
+                    .recognize_for_login(&captcha_response.raw_body, form.captcha_sum_hint)
                     .await?,
             );
             if captcha_code.len() < 4 {
