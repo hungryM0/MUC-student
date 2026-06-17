@@ -67,29 +67,7 @@ impl AuthPortalClient {
             ));
         }
 
-        let post_url = join_url(&page_data.login_url, "/include/auth_action.php");
-        let payload = url::form_urlencoded::Serializer::new(String::new())
-            .append_pair("action", "login")
-            .append_pair("username", &account.account.username)
-            .append_pair("password", &encode_password(&account.password))
-            .append_pair("ac_id", &page_data.hidden_fields.ac_id)
-            .append_pair("user_ip", &page_data.hidden_fields.user_ip)
-            .append_pair("nas_ip", &page_data.hidden_fields.nas_ip)
-            .append_pair("user_mac", &page_data.hidden_fields.user_mac)
-            .append_pair("save_me", "0")
-            .append_pair("ajax", "1")
-            .finish();
-        let response = self
-            .transport
-            .request(
-                "POST",
-                &post_url,
-                self.build_login_headers(&page_data.login_url),
-                payload,
-                HashMap::new(),
-                1,
-            )
-            .await?;
+        let response = self.login_with_page_data(account, &page_data).await?;
 
         let response_text = response.text.trim().to_string();
         let already_online = response_text == Self::RESPONSE_IP_ALREADY_ONLINE;
@@ -118,6 +96,71 @@ impl AuthPortalClient {
             checked_at: Local::now(),
             already_online,
         })
+    }
+
+    pub async fn switch_account(
+        &self,
+        current_account: &AccountWithPassword,
+        target_account: &AccountWithPassword,
+    ) -> AppResult<LoginResult> {
+        let page_data = self.fetch_login_page().await?;
+        if is_yii_login_page(&page_data.html) {
+            return self.verify_login_yii(target_account).await;
+        }
+
+        if page_data.hidden_fields.ac_id.is_empty() {
+            return Err(AppError::Network(
+                "登录页缺少 ac_id，无法继续切号".to_string(),
+            ));
+        }
+
+        self.logout_with_page_data(current_account, &page_data)
+            .await?;
+        let response = self
+            .login_with_page_data(target_account, &page_data)
+            .await?;
+        let response_text = response.text.trim().to_string();
+        let success = response_text.starts_with("login_ok,");
+
+        Ok(LoginResult {
+            success,
+            message: if success {
+                format!(
+                    "Portal 切号成功：{} -> {}",
+                    current_account.account.display_name(),
+                    target_account.account.display_name()
+                )
+            } else {
+                format!(
+                    "Portal 切号失败：{}",
+                    if response_text.is_empty() {
+                        "服务器未返回内容"
+                    } else {
+                        &response_text
+                    }
+                )
+            },
+            login_url: page_data.login_url,
+            hidden_fields: page_data.hidden_fields,
+            response_text,
+            checked_at: Local::now(),
+            already_online: false,
+        })
+    }
+
+    pub async fn logout_current_ip(&self, account: &AccountWithPassword) -> AppResult<String> {
+        let page_data = self.fetch_login_page().await?;
+        if is_yii_login_page(&page_data.html) {
+            return Err(AppError::Network(
+                "当前 Portal 入口需要 OCR 验证码，无法用轻量接口下线".to_string(),
+            ));
+        }
+        if page_data.hidden_fields.ac_id.is_empty() {
+            return Err(AppError::Network(
+                "登录页缺少 ac_id，无法继续下线".to_string(),
+            ));
+        }
+        self.logout_with_page_data(account, &page_data).await
     }
 
     async fn verify_login_yii(&self, account: &AccountWithPassword) -> AppResult<LoginResult> {
@@ -213,6 +256,73 @@ impl AuthPortalClient {
         let mut headers = self.build_form_headers(referer_url);
         headers.insert("X-Requested-With".to_string(), "XMLHttpRequest".to_string());
         headers
+    }
+
+    async fn login_with_page_data(
+        &self,
+        account: &AccountWithPassword,
+        page_data: &PortalPageData,
+    ) -> AppResult<crate::infrastructure::network::models::HttpResponseData> {
+        let post_url = join_url(&page_data.login_url, "/include/auth_action.php");
+        let payload = url::form_urlencoded::Serializer::new(String::new())
+            .append_pair("action", "login")
+            .append_pair("username", &account.account.username)
+            .append_pair("password", &encode_password(&account.password))
+            .append_pair("ac_id", &page_data.hidden_fields.ac_id)
+            .append_pair("user_ip", &page_data.hidden_fields.user_ip)
+            .append_pair("nas_ip", &page_data.hidden_fields.nas_ip)
+            .append_pair("user_mac", &page_data.hidden_fields.user_mac)
+            .append_pair("save_me", "0")
+            .append_pair("ajax", "1")
+            .finish();
+        self.transport
+            .request(
+                "POST",
+                &post_url,
+                self.build_login_headers(&page_data.login_url),
+                payload,
+                HashMap::new(),
+                1,
+            )
+            .await
+    }
+
+    async fn logout_with_page_data(
+        &self,
+        account: &AccountWithPassword,
+        page_data: &PortalPageData,
+    ) -> AppResult<String> {
+        let post_url = join_url(&page_data.login_url, "/include/auth_action.php");
+        let payload = url::form_urlencoded::Serializer::new(String::new())
+            .append_pair("action", "logout")
+            .append_pair("username", &account.account.username)
+            .append_pair("password", &account.password)
+            .append_pair("ajax", "1")
+            .finish();
+        let response = self
+            .transport
+            .request(
+                "POST",
+                &post_url,
+                self.build_login_headers(&page_data.login_url),
+                payload,
+                HashMap::new(),
+                1,
+            )
+            .await?;
+        let response_text = response.text.trim().to_string();
+        if response_text == "网络已断开" {
+            Ok(response_text)
+        } else {
+            Err(AppError::Network(format!(
+                "Portal 下线失败：{}",
+                if response_text.is_empty() {
+                    "服务器未返回内容"
+                } else {
+                    &response_text
+                }
+            )))
+        }
     }
 
     fn build_form_headers(&self, referer_url: &str) -> HashMap<String, String> {

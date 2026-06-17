@@ -11,8 +11,9 @@ use crate::application::error::{AppError, AppResult};
 use crate::application::runtime::{AppRuntimeState, SharedRuntimeState};
 use crate::application::services::account_traffic_service::AccountTrafficService;
 use crate::domain::models::traffic::{AccountTrafficSnapshot, OnlineDeviceRecord};
-use crate::domain::models::{CachedTrafficSnapshot, NetworkStatus, PortalAccount, UserPreferences};
-use crate::domain::policies::account_selection::find_current_online_account;
+use crate::domain::models::{
+    CachedTrafficSnapshot, LoginResult, NetworkStatus, PortalAccount, UserPreferences,
+};
 use crate::domain::policies::traffic_math::{
     build_auto_switch_candidate, build_pool_quota_summary, build_progress_percent,
     build_status_card_order,
@@ -364,45 +365,51 @@ impl Backend {
             Some(network.ip.as_str())
         };
 
+        let mut current_online_account = None;
         if let Some(local_ip) = local_ip {
-            let current_online = if let Some(account) = self
+            let current_online = self
                 .detect_current_online_account_fast(&store.accounts, local_ip)
-                .await
-            {
-                Some(account)
-            } else {
-                let all_accounts = self
-                    .account_repo
-                    .load_accounts_with_passwords(&store.accounts)?;
-                let snapshots = self
-                    .traffic_service
-                    .fetch_balances(&all_accounts, Some(local_ip))
-                    .await;
-                find_current_online_account(&store.accounts, &snapshots)
-            };
+                .await;
             if let Some(current) = current_online {
                 {
                     let mut state = self.state.write();
                     state.current_online_account_id = current.id.clone();
                     state.account_store.current_online_account_id = current.id.clone();
                 }
-                if current.id != target.account.id {
-                    let current_with_password =
-                        self.account_repo.load_account_with_password(&current)?;
-                    self.panel_client
-                        .logout_local_device(&current_with_password, local_ip)
-                        .await?;
-                }
+                current_online_account = Some(current);
             }
         }
 
-        let mut login_result = self.auth_client.verify_login(&target).await?;
+        let detected_current_id = current_online_account
+            .as_ref()
+            .map(|account| account.id.clone())
+            .unwrap_or_default();
+        let mut login_result = if let Some(current) = current_online_account {
+            if current.id == target.account.id {
+                LoginResult {
+                    success: true,
+                    message: format!(
+                        "当前 IP 已在线（{}），无需重复登录",
+                        target.account.display_name()
+                    ),
+                    login_url: String::new(),
+                    hidden_fields: Default::default(),
+                    response_text: String::new(),
+                    checked_at: Local::now(),
+                    already_online: false,
+                }
+            } else {
+                let current_with_password =
+                    self.account_repo.load_account_with_password(&current)?;
+                self.auth_client
+                    .switch_account(&current_with_password, &target)
+                    .await?
+            }
+        } else {
+            self.auth_client.verify_login(&target).await?
+        };
         if login_result.already_online {
-            let current_id = {
-                let state = self.state.read();
-                state.current_online_account_id.clone()
-            };
-            if current_id == target.account.id {
+            if detected_current_id == target.account.id {
                 login_result.success = true;
                 login_result.message = format!(
                     "当前 IP 已在线（{}），无需重复登录",
@@ -448,9 +455,7 @@ impl Backend {
             .get_account_by_id(&store, &current_id)
             .ok_or_else(|| AppError::NotFound("找不到当前在线账号".to_string()))?;
         let account = self.account_repo.load_account_with_password(&account)?;
-        self.panel_client
-            .logout_local_device(&account, &network.ip)
-            .await?;
+        self.auth_client.logout_current_ip(&account).await?;
         self.run_refresh(true).await?;
         Ok(())
     }
