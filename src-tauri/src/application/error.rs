@@ -20,8 +20,6 @@ pub enum AppError {
     #[error("{0}")]
     Network(String),
     #[error("{0}")]
-    Ocr(String),
-    #[error("{0}")]
     Storage(String),
     #[error("{0}")]
     System(String),
@@ -36,7 +34,6 @@ impl AppError {
             Self::NotFound(_) => "NOT_FOUND",
             Self::Conflict(_) => "TASK_CONFLICT",
             Self::Network(_) => "NETWORK_ERROR",
-            Self::Ocr(_) => "OCR_ERROR",
             Self::Storage(_) => "STORAGE_ERROR",
             Self::System(_) => "SYSTEM_ERROR",
             Self::Internal(_) => "INTERNAL_ERROR",

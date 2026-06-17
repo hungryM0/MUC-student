@@ -59,20 +59,6 @@ impl RuntimePaths {
     pub fn resource_base_dir(&self) -> &Path {
         &self.resource_base_dir
     }
-
-    pub fn ddddocr_model_path(&self) -> PathBuf {
-        self.resource_base_dir
-            .join("resources")
-            .join("ocr")
-            .join("common_old.onnx")
-    }
-
-    pub fn ocr_worker_path(&self) -> PathBuf {
-        self.resource_base_dir
-            .join("resources")
-            .join("ocr")
-            .join("ocr-worker.exe")
-    }
 }
 
 pub fn resolve_default_paths() -> AppResult<RuntimePaths> {

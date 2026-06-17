@@ -6,13 +6,9 @@ use base64::Engine;
 use crate::application::error::{AppError, AppResult};
 use crate::infrastructure::network::http_transport::HttpTransport;
 use crate::infrastructure::network::models::HttpResponseData;
-use crate::infrastructure::ocr::OcrProviderChain;
 use crate::infrastructure::parsers::online_device_parser::parse_online_devices;
 use crate::infrastructure::parsers::panel_home_parser::extract_csrf_meta;
-use crate::infrastructure::parsers::portal_page_parser::{
-    extract_yii_error_message, is_traffic_home_page, is_yii_login_page, join_url,
-    normalize_captcha_code, parse_yii_login_form,
-};
+use crate::infrastructure::parsers::portal_page_parser::{is_traffic_home_page, join_url};
 use crate::infrastructure::persistence::account_repository::AccountWithPassword;
 use crate::infrastructure::persistence::panel_session_repository::PanelSessionRepository;
 use crate::infrastructure::settings::AppSettings;
@@ -21,7 +17,6 @@ use crate::infrastructure::settings::AppSettings;
 pub struct SelfServicePanelClient {
     settings: AppSettings,
     transport: HttpTransport,
-    ocr_chain: std::sync::Arc<OcrProviderChain>,
     session_repo: PanelSessionRepository,
 }
 
@@ -31,13 +26,11 @@ impl SelfServicePanelClient {
     pub fn new(
         settings: AppSettings,
         transport: HttpTransport,
-        ocr_chain: std::sync::Arc<OcrProviderChain>,
         session_repo: PanelSessionRepository,
     ) -> Self {
         Self {
             settings,
             transport,
-            ocr_chain,
             session_repo,
         }
     }
@@ -83,7 +76,7 @@ impl SelfServicePanelClient {
                 self.persist_session(account, &session_response.cookies)?;
                 return Ok(session_response);
             }
-            if !is_yii_login_page(&session_response.text) {
+            if !is_login_page(&session_response.text) {
                 self.persist_session(account, &session_response.cookies)?;
                 return Ok(session_response);
             }
@@ -110,20 +103,6 @@ impl SelfServicePanelClient {
             self.persist_session(account, &page_response.cookies)?;
             return Ok(page_response);
         }
-        if is_yii_login_page(&page_response.text) {
-            let response = self
-                .fetch_target_after_login(
-                    self.login_yii_with_ocr(account, page_response).await?,
-                    target_path,
-                )
-                .await?
-                .ok_or_else(|| {
-                    AppError::Network("登录态失效，访问目标页面时被重定向回登录页".to_string())
-                })?;
-            self.persist_session(account, &response.cookies)?;
-            return Ok(response);
-        }
-
         let retry_response = self
             .transport
             .request(
@@ -139,18 +118,10 @@ impl SelfServicePanelClient {
             self.persist_session(account, &retry_response.cookies)?;
             return Ok(retry_response);
         }
-        if is_yii_login_page(&retry_response.text) {
-            let response = self
-                .fetch_target_after_login(
-                    self.login_yii_with_ocr(account, retry_response).await?,
-                    target_path,
-                )
-                .await?
-                .ok_or_else(|| {
-                    AppError::Network("登录态失效，访问目标页面时被重定向回登录页".to_string())
-                })?;
-            self.persist_session(account, &response.cookies)?;
-            return Ok(response);
+        if is_login_page(&retry_response.text) {
+            return Err(AppError::Network(
+                "登录态失效，访问目标页面时被重定向回登录页".to_string(),
+            ));
         }
         Err(AppError::Network(format!(
             "流量入口不匹配：query_url={}, final_url={}",
@@ -175,7 +146,7 @@ impl SelfServicePanelClient {
                 5,
             )
             .await?;
-        if is_yii_login_page(&response.text) {
+        if is_login_page(&response.text) {
             return Ok(None);
         }
         if is_traffic_home_page(&response.text) {
@@ -193,7 +164,7 @@ impl SelfServicePanelClient {
                 5,
             )
             .await?;
-        if is_yii_login_page(&retry_response.text) {
+        if is_login_page(&retry_response.text) {
             return Ok(None);
         }
         if is_traffic_home_page(&retry_response.text) {
@@ -226,7 +197,7 @@ impl SelfServicePanelClient {
                 5,
             )
             .await?;
-        if is_yii_login_page(&response.text) {
+        if is_login_page(&response.text) {
             return Ok(None);
         }
         if is_traffic_home_page(&response.text) {
@@ -320,94 +291,6 @@ impl SelfServicePanelClient {
         ))
     }
 
-    async fn login_yii_with_ocr(
-        &self,
-        account: &AccountWithPassword,
-        mut current_page: HttpResponseData,
-    ) -> AppResult<HttpResponseData> {
-        let mut last_error = "未知错误".to_string();
-        for _ in 0..10 {
-            if !is_yii_login_page(&current_page.text) {
-                return Err(AppError::Network("入口页不是可识别的登录表单".to_string()));
-            }
-            let form = parse_yii_login_form(&current_page.text, &current_page.final_url)?;
-            let captcha_response = self
-                .transport
-                .request(
-                    "GET",
-                    &form.captcha_url,
-                    referer_headers(&current_page.final_url),
-                    String::new(),
-                    current_page.cookies.clone(),
-                    2,
-                )
-                .await?;
-            let captcha_code = normalize_captcha_code(
-                &self
-                    .ocr_chain
-                    .recognize_for_login(&captcha_response.raw_body, form.captcha_sum_hint)
-                    .await?,
-            );
-            if captcha_code.len() < 4 {
-                last_error = format!(
-                    "OCR 识别结果无效：{}",
-                    if captcha_code.is_empty() {
-                        "<empty>"
-                    } else {
-                        &captcha_code
-                    }
-                );
-                current_page = self
-                    .transport
-                    .request(
-                        "GET",
-                        &self.settings.traffic_portal_url,
-                        HashMap::new(),
-                        String::new(),
-                        current_page.cookies.clone(),
-                        5,
-                    )
-                    .await?;
-                continue;
-            }
-            let payload = url::form_urlencoded::Serializer::new(String::new())
-                .append_pair(&form.csrf_name, &form.csrf_value)
-                .append_pair("LoginForm[username]", &account.account.username)
-                .append_pair("LoginForm[password]", &account.password)
-                .append_pair("LoginForm[verifyCode]", &captcha_code)
-                .finish();
-            let response = self
-                .transport
-                .request(
-                    "POST",
-                    &form.action_url,
-                    self.build_form_headers(&current_page.final_url),
-                    payload,
-                    current_page.cookies,
-                    3,
-                )
-                .await?;
-            if !is_yii_login_page(&response.text) {
-                self.persist_session(account, &response.cookies)?;
-                return Ok(response);
-            }
-            let error_text = extract_yii_error_message(&response.text);
-            if error_text.contains("验证码不正确") {
-                last_error = format!("验证码识别失败（OCR={captcha_code}）");
-                current_page = response;
-                continue;
-            }
-            if error_text.contains("用户名") || error_text.contains("密码") {
-                return Err(AppError::Network(error_text));
-            }
-            last_error = error_text;
-            current_page = response;
-        }
-        Err(AppError::Ocr(format!(
-            "验证码连续识别失败，已重试 10 次，最后错误：{last_error}"
-        )))
-    }
-
     fn persist_session(
         &self,
         account: &AccountWithPassword,
@@ -440,8 +323,12 @@ impl SelfServicePanelClient {
     }
 }
 
-fn referer_headers(referer_url: &str) -> HashMap<String, String> {
-    HashMap::from([("Referer".to_string(), referer_url.to_string())])
+fn is_login_page(html: &str) -> bool {
+    html.contains("LoginForm[username]")
+        || html.contains("LoginForm[password]")
+        || html.contains("LoginForm[verifyCode]")
+        || html.contains("验证码")
+        || html.contains("<title>登录</title>")
 }
 
 fn build_sso_url(base_url: &str, username: &str) -> String {
