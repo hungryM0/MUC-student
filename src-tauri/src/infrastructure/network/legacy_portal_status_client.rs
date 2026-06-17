@@ -12,12 +12,12 @@ use crate::infrastructure::parsers::portal_page_parser::join_url;
 use crate::infrastructure::settings::AppSettings;
 
 #[derive(Clone)]
-pub struct LegacyPortalClient {
+pub struct LegacyPortalStatusClient {
     settings: AppSettings,
     transport: HttpTransport,
 }
 
-impl LegacyPortalClient {
+impl LegacyPortalStatusClient {
     pub fn new(settings: AppSettings, transport: HttpTransport) -> Self {
         Self {
             settings,

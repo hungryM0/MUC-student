@@ -83,7 +83,7 @@ impl SelfServicePanelClient {
             self.session_repo.clear_session(&account.account.id)?;
         }
 
-        if let Some(response) = self.login_with_sso(account, target_path).await? {
+        if let Some(response) = self.open_with_sso(account, target_path).await? {
             self.persist_session(account, &response.cookies)?;
             return Ok(response);
         }
@@ -129,7 +129,7 @@ impl SelfServicePanelClient {
         )))
     }
 
-    async fn login_with_sso(
+    async fn open_with_sso(
         &self,
         account: &AccountWithPassword,
         target_path: &str,

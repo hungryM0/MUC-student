@@ -14,7 +14,7 @@ use crate::infrastructure::persistence::account_repository::AccountWithPassword;
 use crate::infrastructure::settings::AppSettings;
 
 #[derive(Clone)]
-pub struct AuthPortalClient {
+pub struct LegacyPortalAuthClient {
     settings: AppSettings,
     transport: HttpTransport,
 }
@@ -28,7 +28,7 @@ struct SuccessLogoutForm {
     username: String,
 }
 
-impl AuthPortalClient {
+impl LegacyPortalAuthClient {
     const RESPONSE_IP_ALREADY_ONLINE: &'static str = "IP has been online, please logout.";
 
     pub fn new(settings: AppSettings, transport: HttpTransport) -> Self {
