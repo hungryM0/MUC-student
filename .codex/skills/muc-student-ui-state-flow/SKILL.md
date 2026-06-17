@@ -1,6 +1,6 @@
 ---
 name: muc-student-ui-state-flow
-description: 规划或修改这个仓库的 React 前端状态流、应用壳、组件职责、feature 落点和 Tauri 交互边界。用在新增前端功能、重构页面逻辑、拆 store、调整 `src/App.tsx`/`src/lib/components`/`src/lib/features`/`src/lib/hooks`/`src/lib/stores` 分工时。
+description: 规划或修改 MUC-student 的 React 前端状态流、应用壳、组件职责、feature 落点和 Tauri 交互边界。仅在改 `src/App.tsx`、`src/lib/features`、`src/lib/stores`、`src/lib/hooks`、前端类型或组件职责拆分时使用；纯 Rust、纯网络、纯验证命令不触发。
 ---
 
 # MUC Student UI State Flow

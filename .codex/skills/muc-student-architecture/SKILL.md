@@ -1,6 +1,6 @@
 ---
 name: muc-student-architecture
-description: 规划或审查这个仓库的代码改动边界、模块落点、前后端联动路径和分层约束。用在改现有功能但还没确定该改哪里、需要先拆模块、涉及 React 前端与 Tauri/Rust 联动、担心把 domain/application/infrastructure 打穿、或需要先梳理目录职责再动手的时候。
+description: 规划或审查 MUC-student 仓库的代码边界、模块落点和分层约束。仅在跨前端/Tauri/Rust 多层改动、目录迁移、服务拆分、领域层边界审查、或改动位置不确定时使用；小范围 bugfix、单文件改名、纯测试运行不触发。
 ---
 
 # MUC Student Architecture
@@ -22,7 +22,7 @@ description: 规划或审查这个仓库的代码改动边界、模块落点、�
 - Tauri 适配层：`src-tauri/src/adapters_tauri/`
 - Rust 用例和运行时编排：`src-tauri/src/application/`
 - Rust 领域模型和策略：`src-tauri/src/domain/`
-- Rust 外部系统、持久化、OCR、网络：`src-tauri/src/infrastructure/`
+- Rust 外部系统、持久化、网络、解析、安全、系统适配：`src-tauri/src/infrastructure/`
 
 先给出改动落点，再改文件。
 
@@ -63,7 +63,7 @@ description: 规划或审查这个仓库的代码改动边界、模块落点、�
 11. 这是纯业务规则、领域模型、选择策略、计算逻辑。
 放 `src-tauri/src/domain/`。这里别塞网络请求、文件读写、系统调用。
 
-12. 这是 HTTP、OCR、文件、凭据、系统、自启、解析器、持久化。
+12. 这是 HTTP、文件、凭据、系统、自启、解析器、持久化。
 放 `src-tauri/src/infrastructure/`。
 
 ## 硬规则
@@ -71,7 +71,6 @@ description: 规划或审查这个仓库的代码改动边界、模块落点、�
 - 不要手改 `build/`、`src-tauri/gen/`。
 - 不要把密码写回 JSON。凭据继续走 `credential_vault`。
 - 改本地存储格式时，先补 `src-tauri/src/infrastructure/persistence/migration.rs`。
-- OCR provider 顺序不能偷改。固定是 `NativeRustOcrProvider` 然后 `ExternalWorkerOcrProvider`。
 - `domain` 保持纯。看到网络请求、文件读写、系统 API 掉进 `domain`，直接当成脏活处理掉。
 
 ## 前后端联动时怎么查

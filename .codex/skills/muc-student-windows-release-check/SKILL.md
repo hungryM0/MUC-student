@@ -1,6 +1,6 @@
 ---
 name: muc-student-windows-release-check
-description: 检查这个仓库在 Windows 下的构建、运行、自启、托盘、路径和 CI 兼容性。用在改系统行为、启动项、托盘、凭据库、Tauri 打包、GitHub Actions，或发布前想确认不会只在本机能跑的时候。
+description: 检查 MUC-student 在 Windows 下的构建、运行、自启、托盘、路径、凭据库和 CI 兼容性。仅在改 `src-tauri/src/infrastructure/system`、`credential_vault.rs`、`runtime_paths.rs`、`tauri.conf.json`、GitHub Actions、打包发布流程，或用户明确要求发布前 Windows 检查时使用。
 ---
 
 # MUC Student Windows Release Check

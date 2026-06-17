@@ -1,6 +1,6 @@
 ---
 name: muc-student-tauri-command-bridge
-description: 处理这个仓库里前端到 Rust 的 Tauri command、事件、DTO 和窗口行为桥接。用在新增 command、修改 `invoke` 参数或返回值、同步前后端 DTO、排查按钮点击后最终走到哪个 Rust 用例的时候。
+description: 处理 MUC-student 前端到 Rust 的 Tauri command、事件、DTO 和窗口行为桥接。仅在新增/改名 command、修改 `invoke` 参数或返回值、同步前后端 DTO、调整事件、或排查按钮点击到 Rust 用例链路时使用；纯 UI、纯 Rust service、纯 parser 改动不触发。
 ---
 
 # MUC Student Tauri Command Bridge

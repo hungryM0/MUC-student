@@ -5,15 +5,19 @@
 - `Backend::login_selected_account`
 - `Backend::login_selected_account_inner`
 - `NetworkStatusService::detect_network_status`
-- `AccountTrafficService::fetch_balances`
-- `find_current_online_account`
-- `SelfServicePanelClient::logout_local_device`
-- `AuthPortalClient::verify_login`
+- `Backend::detect_current_online_account_fast`
+- `LegacyPortalStatusClient::fetch_online_info`
+- `LegacyPortalAuthClient::switch_account`
+- `LegacyPortalAuthClient::verify_login`
 
 ## 刷新
 
 - `Backend::run_refresh`
 - `Backend::refresh_inner`
+- `LegacyPortalStatusClient::fetch_success_info`
+- `PortalSnapshotService::fetch_balances_with_probe`
+- `PortalSnapshotService::probe_balances_parallel`
+- `PortalSnapshotService::fetch_balances_serial`
 - `AccountTrafficService::fetch_balances`
 - `AccountTrafficService::to_snapshot_map`
 - `build_status_card_order`
@@ -23,6 +27,5 @@
 ## 本机下线
 
 - `Backend::logout_local_device_inner`
-- `SelfServicePanelClient::logout_local_device`
-- `parse_online_devices`
-- `extract_csrf_meta`
+- `LegacyPortalAuthClient::logout_current_ip`
+- `LegacyPortalAuthClient::logout_with_success_page`

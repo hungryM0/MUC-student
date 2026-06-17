@@ -1,6 +1,6 @@
 ---
 name: muc-student-test-and-verify
-description: 根据这个仓库的改动类型选择最小必要检查命令，并在改完后补跑前端、Rust、Tauri 和 CI 相关验证。用在不确定该跑 `npm run check`、`cargo check`、`cargo test`、`npm run build` 还是 `npm run tauri -- build`，或需要收敛验证范围的时候。
+description: 为 MUC-student 改动选择最小验证命令，并解释已跑/未跑的检查。仅在完成代码修改、用户询问该跑什么检查、CI/构建失败、或改动涉及前后端桥接/Rust/Tauri/Windows 打包时使用；纯代码阅读、命名规划、普通问答不触发。
 ---
 
 # MUC Student Test And Verify

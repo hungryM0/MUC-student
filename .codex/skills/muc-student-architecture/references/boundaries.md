@@ -10,7 +10,7 @@
 - `src/lib/types/` 放前端类型。
 - `src-tauri/src/application/` 放用例、服务、DTO、运行时编排。
 - `src-tauri/src/domain/` 放纯领域模型和策略。
-- `src-tauri/src/infrastructure/` 放网络、OCR、解析、持久化、安全、系统适配。
+- `src-tauri/src/infrastructure/` 放网络、解析、持久化、安全、系统适配。
 - `src-tauri/src/adapters_tauri/` 放 Tauri 适配层。
 
 # 禁区
