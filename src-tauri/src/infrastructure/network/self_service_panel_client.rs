@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
+use base64::Engine;
+
 use crate::application::error::{AppError, AppResult};
 use crate::infrastructure::network::http_transport::HttpTransport;
 use crate::infrastructure::network::models::HttpResponseData;
@@ -53,11 +55,7 @@ impl SelfServicePanelClient {
         account: &AccountWithPassword,
         path: &str,
     ) -> AppResult<HttpResponseData> {
-        let target_url = if self.settings.traffic_portal_url.trim().is_empty() {
-            self.settings.portal_url.clone()
-        } else {
-            self.settings.traffic_portal_url.clone()
-        };
+        let target_url = self.traffic_entry_url();
         let target_path = if path.trim().is_empty() {
             "/home"
         } else {
@@ -92,6 +90,11 @@ impl SelfServicePanelClient {
             self.session_repo.clear_session(&account.account.id)?;
         }
 
+        if let Some(response) = self.login_with_sso(account, target_path).await? {
+            self.persist_session(account, &response.cookies)?;
+            return Ok(response);
+        }
+
         let page_response = self
             .transport
             .request(
@@ -108,35 +111,15 @@ impl SelfServicePanelClient {
             return Ok(page_response);
         }
         if is_yii_login_page(&page_response.text) {
-            let mut response = self.login_yii_with_ocr(account, page_response).await?;
-            let response_path = url::Url::parse(&response.final_url)
-                .ok()
-                .map(|url| url.path().trim_end_matches('/').to_string())
-                .unwrap_or_default();
-            if response_path != target_path.trim_end_matches('/') {
-                response = self
-                    .transport
-                    .request(
-                        "GET",
-                        &join_url(&response.final_url, target_path),
-                        HashMap::new(),
-                        String::new(),
-                        response.cookies.clone(),
-                        5,
-                    )
-                    .await?;
-                if is_yii_login_page(&response.text) {
-                    self.session_repo.clear_session(&account.account.id)?;
-                    return Err(AppError::Network(
-                        "登录态失效，访问目标页面时被重定向回登录页".to_string(),
-                    ));
-                }
-                if !is_traffic_home_page(&response.text) {
-                    return Err(AppError::Network(format!(
-                        "访问 {target_path} 成功，但页面里没有流量表格"
-                    )));
-                }
-            }
+            let response = self
+                .fetch_target_after_login(
+                    self.login_yii_with_ocr(account, page_response).await?,
+                    target_path,
+                )
+                .await?
+                .ok_or_else(|| {
+                    AppError::Network("登录态失效，访问目标页面时被重定向回登录页".to_string())
+                })?;
             self.persist_session(account, &response.cookies)?;
             return Ok(response);
         }
@@ -157,11 +140,100 @@ impl SelfServicePanelClient {
             return Ok(retry_response);
         }
         if is_yii_login_page(&retry_response.text) {
-            return self.login_yii_with_ocr(account, retry_response).await;
+            let response = self
+                .fetch_target_after_login(
+                    self.login_yii_with_ocr(account, retry_response).await?,
+                    target_path,
+                )
+                .await?
+                .ok_or_else(|| {
+                    AppError::Network("登录态失效，访问目标页面时被重定向回登录页".to_string())
+                })?;
+            self.persist_session(account, &response.cookies)?;
+            return Ok(response);
         }
         Err(AppError::Network(format!(
             "流量入口不匹配：query_url={}, final_url={}",
             self.settings.traffic_portal_url, page_response.final_url
+        )))
+    }
+
+    async fn login_with_sso(
+        &self,
+        account: &AccountWithPassword,
+        target_path: &str,
+    ) -> AppResult<Option<HttpResponseData>> {
+        let sso_url = build_sso_url(&self.traffic_entry_url(), &account.account.username);
+        let response = self
+            .transport
+            .request(
+                "GET",
+                &sso_url,
+                HashMap::new(),
+                String::new(),
+                HashMap::new(),
+                5,
+            )
+            .await?;
+        if is_yii_login_page(&response.text) {
+            return Ok(None);
+        }
+        if is_traffic_home_page(&response.text) {
+            return self.fetch_target_after_login(response, target_path).await;
+        }
+
+        let retry_response = self
+            .transport
+            .request(
+                "GET",
+                &join_url(&response.final_url, target_path),
+                HashMap::new(),
+                String::new(),
+                response.cookies.clone(),
+                5,
+            )
+            .await?;
+        if is_yii_login_page(&retry_response.text) {
+            return Ok(None);
+        }
+        if is_traffic_home_page(&retry_response.text) {
+            return Ok(Some(retry_response));
+        }
+        Ok(None)
+    }
+
+    async fn fetch_target_after_login(
+        &self,
+        mut response: HttpResponseData,
+        target_path: &str,
+    ) -> AppResult<Option<HttpResponseData>> {
+        let response_path = url::Url::parse(&response.final_url)
+            .ok()
+            .map(|url| url.path().trim_end_matches('/').to_string())
+            .unwrap_or_default();
+        if response_path == target_path.trim_end_matches('/') {
+            return Ok(Some(response));
+        }
+
+        response = self
+            .transport
+            .request(
+                "GET",
+                &join_url(&response.final_url, target_path),
+                HashMap::new(),
+                String::new(),
+                response.cookies.clone(),
+                5,
+            )
+            .await?;
+        if is_yii_login_page(&response.text) {
+            return Ok(None);
+        }
+        if is_traffic_home_page(&response.text) {
+            return Ok(Some(response));
+        }
+        Err(AppError::Network(format!(
+            "访问 {target_path} 成功，但页面里没有流量表格"
         )))
     }
 
@@ -358,8 +430,36 @@ impl SelfServicePanelClient {
             ("Referer".to_string(), referer_url.to_string()),
         ])
     }
+
+    fn traffic_entry_url(&self) -> String {
+        if self.settings.traffic_portal_url.trim().is_empty() {
+            self.settings.portal_url.clone()
+        } else {
+            self.settings.traffic_portal_url.clone()
+        }
+    }
 }
 
 fn referer_headers(referer_url: &str) -> HashMap<String, String> {
     HashMap::from([("Referer".to_string(), referer_url.to_string())])
+}
+
+fn build_sso_url(base_url: &str, username: &str) -> String {
+    let clean_username = username.trim();
+    let data = base64::engine::general_purpose::STANDARD
+        .encode(format!("{clean_username}:{clean_username}").as_bytes());
+    join_url(base_url, &format!("/site/sso?data={data}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_sso_url;
+
+    #[test]
+    fn sso_url_uses_traffic_portal_origin_and_encoded_username_pair() {
+        assert_eq!(
+            build_sso_url("http://192.168.2.231:8800/home", "25040034"),
+            "http://192.168.2.231:8800/site/sso?data=MjUwNDAwMzQ6MjUwNDAwMzQ="
+        );
+    }
 }

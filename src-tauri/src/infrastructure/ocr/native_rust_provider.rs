@@ -51,11 +51,7 @@ impl OcrProvider for NativeRustOcrProvider {
         "native-rust"
     }
 
-    async fn recognize(
-        &self,
-        image_bytes: &[u8],
-        _expected_sum: Option<u32>,
-    ) -> AppResult<String> {
+    async fn recognize(&self, image_bytes: &[u8], _expected_sum: Option<u32>) -> AppResult<String> {
         self.ensure_engine()?;
         let engine = Arc::clone(&self.engine);
         let image_bytes = image_bytes.to_vec();

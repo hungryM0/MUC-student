@@ -29,7 +29,11 @@ struct LegacyCachedTrafficSnapshot {
     used_traffic_text: String,
     #[serde(default, alias = "product_balance_text", alias = "productBalanceText")]
     product_balance_text: String,
-    #[serde(default, alias = "included_package_text", alias = "includedPackageText")]
+    #[serde(
+        default,
+        alias = "included_package_text",
+        alias = "includedPackageText"
+    )]
     included_package_text: String,
     #[serde(
         default,
@@ -151,7 +155,8 @@ impl MigrationService {
     }
 
     pub fn import_legacy_if_current_store_empty(&self) -> AppResult<bool> {
-        if !self.paths.legacy_accounts_path().exists() && !self.paths.legacy_app_state_path().exists()
+        if !self.paths.legacy_accounts_path().exists()
+            && !self.paths.legacy_app_state_path().exists()
         {
             return Ok(false);
         }
@@ -248,7 +253,10 @@ impl MigrationService {
         state.last_login_time = parse_legacy_local_datetime(legacy.last_login_time.as_deref())?;
         state.last_quota_refresh_time =
             parse_legacy_local_datetime(legacy.last_quota_refresh_time.as_deref())?;
-        if let Some(result) = legacy.last_login_result.filter(|text| !text.trim().is_empty()) {
+        if let Some(result) = legacy
+            .last_login_result
+            .filter(|text| !text.trim().is_empty())
+        {
             state.last_login_result = result;
         }
         if let Some(message) = legacy
@@ -288,7 +296,9 @@ fn parse_legacy_local_datetime(input: Option<&str>) -> AppResult<Option<DateTime
     match Local.from_local_datetime(&naive) {
         LocalResult::Single(value) => Ok(Some(value)),
         LocalResult::Ambiguous(first, _) => Ok(Some(first)),
-        LocalResult::None => Err(AppError::Storage("旧时间格式无法映射到本地时区".to_string())),
+        LocalResult::None => Err(AppError::Storage(
+            "旧时间格式无法映射到本地时区".to_string(),
+        )),
     }
 }
 
@@ -363,7 +373,12 @@ mod tests {
         )
         .expect("write legacy app state");
 
-        let migration = MigrationService::new(paths.clone(), vault, account_repo.clone(), app_state_repo.clone());
+        let migration = MigrationService::new(
+            paths.clone(),
+            vault,
+            account_repo.clone(),
+            app_state_repo.clone(),
+        );
 
         let imported = migration.migrate_if_needed().expect("run migration");
         assert!(imported);
@@ -378,7 +393,9 @@ mod tests {
                 .password,
             "secret-1"
         );
-        let state = app_state_repo.load_state().expect("load imported app state");
+        let state = app_state_repo
+            .load_state()
+            .expect("load imported app state");
         assert_eq!(state.last_login_result, "成功");
         assert_eq!(state.last_login_message, "HTTP 接口登录成功");
         assert!(paths.legacy_accounts_path().exists());

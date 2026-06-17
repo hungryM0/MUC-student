@@ -10,11 +10,12 @@ use crate::application::dto::{
 use crate::application::error::{AppError, AppResult};
 use crate::application::runtime::{AppRuntimeState, SharedRuntimeState};
 use crate::application::services::account_traffic_service::AccountTrafficService;
-use crate::domain::models::traffic::AccountTrafficSnapshot;
+use crate::domain::models::traffic::{AccountTrafficSnapshot, OnlineDeviceRecord};
 use crate::domain::models::{CachedTrafficSnapshot, NetworkStatus, PortalAccount, UserPreferences};
 use crate::domain::policies::account_selection::find_current_online_account;
 use crate::domain::policies::traffic_math::{
-    build_auto_switch_candidate, build_pool_quota_summary, build_status_card_order,
+    build_auto_switch_candidate, build_pool_quota_summary, build_progress_percent,
+    build_status_card_order,
 };
 use crate::infrastructure::network::auth_portal_client::AuthPortalClient;
 use crate::infrastructure::network::http_transport::HttpTransport;
@@ -24,6 +25,7 @@ use crate::infrastructure::network::self_service_panel_client::SelfServicePanelC
 use crate::infrastructure::ocr::{
     ExternalWorkerOcrProvider, NativeRustOcrProvider, OcrProviderChain,
 };
+use crate::infrastructure::parsers::legacy_portal_success_page_parser::LegacyPortalSuccessInfo;
 use crate::infrastructure::persistence::account_repository::{
     AccountRepository, AccountWithPassword,
 };
@@ -499,18 +501,33 @@ impl Backend {
             }
         }
         self.emit_state()?;
-        let snapshots = self
-            .traffic_service
-            .fetch_balances(&accounts, local_ip)
-            .await;
-        let snapshot_map = AccountTrafficService::to_snapshot_map(snapshots);
-        let mut current_online_id = if let Some(local_ip) = local_ip {
-            self.detect_current_online_account_fast(&store.accounts, local_ip)
-                .await
-                .map(|account| account.id)
-                .unwrap_or_default()
+        let success_info = self.legacy_portal_client.fetch_success_info().await.ok();
+        let success_account = success_info.as_ref().and_then(|info| {
+            local_ip
+                .filter(|ip| info.ip.trim() == ip.trim())
+                .and_then(|_| {
+                    store
+                        .accounts
+                        .iter()
+                        .find(|account| username_matches(&account.username, &info.username))
+                })
+        });
+        let mut current_online_id = success_account
+            .map(|account| account.id.clone())
+            .unwrap_or_default();
+        let snapshot_map = if let (Some(account), Some(info)) = (success_account, success_info) {
+            build_success_snapshot_map(
+                &store.accounts,
+                &store.cached_traffic_snapshots,
+                account,
+                &info,
+            )
         } else {
-            String::new()
+            let snapshots = self
+                .traffic_service
+                .fetch_balances(&accounts, local_ip)
+                .await;
+            AccountTrafficService::to_snapshot_map(snapshots)
         };
         for account in &store.accounts {
             if !current_online_id.is_empty() {
@@ -743,6 +760,55 @@ fn to_cached_snapshots(
             )
         })
         .collect()
+}
+
+fn build_success_snapshot_map(
+    accounts: &[PortalAccount],
+    cached: &BTreeMap<String, CachedTrafficSnapshot>,
+    current_account: &PortalAccount,
+    info: &LegacyPortalSuccessInfo,
+) -> BTreeMap<String, AccountTrafficSnapshot> {
+    let mut snapshots = restore_cached_snapshots(cached);
+    let now = Local::now();
+    for account in accounts {
+        snapshots
+            .entry(account.id.clone())
+            .or_insert_with(|| AccountTrafficSnapshot::failed(account.id.clone(), "尚未同步", now));
+    }
+
+    let cached_current = cached.get(&current_account.id);
+    let product_balance_text = cached_current
+        .map(|item| item.product_balance_text.clone())
+        .filter(|text| !text.trim().is_empty())
+        .unwrap_or_else(|| "-".to_string());
+    let matched_local_ip_device = Some(OnlineDeviceRecord {
+        ip: info.ip.clone(),
+        device_id: String::new(),
+        logout_path: String::new(),
+    });
+    snapshots.insert(
+        current_account.id.clone(),
+        AccountTrafficSnapshot {
+            account_id: current_account.id.clone(),
+            used_traffic_text: info.used_traffic.clone(),
+            product_balance_text: product_balance_text.clone(),
+            included_package_text: cached_current
+                .map(|item| item.included_package_text.clone())
+                .unwrap_or_default(),
+            online_device_count_text: "1".to_string(),
+            package_text: cached_current
+                .map(|item| item.package_text.clone())
+                .filter(|text| !text.trim().is_empty())
+                .unwrap_or_else(|| "-".to_string()),
+            status_text: "已同步".to_string(),
+            detail_text: format!("计费方式：{}", info.billing_policy),
+            queried_at: now,
+            online_devices: matched_local_ip_device.clone().into_iter().collect(),
+            matched_local_ip_device,
+            progress_percent: build_progress_percent(&info.used_traffic, &product_balance_text),
+        },
+    );
+    snapshots
 }
 
 fn require_input_text(value: &str, field_name: &str) -> AppResult<String> {
