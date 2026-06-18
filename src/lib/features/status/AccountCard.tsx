@@ -1,10 +1,8 @@
-import { Edit3, LogOut, Trash2 } from 'lucide-react';
-import { Badge } from '$lib/components/ui/badge';
-import { Button } from '$lib/components/ui/button';
-import { Card } from '$lib/components/ui/card';
+import { Badge, Button, Card, Caption1, makeStyles, Text, tokens } from '@fluentui/react-components';
+import { DeleteRegular, EditRegular, LockClosedRegular } from '@fluentui/react-icons';
 import type { AccountDto } from '$lib/types/app';
-import { cn } from '$lib/utils';
 import { formatDateTime } from '$lib/features/shared/format';
+import { iconSize, useShellStyles } from '$lib/features/shared/layout';
 import { TrafficRing } from '$lib/features/shared/progress';
 
 type Props = {
@@ -16,76 +14,107 @@ type Props = {
   onLogout: (accountId: string) => void;
 };
 
+const useAccountStyles = makeStyles({
+  card: {
+    display: 'grid',
+    gridTemplateColumns: '148px minmax(0, 1fr)',
+    gap: '28px',
+    padding: '24px 28px',
+    minHeight: '188px',
+    alignItems: 'center',
+    border: `1px solid ${tokens.colorNeutralStroke3}`,
+    borderRadius: tokens.borderRadiusXLarge,
+    backgroundColor: 'color-mix(in srgb, var(--colorNeutralBackground2) 76%, transparent)',
+    boxShadow: tokens.shadow4
+  },
+  selected: {
+    border: `1px solid ${tokens.colorBrandStroke1}`,
+    boxShadow: tokens.shadow8
+  },
+  ringColumn: {
+    display: 'grid',
+    placeItems: 'center',
+    minWidth: 0
+  },
+  details: {
+    display: 'grid',
+    gridTemplateRows: 'auto auto auto',
+    gap: '14px',
+    minWidth: 0
+  },
+  titleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    minWidth: 0
+  },
+  title: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap'
+  },
+  metrics: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    gap: '8px 32px',
+    minWidth: 0
+  },
+  metric: {
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap'
+  },
+  actions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px'
+  }
+});
+
 export function AccountCard({ account, selected = false, actionEnabled = true, onEdit, onDelete, onLogout }: Props) {
+  const shell = useShellStyles();
+  const styles = useAccountStyles();
+
   return (
-    <Card className={cn(
-      'grid grid-cols-[72px_1fr_auto] gap-4 p-4 border border-border/80 shadow-[0_1px_3px_rgba(0,0,0,0.02)] transition-all duration-200 hover:bg-muted/30',
-      selected && 'border-primary ring-1 ring-primary/60 bg-primary/[0.02]'
-    )}>
-      <div className="flex items-center justify-center">
+    <Card appearance="filled" className={`${styles.card} ${selected ? styles.selected : ''}`}>
+      <div className={styles.ringColumn}>
         <TrafficRing value={account.snapshot?.progressPercent} />
       </div>
-      <div className="min-w-0 space-y-1.5">
-        <div className="flex flex-wrap items-center gap-2">
-          <h3 className="truncate text-sm font-semibold text-foreground tracking-tight">
+
+      <div className={styles.details}>
+        <div className={styles.titleRow}>
+          <Text size={500} weight="semibold" className={styles.title}>
             {account.remarkName || account.username}
-          </h3>
-          {account.isCurrentOnline && (
-            <Badge className="bg-primary/10 text-primary border-none text-[10px] font-medium h-4 px-1.5 rounded-full hover:bg-primary/10">
-              本机在线
-            </Badge>
-          )}
+          </Text>
+          {account.isCurrentOnline && <Badge appearance="tint" color="success">本机在线</Badge>}
         </div>
-        <div className="grid gap-x-6 gap-y-1 text-xs text-muted-foreground sm:grid-cols-2">
-          <span className="truncate">账号：{account.username}</span>
-          <span>设备数：{(account.snapshot?.onlineDeviceCountText || '').trim() || '-'}</span>
-          <span>已用：{account.snapshot?.usedTrafficText || '-'}</span>
-          <span className="flex items-center flex-wrap gap-1">
-            总额：{account.snapshot?.productBalanceText || '-'}
-            {account.snapshot?.includedPackageText && (
-              <span className="text-[9px] text-emerald-500 font-medium bg-emerald-500/10 px-1 rounded">
-                {account.snapshot.includedPackageText.trim()}
-              </span>
-            )}
-          </span>
-          <span className="sm:col-span-2 text-[10px] opacity-80 mt-0.5">
+
+        <div className={styles.metrics}>
+          <Caption1 className={`${shell.muted} ${styles.metric}`}>账号：{account.username}</Caption1>
+          <Caption1 className={`${shell.muted} ${styles.metric}`}>设备数：{(account.snapshot?.onlineDeviceCountText || '').trim() || '-'}</Caption1>
+          <Caption1 className={`${shell.muted} ${styles.metric}`}>已用流量：{account.snapshot?.usedTrafficText || '-'}</Caption1>
+          <Caption1 className={`${shell.muted} ${styles.metric}`}>
+            账户总流量：{account.snapshot?.productBalanceText || '-'}
+            {account.snapshot?.includedPackageText ? <span className={shell.success}> [{account.snapshot.includedPackageText.trim()}]</span> : null}
+          </Caption1>
+          <Caption1 className={`${shell.muted} ${styles.metric}`} style={{ gridColumn: '1 / -1' }}>
             更新：{formatDateTime(account.snapshot?.queriedAt)}
-          </span>
+          </Caption1>
         </div>
-      </div>
-      <div className="flex items-center gap-1">
-        {account.canLogoutLocalDevice && (
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-8 w-8 rounded-md text-destructive hover:bg-destructive/10 hover:text-destructive cursor-pointer shrink-0"
-            disabled={!actionEnabled}
-            onClick={() => onLogout(account.id)}
-            aria-label="下线本机"
-          >
-            <LogOut className="size-4" />
+
+        <div className={styles.actions}>
+          {account.canLogoutLocalDevice && (
+            <Button appearance="primary" icon={<LockClosedRegular style={iconSize} />} disabled={!actionEnabled} onClick={() => onLogout(account.id)}>
+              下线本机
+            </Button>
+          )}
+          <Button appearance="secondary" icon={<EditRegular style={iconSize} />} disabled={!actionEnabled} onClick={() => onEdit(account.id)}>
+            编辑
           </Button>
-        )}
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-8 w-8 rounded-md text-muted-foreground hover:bg-muted/80 hover:text-foreground cursor-pointer shrink-0"
-          disabled={!actionEnabled}
-          onClick={() => onEdit(account.id)}
-          aria-label="编辑账号"
-        >
-          <Edit3 className="size-4" />
-        </Button>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-8 w-8 rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive cursor-pointer shrink-0"
-          disabled={!actionEnabled}
-          onClick={() => onDelete(account.id)}
-          aria-label="删除账号"
-        >
-          <Trash2 className="size-4" />
-        </Button>
+          <Button appearance="secondary" icon={<DeleteRegular style={iconSize} />} disabled={!actionEnabled} onClick={() => onDelete(account.id)}>
+            删除
+          </Button>
+        </div>
       </div>
     </Card>
   );

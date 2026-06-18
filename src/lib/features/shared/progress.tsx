@@ -1,46 +1,57 @@
-import { cn } from '$lib/utils';
-import { progressColor } from './format';
+import { makeStyles, ProgressBar as FluentProgressBar, tokens } from '@fluentui/react-components';
+import { progressText } from './format';
 
 type ProgressBarProps = {
   value: number | null | undefined;
   loading?: boolean;
-  className?: string;
 };
 
-export function ProgressBar({ value, loading = false, className }: ProgressBarProps) {
-  const normalized = Math.max(0, Math.min(100, value ?? 0));
-  return (
-    <div className={cn('h-2 overflow-hidden rounded-full bg-muted', className)}>
-      {loading ? (
-        <div className="h-full w-full origin-left bg-primary" style={{ animation: 'indeterminate 1.3s linear infinite' }} />
-      ) : (
-        <div
-          className="h-full rounded-full transition-[width] duration-300"
-          style={{ width: `${normalized}%`, background: progressColor(value) }}
-        />
-      )}
-    </div>
-  );
+export function normalizeProgress(value: number | null | undefined) {
+  if (value === null || value === undefined) return 0;
+  return Math.max(0, Math.min(100, value)) / 100;
+}
+
+export function ProgressBar({ value, loading = false }: ProgressBarProps) {
+  return <FluentProgressBar thickness="large" value={loading ? undefined : normalizeProgress(value)} />;
 }
 
 type TrafficRingProps = {
   value: number | null | undefined;
-  className?: string;
 };
 
-export function TrafficRing({ value, className }: TrafficRingProps) {
+const useRingStyles = makeStyles({
+  root: {
+    display: 'grid',
+    placeItems: 'center',
+    width: '128px',
+    height: '128px',
+    borderRadius: tokens.borderRadiusCircular,
+    background: `conic-gradient(${tokens.colorBrandForeground1} var(--traffic-value), ${tokens.colorNeutralStroke2} 0)`,
+    position: 'relative',
+    flex: '0 0 128px',
+    ':before': {
+      position: 'absolute',
+      inset: '12px',
+      borderRadius: tokens.borderRadiusCircular,
+      backgroundColor: 'color-mix(in srgb, var(--colorNeutralBackground1) 86%, transparent)',
+      content: '""'
+    }
+  },
+  value: {
+    position: 'relative',
+    fontSize: tokens.fontSizeBase500,
+    fontWeight: tokens.fontWeightSemibold,
+    color: tokens.colorNeutralForeground1
+  }
+});
+
+export function TrafficRing({ value }: TrafficRingProps) {
+  const styles = useRingStyles();
   const normalized = Math.max(0, Math.min(100, value ?? 0));
+
   return (
-    <div
-      className={cn('traffic-ring relative grid size-20 shrink-0 place-items-center rounded-full text-sm font-semibold', className)}
-      style={
-        {
-          '--ring-percent': `${normalized}%`,
-          '--ring-color': progressColor(value)
-        } as React.CSSProperties
-      }
-    >
-      <span className="relative z-10">{value === null || value === undefined ? '--' : `${normalized.toFixed(1)}%`}</span>
+    <div className={styles.root} style={{ '--traffic-value': `${normalized}%` } as React.CSSProperties}>
+      <span className={styles.value}>{progressText(value)}</span>
     </div>
   );
 }

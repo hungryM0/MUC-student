@@ -5,7 +5,7 @@
 ![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)
 ![Tauri](https://img.shields.io/badge/Tauri-24C8DB?logo=tauri&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=111111)
-![shadcn/ui](https://img.shields.io/badge/shadcn%2Fui-111111?logo=shadcnui&logoColor=white)
+![Fluent UI](https://img.shields.io/badge/Fluent_UI-0078D4?logo=microsoft&logoColor=white)
 
 > [!NOTE]
 >

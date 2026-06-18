@@ -1,8 +1,8 @@
-import { ChevronRight, Plus, RefreshCcw } from 'lucide-react';
+import { Button, Card, Select, Text } from '@fluentui/react-components';
+import { AddRegular, ArrowClockwiseRegular, ChevronRightRegular } from '@fluentui/react-icons';
 import { useMemo, useState } from 'react';
-import { Button } from '$lib/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '$lib/components/ui/select';
 import type { AccountDto, AppSnapshotDto, UiState } from '$lib/types/app';
+import { iconSize, useShellStyles } from '$lib/features/shared/layout';
 import { AccountCard } from './AccountCard';
 import { QuotaSummaryCard } from './QuotaSummaryCard';
 
@@ -25,6 +25,7 @@ function remainingSortKey(account: AccountDto) {
 }
 
 export function StatusPanel({ snapshot, sortMode, busy, onSortMode, onAdd, onEdit, onDelete, onLogout, onRefresh }: Props) {
+  const styles = useShellStyles();
   const [collapsed, setCollapsed] = useState(true);
   const sortedAccounts = useMemo(() => {
     const accounts = [...snapshot.accounts];
@@ -38,51 +39,65 @@ export function StatusPanel({ snapshot, sortMode, busy, onSortMode, onAdd, onEdi
   const actionEnabled = !busy && !snapshot.refreshState.running && !snapshot.loginState.running;
 
   return (
-    <section className="panel-in flex min-h-0 flex-1 flex-col gap-4">
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-xs text-muted-foreground font-medium">已添加 {snapshot.accounts.length} 个账号</span>
-        <div className="flex items-center gap-2">
-          <Select value={sortMode} onValueChange={(value) => onSortMode(value as UiState['sortMode'])}>
-            <SelectTrigger className="w-36 h-8 text-xs rounded-md border-border/60 hover:bg-muted/40 cursor-pointer">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="default" className="text-xs">默认排序</SelectItem>
-              <SelectItem value="remainingDesc" className="text-xs">剩余量高→低</SelectItem>
-              <SelectItem value="nameAsc" className="text-xs">姓名 A-Z</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5 rounded-md cursor-pointer hover:bg-muted/80" disabled={busy || snapshot.refreshState.running} onClick={onRefresh}>
-            <RefreshCcw className="size-3.5" />
-            刷新
-          </Button>
-          <Button size="sm" className="h-8 text-xs gap-1.5 rounded-md cursor-pointer" disabled={busy} onClick={onAdd}>
-            <Plus className="size-3.5" />
-            添加账号
-          </Button>
-        </div>
+    <section className={styles.stack} style={{ flex: 1 }}>
+      <div className={styles.toolbar}>
+        <Text className={styles.muted} style={{ marginRight: 'auto' }}>
+          已添加 {snapshot.accounts.length} 个账号
+        </Text>
+        <Select value={sortMode} onChange={(event) => onSortMode(event.target.value as UiState['sortMode'])}>
+          <option value="default">默认排序</option>
+          <option value="remainingDesc">剩余量高到低</option>
+          <option value="nameAsc">姓名 A-Z</option>
+        </Select>
+        <Button appearance="subtle" icon={<ArrowClockwiseRegular style={iconSize} />} disabled={busy || snapshot.refreshState.running} onClick={onRefresh}>
+          刷新
+        </Button>
+        <Button appearance="primary" icon={<AddRegular style={iconSize} />} disabled={busy} onClick={onAdd}>
+          添加账号
+        </Button>
       </div>
 
       <QuotaSummaryCard quota={snapshot.poolQuota} loading={snapshot.refreshState.running} />
 
-      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+      <div className={styles.scrollArea}>
         {snapshot.accounts.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">还没有账号。</div>
+          <Card appearance="filled" className={styles.compactCard} style={{ textAlign: 'center' }}>
+            <Text className={styles.muted}>还没有账号。</Text>
+          </Card>
         ) : (
-          <div className="space-y-3">
+          <div className={styles.stack}>
             {activeAccounts.map((account) => (
-              <AccountCard key={account.id} account={account} selected={account.id === snapshot.selectedAccountId} actionEnabled={actionEnabled} onEdit={onEdit} onDelete={onDelete} onLogout={onLogout} />
+              <AccountCard
+                key={account.id}
+                account={account}
+                selected={account.id === snapshot.selectedAccountId}
+                actionEnabled={actionEnabled}
+                onEdit={onEdit}
+                onDelete={onDelete}
+                onLogout={onLogout}
+              />
             ))}
 
             {exhaustedAccounts.length > 0 && (
-              <div className="space-y-3">
-                <Button variant="ghost" className="px-2" onClick={() => setCollapsed((value) => !value)}>
-                  <ChevronRight className={collapsed ? '' : 'rotate-90'} />
+              <div className={styles.stack}>
+                <Button
+                  appearance="subtle"
+                  icon={<ChevronRightRegular style={{ ...iconSize, transform: collapsed ? 'rotate(0deg)' : 'rotate(90deg)' }} />}
+                  onClick={() => setCollapsed((value) => !value)}
+                >
                   已用尽账号（{exhaustedAccounts.length}）
                 </Button>
                 {!collapsed &&
                   exhaustedAccounts.map((account) => (
-                    <AccountCard key={account.id} account={account} selected={account.id === snapshot.selectedAccountId} actionEnabled={actionEnabled} onEdit={onEdit} onDelete={onDelete} onLogout={onLogout} />
+                    <AccountCard
+                      key={account.id}
+                      account={account}
+                      selected={account.id === snapshot.selectedAccountId}
+                      actionEnabled={actionEnabled}
+                      onEdit={onEdit}
+                      onDelete={onDelete}
+                      onLogout={onLogout}
+                    />
                   ))}
               </div>
             )}

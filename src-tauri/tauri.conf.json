@@ -12,12 +12,17 @@
   "app": {
     "windows": [
       {
-        "title": "MUC-student",
         "width": 1100,
         "height": 760,
         "minWidth": 920,
         "minHeight": 640,
-        "center": true
+        "center": true,
+        "decorations": false,
+        "shadow": true,
+        "transparent": true,
+        "windowEffects": {
+          "effects": ["mica"]
+        }
       }
     ],
     "security": {
