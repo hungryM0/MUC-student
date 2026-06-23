@@ -1,4 +1,4 @@
 interface:
   display_name: "MUC Windows 检查"
-  short_description: "覆盖 Windows 构建、托盘、自启和 CI 发布检查"
+  short_description: "覆盖 Slint Windows 构建、自启和 CI 发布检查"
   default_prompt: "Use $muc-student-windows-release-check to verify Windows-specific behavior before release."

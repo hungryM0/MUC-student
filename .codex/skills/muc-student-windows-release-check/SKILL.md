@@ -1,6 +1,6 @@
 ---
 name: muc-student-windows-release-check
-description: 检查 MUC-student 在 Windows 下的构建、运行、自启、托盘、路径、凭据库和 CI 兼容性。仅在改 `src-tauri/src/infrastructure/system`、`credential_vault.rs`、`runtime_paths.rs`、`tauri.conf.json`、GitHub Actions、打包发布流程，或用户明确要求发布前 Windows 检查时使用。
+description: 检查 MUC-student 在 Windows 下的 Slint 构建、运行、自启、托盘、路径、凭据库和 CI 兼容性。仅在改 `src-slint` Windows 行为、`src-tauri/src/infrastructure/system`、`credential_vault.rs`、`runtime_paths.rs`、`tauri.conf.json`、GitHub Actions、打包发布流程，或用户明确要求发布前 Windows 检查时使用。
 ---
 
 # MUC Student Windows Release Check
@@ -9,6 +9,7 @@ description: 检查 MUC-student 在 Windows 下的构建、运行、自启、托
 
 ## 先看哪些模块
 
+- `src-slint/`
 - `src-tauri/src/infrastructure/system/`
 - `src-tauri/src/infrastructure/security/credential_vault.rs`
 - `src-tauri/src/infrastructure/persistence/runtime_paths.rs`
@@ -19,15 +20,15 @@ description: 检查 MUC-student 在 Windows 下的构建、运行、自启、托
 
 ### 构建
 
-- `npm run build`
-- `npm run tauri -- build`
+- `cargo fmt --check`
 - `cargo check`
 - `cargo test`
+- `cargo build --release`
 
 ### Windows 特有行为
 
 - Windows 凭据库是否还能正常读写
-- 自启开关是否还走 `StartupService`
+- 自启开关是否还走 `StartupService` 或新的 Windows 适配
 - 托盘和关闭到托盘逻辑是否还通
 - 路径拼接是否依赖 Windows 目录语义
 

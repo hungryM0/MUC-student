@@ -1,0 +1,31 @@
+[package]
+name = "muc-student-core"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lib]
+name = "muc_student_core"
+path = "src/lib.rs"
+
+[dependencies]
+async-trait = "0.1"
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "6"
+keyring = "=4.0.1"
+keyring-core = "=1.0.0"
+regex = "1"
+reqwest = { version = "0.13.4", features = ["charset", "cookies", "json", "rustls", "form"], default-features = false }
+scraper = "0.24"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "process", "rt-multi-thread", "sync", "time"] }
+url = "2"
+uuid = { version = "1", features = ["v4", "serde"] }
+windows = { version = "0.62.2", features = ["Win32_Networking_WinSock"] }
+
+[dev-dependencies]
+tempfile = "3"
+wiremock = "0.6"

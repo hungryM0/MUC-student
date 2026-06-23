@@ -1,8 +1,8 @@
-# 改桥接前检查
+# 改遗留桥接前检查
 
-1. 前端调用点在哪。
-2. Rust command 暴露点在哪。
-3. Backend 用例入口在哪。
-4. DTO 字段是否双端同步。
-5. 事件是否需要新增或更新。
+1. 这次是否真的需要保留 Tauri。
+2. 如果迁到 Slint，Slint callback 在哪。
+3. Rust 用例入口在哪。
+4. 用例是否依赖 `tauri::AppHandle`、`emit`、Tauri path API。
+5. DTO 字段是否和 Slint global 同步。
 6. loading、error、snapshot 更新是否受影响。

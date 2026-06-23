@@ -1,0 +1,4 @@
+interface:
+  display_name: "MUC Slint 界面流"
+  short_description: "规范 Slint/WinUI 3 界面、状态和回调边界"
+  default_prompt: "Use $muc-student-slint-ui-flow to add or refactor Slint UI flow in MUC-student."

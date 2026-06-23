@@ -1,6 +1,6 @@
 ---
 name: muc-student-test-and-verify
-description: 为 MUC-student 改动选择最小验证命令，并解释已跑/未跑的检查。仅在完成代码修改、用户询问该跑什么检查、CI/构建失败、或改动涉及前后端桥接/Rust/Tauri/Windows 打包时使用；纯代码阅读、命名规划、普通问答不触发。
+description: 为 MUC-student 改动选择最小验证命令，并解释已跑/未跑的检查。仅在完成代码修改、用户询问该跑什么检查、CI/构建失败、或改动涉及 Slint 界面、Rust 业务核心、遗留 Tauri、Windows 打包时使用；纯代码阅读、命名规划、普通问答不触发。
 ---
 
 # MUC Student Test And Verify
@@ -9,15 +9,18 @@ description: 为 MUC-student 改动选择最小验证命令，并解释已跑/�
 
 ## 最小验证集
 
-### 只改前端
+### 只改 Slint 界面
 
-- `npm run check`
+在 `src-slint/` 目录跑：
 
-如果改了构建链、Vite 配置、React 入口、Tailwind/shadcn 配置或静态资源，再加：
+- `cargo fmt --check`
+- `cargo check`
 
-- `npm run build`
+如果改了回调绑定或构建链，再加：
 
-### 只改 Rust
+- `cargo test`
+
+### 只改 Rust 业务
 
 - `cargo check`
 
@@ -25,22 +28,19 @@ description: 为 MUC-student 改动选择最小验证命令，并解释已跑/�
 
 - `cargo test`
 
-### 改了前后端桥接
+### 改了 Slint 和 Rust 对接
 
-- `npm run check`
+- `cargo fmt --check`
 - `cargo check`
 
-如果改了 DTO、command、事件或 Tauri 配置，再考虑：
+分别在受影响 crate 跑。改了 DTO、回调或迁移链路，再考虑：
 
 - `cargo test`
-- `npm run tauri -- build`
 
-### 改了桌面壳或 Windows 行为
+### 改了遗留 Tauri 或 Windows 行为
 
-- `npm run check`
 - `cargo check`
 - `cargo test`
-- `npm run tauri -- build`
 
 ## 使用规则
 

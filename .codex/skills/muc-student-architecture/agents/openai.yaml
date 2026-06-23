@@ -1,4 +1,4 @@
 interface:
   display_name: "MUC 架构边界"
-  short_description: "约束仓库分层、改动落点和前后端联动边界"
+  short_description: "约束 Slint、Rust 业务核心和遗留 Tauri 边界"
   default_prompt: "Use $muc-student-architecture to plan a safe code change in this repository."

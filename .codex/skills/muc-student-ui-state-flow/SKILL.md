@@ -1,80 +1,15 @@
 ---
 name: muc-student-ui-state-flow
-description: 规划或修改 MUC-student 的 React 前端状态流、应用壳、组件职责、feature 落点和 Tauri 交互边界。仅在改 `src/App.tsx`、`src/lib/features`、`src/lib/stores`、`src/lib/hooks`、前端类型或组件职责拆分时使用；纯 Rust、纯网络、纯验证命令不触发。
+description: 已废弃。仅在阅读或删除 MUC-student 旧 React 前端遗留文件时使用。新界面工作必须使用 `muc-student-slint-ui-flow`，不要恢复 `src/App.tsx`、`src/lib/features`、`src/lib/stores`、React、Vite、shadcn 或 Fluent React。
 ---
 
 # MUC Student UI State Flow
 
-前端最容易烂成一锅。先判断职责，再动文件。
-
-## 目录职责
-
-- `src/main.tsx` 只放 React 挂载入口和全局样式引入
-- `src/App.tsx` 只放应用壳、页签切换、全局弹窗和状态分发
-- `src/lib/components/` 放通用组件
-- `src/lib/components/ui/` 放 shadcn/ui 基础组件。不要放业务
-- `src/lib/features/` 放功能逻辑
-- `src/lib/hooks/` 放 React hooks
-- `src/lib/stores/` 放共享状态和桥接动作
-- `src/lib/types/` 放前端类型
-
-## 当前核心状态入口
-
-先读 `src/lib/stores/app.ts`。这里已经管了：
-
-- `appSnapshot`
-- `uiState`
-- `dialogState`
-- `subscribeAppStore`
-- `getAppStoreSnapshot`
-- Tauri command 调用
-- Tauri 事件监听
-- 窗口关闭最小化逻辑
-
-React 组件通过 `src/lib/hooks/use-app-store.ts` 订阅这个 store。
-
-如果新需求还是应用级状态，优先延续这里的模式。只有当某个功能足够独立时，才拆到 `src/lib/features/<feature>`。
-
-## 落点规则
-
-1. 只是应用壳、页签切换或全局弹窗装配。
-改 `src/App.tsx`。
-
-2. 只是通用展示组件。
-改 `src/lib/components/`。
-
-3. 只是 shadcn/ui 基础组件。
-改 `src/lib/components/ui/`。不要把业务塞进去。
-
-4. 这是某个功能的业务逻辑、表单处理、数据整理。
-放 `src/lib/features/<feature>/`。
-
-5. 这是多个组件都依赖的 UI 状态、快照、桥接动作。
-放 `src/lib/stores/`。
-
-6. 这是 React 订阅或复用 hook。
-放 `src/lib/hooks/`。
+这个 skill 只记录旧 React 前端的废弃状态。新工作转到 `muc-student-slint-ui-flow`。
 
 ## 硬规则
 
-- `src/App.tsx` 别直接堆业务。
-- 不要把所有逻辑继续塞进 `components`。
-- 不要把业务逻辑塞进 `components/ui`。
-- 前端类型统一落 `src/lib/types/app.ts` 或对应类型文件。
-- 不要把说明性文字写进界面。
-
-## 改动时要一起看
-
-- `src/lib/stores/app.ts`
-- `src/lib/hooks/use-app-store.ts`
-- `src/lib/types/app.ts`
-- `src/App.tsx`
-- 相关 feature 组件
-- 相关对话框组件
-
-如果改的是数据字段，还要检查 Tauri DTO 是否同步。
-
-## 参考
-
-- 状态和组件职责：`references/frontend-boundaries.md`
-- 当前 store 暴露能力：`references/app-store-map.md`
+- 不要新增 React 文件。
+- 不要恢复 npm/Vite 构建链。
+- 如果发现旧 React 文件还在，先确认是否仍被引用。未引用就删掉，不留占位垃圾。
+- 如果要做新 UI，切到 `muc-student-slint-ui-flow`。

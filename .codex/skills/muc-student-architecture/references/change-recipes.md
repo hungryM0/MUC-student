@@ -1,18 +1,16 @@
 # 常见改动落点
 
-## 新增前端功能
+## 新增 Slint 界面功能
 
-- 应用壳、页签、全局弹窗：`src/App.tsx`
-- 状态和调用：`src/lib/stores/`
-- React hooks：`src/lib/hooks/`
-- 业务逻辑：`src/lib/features/<feature>/`
-- 通用 UI：`src/lib/components/`
-- shadcn/ui 基础组件：`src/lib/components/ui/`
-- 类型：`src/lib/types/`
+- 界面结构、控件、布局、样式：`src-slint/ui/`
+- global 状态和 callback 声明：`src-slint/ui/`
+- 窗口创建、状态写入、callback 绑定：`src-slint/src/main.rs`
+- 业务用例调用：先拆纯 Rust 服务，再从 `src-slint/src/main.rs` 调用
 
 ## 新增后端用例
 
-- Tauri 暴露：`src-tauri/src/adapters_tauri/`
+- Slint 回调装配：`src-slint/src/main.rs`
+- 遗留 Tauri 暴露：`src-tauri/src/adapters_tauri/`
 - 用例编排：`src-tauri/src/application/`
 - 纯规则：`src-tauri/src/domain/`
 - 外部系统：`src-tauri/src/infrastructure/`

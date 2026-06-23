@@ -1,24 +1,22 @@
 # 验证矩阵
 
-## 前端应用壳、feature、组件、hook、store、type
+## Slint 界面、global、callback
 
-- `npm run check`
-- 影响构建、React 入口、Tailwind/shadcn 配置或静态资源时加 `npm run build`
+- 在 `src-slint/` 跑 `cargo fmt --check`
+- 在 `src-slint/` 跑 `cargo check`
+- 影响回调绑定或构建链时加 `cargo test`
 
 ## Rust 领域、应用、基础设施
 
 - `cargo check`
 - 有相关测试就跑 `cargo test`
 
-## Tauri command、DTO、事件桥接
+## Slint 和 Rust 对接
 
-- `npm run check`
 - `cargo check`
 - 必要时 `cargo test`
 
-## Tauri 打包、托盘、自启、Windows 行为
+## 遗留 Tauri 打包、托盘、自启、Windows 行为
 
-- `npm run check`
 - `cargo check`
 - `cargo test`
-- `npm run tauri -- build`

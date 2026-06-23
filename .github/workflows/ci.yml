@@ -15,34 +15,16 @@ jobs:
       - name: Pull repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
 
-      - name: Install frontend dependencies
-        run: npm ci
-
-      - name: Check frontend
-        run: npm run check
-
-      - name: Build frontend
-        run: npm run build
-
-      - name: Format Rust
-        working-directory: src-tauri
+      - name: Format workspace
         run: cargo fmt --check
 
-      - name: Check Rust
-        working-directory: src-tauri
+      - name: Check workspace
         run: cargo check
 
-      - name: Test Rust
-        working-directory: src-tauri
+      - name: Test workspace
         run: cargo test

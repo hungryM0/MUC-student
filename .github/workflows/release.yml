@@ -16,12 +16,6 @@ jobs:
       - name: Pull repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -30,29 +24,33 @@ jobs:
       - name: Restore Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: "./src-tauri -> target"
+          workspaces: |
+            . -> target
 
-      - name: Install frontend dependencies
-        run: npm ci
-
-      - name: Check frontend
-        run: npm run check
-
-      - name: Format Rust
-        working-directory: src-tauri
+      - name: Format workspace
         run: cargo fmt --check
 
-      - name: Test Rust
-        working-directory: src-tauri
+      - name: Test workspace
         run: cargo test
 
-      - name: Build and draft release
-        uses: tauri-apps/tauri-action@v0
+      - name: Build WinUI app
+        run: cargo build --release
+
+      - name: Prepare artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item -LiteralPath target\release\MUC-student.exe -Destination dist\MUC-student.exe
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MUC-student-Windows
+          path: dist/MUC-student.exe
+
+      - name: Draft GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: ${{ github.ref_name }}
-          releaseBody: "自动构建的 Windows 安装包，详见附件。"
-          releaseDraft: true
-          prerelease: false
+        run: gh release create "${{ github.ref_name }}" dist/MUC-student.exe --draft --title "${{ github.ref_name }}" --notes "自动构建的 Windows 可执行文件，详见附件。"

@@ -1,0 +1,16 @@
+# Node
+node_modules/
+
+# Rust
+target/
+build/
+
+# Local configuration
+.idea/
+.playwright-mcp/
+.codex/config.toml
+accounts.json
+app_state.json
+*.log
+desktop.ini
+*.code-workspace
