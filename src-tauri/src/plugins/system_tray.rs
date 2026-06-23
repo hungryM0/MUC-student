@@ -29,6 +29,9 @@ pub fn update_tray_menu(app: &AppHandle, show_text: &str, quit_text: &str) -> Re
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("system-tray")
         .setup(|app, _| {
+            let icon = app.default_window_icon().cloned().ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::NotFound, "缺少默认托盘图标")
+            })?;
             let menu = Menu::with_id_and_items(
                 app,
                 "system-tray",
@@ -41,15 +44,16 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
 
             TrayIconBuilder::with_id("main-tray")
                 .menu(&menu)
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(icon)
                 .tooltip("MUC-student")
                 .show_menu_on_left_click(false)
-                .on_tray_icon_event(|tray, event| match event {
-                    TrayIconEvent::Click {
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
                         button: MouseButton::Left,
                         button_state: MouseButtonState::Up,
                         ..
-                    } => {
+                    } = event
+                    {
                         let app = tray.app_handle();
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.show();
@@ -57,7 +61,6 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
                             let _ = window.set_focus();
                         }
                     }
-                    _ => {}
                 })
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => {

@@ -4,7 +4,9 @@ use std::time::Duration;
 use base64::Engine;
 
 use crate::application::error::{AppError, AppResult};
-use crate::infrastructure::network::http_transport::HttpTransport;
+use crate::infrastructure::network::http_transport::{
+    build_form_headers, HttpRequestSpec, HttpTransport,
+};
 use crate::infrastructure::network::models::HttpResponseData;
 use crate::infrastructure::parsers::online_device_parser::parse_online_devices;
 use crate::infrastructure::parsers::panel_home_parser::extract_csrf_meta;
@@ -64,12 +66,9 @@ impl SelfServicePanelClient {
             let session_response = self
                 .transport
                 .request(
-                    "GET",
-                    &join_url(&target_url, target_path),
-                    HashMap::new(),
-                    String::new(),
-                    saved_cookies,
-                    5,
+                    HttpRequestSpec::get(join_url(&target_url, target_path))
+                        .cookies(saved_cookies)
+                        .max_redirects(5),
                 )
                 .await?;
             if is_traffic_home_page(&session_response.text) {
@@ -90,14 +89,7 @@ impl SelfServicePanelClient {
 
         let page_response = self
             .transport
-            .request(
-                "GET",
-                &target_url,
-                HashMap::new(),
-                String::new(),
-                HashMap::new(),
-                5,
-            )
+            .request(HttpRequestSpec::get(&target_url).max_redirects(5))
             .await?;
         if is_traffic_home_page(&page_response.text) {
             self.persist_session(account, &page_response.cookies)?;
@@ -106,12 +98,9 @@ impl SelfServicePanelClient {
         let retry_response = self
             .transport
             .request(
-                "GET",
-                &join_url(&page_response.final_url, target_path),
-                HashMap::new(),
-                String::new(),
-                page_response.cookies.clone(),
-                5,
+                HttpRequestSpec::get(join_url(&page_response.final_url, target_path))
+                    .cookies(page_response.cookies.clone())
+                    .max_redirects(5),
             )
             .await?;
         if is_traffic_home_page(&retry_response.text) {
@@ -137,14 +126,7 @@ impl SelfServicePanelClient {
         let sso_url = build_sso_url(&self.traffic_entry_url(), &account.account.username);
         let response = self
             .transport
-            .request(
-                "GET",
-                &sso_url,
-                HashMap::new(),
-                String::new(),
-                HashMap::new(),
-                5,
-            )
+            .request(HttpRequestSpec::get(sso_url).max_redirects(5))
             .await?;
         if is_login_page(&response.text) {
             return Ok(None);
@@ -156,12 +138,9 @@ impl SelfServicePanelClient {
         let retry_response = self
             .transport
             .request(
-                "GET",
-                &join_url(&response.final_url, target_path),
-                HashMap::new(),
-                String::new(),
-                response.cookies.clone(),
-                5,
+                HttpRequestSpec::get(join_url(&response.final_url, target_path))
+                    .cookies(response.cookies.clone())
+                    .max_redirects(5),
             )
             .await?;
         if is_login_page(&retry_response.text) {
@@ -189,12 +168,9 @@ impl SelfServicePanelClient {
         response = self
             .transport
             .request(
-                "GET",
-                &join_url(&response.final_url, target_path),
-                HashMap::new(),
-                String::new(),
-                response.cookies.clone(),
-                5,
+                HttpRequestSpec::get(join_url(&response.final_url, target_path))
+                    .cookies(response.cookies.clone())
+                    .max_redirects(5),
             )
             .await?;
         if is_login_page(&response.text) {
@@ -247,12 +223,14 @@ impl SelfServicePanelClient {
         let logout_response = self
             .transport
             .request(
-                "POST",
-                &join_url(&home_response.final_url, &local_device.logout_path),
-                self.build_form_headers(&home_response.final_url),
-                payload,
-                home_response.cookies.clone(),
-                3,
+                HttpRequestSpec::post(join_url(
+                    &home_response.final_url,
+                    &local_device.logout_path,
+                ))
+                .headers(build_form_headers(&home_response.final_url))
+                .body(payload)
+                .cookies(home_response.cookies.clone())
+                .max_redirects(3),
             )
             .await?;
         self.persist_session(account, &logout_response.cookies)?;
@@ -266,12 +244,9 @@ impl SelfServicePanelClient {
             let verify_response = self
                 .transport
                 .request(
-                    "GET",
-                    &verify_url,
-                    HashMap::new(),
-                    String::new(),
-                    verify_cookies.clone(),
-                    5,
+                    HttpRequestSpec::get(&verify_url)
+                        .cookies(verify_cookies.clone())
+                        .max_redirects(5),
                 )
                 .await?;
             verify_cookies = verify_response.cookies.clone();
@@ -297,21 +272,6 @@ impl SelfServicePanelClient {
         cookies: &HashMap<String, String>,
     ) -> AppResult<()> {
         self.session_repo.save_session(&account.account.id, cookies)
-    }
-
-    fn build_form_headers(&self, referer_url: &str) -> HashMap<String, String> {
-        let origin = url::Url::parse(referer_url)
-            .ok()
-            .and_then(|url| Some(format!("{}://{}", url.scheme(), url.host_str()?)))
-            .unwrap_or_default();
-        HashMap::from([
-            (
-                "Content-Type".to_string(),
-                "application/x-www-form-urlencoded; charset=UTF-8".to_string(),
-            ),
-            ("Origin".to_string(), origin),
-            ("Referer".to_string(), referer_url.to_string()),
-        ])
     }
 
     fn traffic_entry_url(&self) -> String {

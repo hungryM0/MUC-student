@@ -1,19 +1,19 @@
 # 常见改动落点
 
-## 新增 Slint 界面功能
+## 新增 React 界面功能
 
-- 界面结构、控件、布局、样式：`src-slint/ui/`
-- global 状态和 callback 声明：`src-slint/ui/`
-- 窗口创建、状态写入、callback 绑定：`src-slint/src/main.rs`
-- 业务用例调用：先拆纯 Rust 服务，再从 `src-slint/src/main.rs` 调用
+- 页面结构、控件、布局、样式：`src/pages/` 或 `src/components/`
+- 前端 DTO 和 invoke 封装：`src/lib/`
+- Tauri command 暴露：`src-tauri/src/lib.rs`
+- 业务用例调用：先拆 `src-core/src/application/` 服务，再从 Tauri command 调用
 
 ## 新增后端用例
 
-- Slint 回调装配：`src-slint/src/main.rs`
-- 遗留 Tauri 暴露：`src-tauri/src/adapters_tauri/`
-- 用例编排：`src-tauri/src/application/`
-- 纯规则：`src-tauri/src/domain/`
-- 外部系统：`src-tauri/src/infrastructure/`
+- React invoke 封装：`src/lib/`
+- Tauri command 暴露：`src-tauri/src/lib.rs`
+- 用例编排：`src-core/src/application/`
+- 纯规则：`src-core/src/domain/`
+- 外部系统：`src-core/src/infrastructure/`
 
 ## 改存储结构
 

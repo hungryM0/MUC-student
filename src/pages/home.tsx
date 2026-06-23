@@ -35,6 +35,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [errorText, setErrorText] = useState("");
   const [selectingId, setSelectingId] = useState("");
+  const [loginAccountId, setLoginAccountId] = useState("");
   const [runningAction, setRunningAction] = useState<RunningAction | null>(
     null,
   );
@@ -76,7 +77,6 @@ export default function HomePage() {
     !!runningAction ||
     !!snapshot?.loginState.running ||
     !!snapshot?.refreshState.running;
-  const hasSelectedAccount = !!selectedAccount;
   const canLogoutLocalDevice = !!snapshot?.accounts.some(
     (account) => account.canLogoutLocalDevice,
   );
@@ -93,21 +93,6 @@ export default function HomePage() {
     }
   }
 
-  async function handleSelectAccount(account: AccountDto) {
-    if (isBusy || account.id === snapshot?.selectedAccountId) {
-      return;
-    }
-    setSelectingId(account.id);
-    setErrorText("");
-    try {
-      setSnapshot(await selectAccount(account.id));
-    } catch (error) {
-      setErrorText(readErrorMessage(error));
-    } finally {
-      setSelectingId("");
-    }
-  }
-
   async function runSnapshotAction(
     action: RunningAction,
     task: () => Promise<AppSnapshotDto>,
@@ -119,6 +104,29 @@ export default function HomePage() {
     } catch (error) {
       setErrorText(readErrorMessage(error));
     } finally {
+      setRunningAction(null);
+    }
+  }
+
+  async function handleLoginAccount(account: AccountDto) {
+    if (isBusy) {
+      return;
+    }
+    setLoginAccountId(account.id);
+    setRunningAction("login");
+    setErrorText("");
+    try {
+      if (account.id !== snapshot?.selectedAccountId) {
+        setSelectingId(account.id);
+        await selectAccount(account.id);
+        setSelectingId("");
+      }
+      setSnapshot(await loginSelectedAccount());
+    } catch (error) {
+      setErrorText(readErrorMessage(error));
+    } finally {
+      setSelectingId("");
+      setLoginAccountId("");
       setRunningAction(null);
     }
   }
@@ -236,8 +244,8 @@ export default function HomePage() {
               </div>
             )}
 
-            <section className="grid grid-cols-[1fr_280px] gap-5">
-              <Card className="border-border/70 bg-background/90 rounded-lg shadow-none">
+            <section className="grid min-h-[430px] grid-cols-[minmax(0,1fr)_280px] gap-5">
+              <Card className="border-border/70 bg-background/90 flex min-h-0 flex-col rounded-lg shadow-none">
                 <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
                   <CardTitle className="flex items-center gap-2 text-base">
                     <Activity className="text-amber-500 h-4 w-4" />
@@ -256,50 +264,38 @@ export default function HomePage() {
                     同步
                   </Button>
                 </CardHeader>
-                <CardContent>
-                  <div className="grid gap-3">
-                    {snapshot?.accounts.length ? (
-                      snapshot.accounts.map((account) => (
-                        <AccountRow
-                          key={account.id}
-                          account={account}
-                          selected={account.id === snapshot.selectedAccountId}
-                          selecting={selectingId === account.id}
-                          onSelect={() => handleSelectAccount(account)}
-                        />
-                      ))
-                    ) : (
-                      <div className="text-muted-foreground flex h-40 items-center justify-center rounded-lg border border-dashed text-sm">
-                        {loading ? "读取中" : "暂无账号"}
-                      </div>
-                    )}
+                <CardContent className="min-h-0 flex-1">
+                  <div className="max-h-[calc(100vh-430px)] min-h-[280px] overflow-y-auto pr-1">
+                    <div className="grid gap-3">
+                      {snapshot?.accounts.length ? (
+                        snapshot.accounts.map((account) => (
+                          <AccountRow
+                            key={account.id}
+                            account={account}
+                            selected={account.id === snapshot.selectedAccountId}
+                            selecting={selectingId === account.id}
+                            loggingIn={loginAccountId === account.id}
+                            disabled={isBusy}
+                            onLogin={() => handleLoginAccount(account)}
+                          />
+                        ))
+                      ) : (
+                        <div className="text-muted-foreground flex h-40 items-center justify-center rounded-lg border border-dashed text-sm">
+                          {loading ? "读取中" : "暂无账号"}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </CardContent>
               </Card>
 
               <Card className="border-border/70 bg-background/90 rounded-lg shadow-none">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base">动作</CardTitle>
+                  <CardTitle className="text-base">全局动作</CardTitle>
                 </CardHeader>
                 <CardContent className="grid gap-2">
                   <Button
                     className="justify-start gap-2"
-                    disabled={isBusy || !hasSelectedAccount}
-                    onClick={() =>
-                      runSnapshotAction("login", loginSelectedAccount)
-                    }
-                  >
-                    <LogIn
-                      className={cn(
-                        "h-4 w-4",
-                        runningAction === "login" && "animate-pulse",
-                      )}
-                    />
-                    登录
-                  </Button>
-                  <Button
-                    className="justify-start gap-2"
-                    variant="outline"
                     disabled={isBusy || !snapshot?.accounts.length}
                     onClick={() =>
                       runSnapshotAction("refresh", refreshDashboard)
@@ -398,23 +394,30 @@ function AccountRow({
   account,
   selected,
   selecting,
-  onSelect,
+  loggingIn,
+  disabled,
+  onLogin,
 }: {
   account: AccountDto;
   selected: boolean;
   selecting: boolean;
-  onSelect: () => void;
+  loggingIn: boolean;
+  disabled: boolean;
+  onLogin: () => void;
 }) {
   const snapshot = account.snapshot;
   const progress = Math.round((snapshot?.progressPercent ?? 0) * 100);
+  const accountState = account.isCurrentOnline
+    ? "online"
+    : selected
+      ? "selected"
+      : "idle";
 
   return (
-    <button
-      onClick={onSelect}
-      disabled={selected || selecting}
+    <div
       className={cn(
-        "grid min-h-20 grid-cols-[1fr_auto] gap-4 rounded-lg border p-4 text-left transition-colors",
-        selected
+        "grid min-h-20 grid-cols-[1fr_112px] gap-4 rounded-lg border p-4 text-left transition-colors",
+        accountState === "online"
           ? "border-emerald-500/40 bg-emerald-500/10"
           : "border-border hover:bg-muted/50",
       )}
@@ -422,18 +425,7 @@ function AccountRow({
       <div className="min-w-0 space-y-2">
         <div className="flex min-w-0 items-center gap-2">
           <div className="truncate font-medium">{account.remarkName}</div>
-          {account.isCurrentOnline && (
-            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-sky-500/10 px-2 py-0.5 text-xs text-sky-600">
-              <Wifi className="h-3 w-3" />
-              在线
-            </span>
-          )}
-          {selected && (
-            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-600">
-              <CheckCircle2 className="h-3 w-3" />
-              已选
-            </span>
-          )}
+          <AccountStateBadge state={accountState} />
         </div>
         <div className="text-muted-foreground truncate text-sm">
           {account.username}
@@ -444,14 +436,59 @@ function AccountRow({
           <span>{snapshot?.statusText ?? "未查询"}</span>
         </div>
       </div>
-      <div className="w-20 text-right">
-        <div className="font-semibold">
-          {Math.min(100, Math.max(0, progress))}%
+      <div className="flex flex-col items-end justify-between gap-3">
+        <div className="w-full text-right">
+          <div className="font-semibold">
+            {Math.min(100, Math.max(0, progress))}%
+          </div>
+          <div className="text-muted-foreground mt-1 truncate text-xs">
+            {snapshot?.productBalanceText ?? "-"}
+          </div>
         </div>
-        <div className="text-muted-foreground mt-1 truncate text-xs">
-          {snapshot?.productBalanceText ?? "-"}
+        <div className="w-full">
+          <Button
+            type="button"
+            size="sm"
+            disabled={disabled}
+            onClick={onLogin}
+            className="h-8 w-full"
+          >
+            <LogIn
+              className={cn(
+                "h-3.5 w-3.5",
+                (loggingIn || selecting) && "animate-pulse",
+              )}
+            />
+            {loggingIn || selecting ? "登录中" : "登录"}
+          </Button>
         </div>
       </div>
-    </button>
+    </div>
+  );
+}
+
+function AccountStateBadge({
+  state,
+}: {
+  state: "online" | "selected" | "idle";
+}) {
+  if (state === "idle") {
+    return null;
+  }
+
+  if (state === "online") {
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-600">
+        <CheckCircle2 className="h-3 w-3" />
+        在线
+      </span>
+    );
+  }
+
+  return (
+    <span className="text-muted-foreground inline-flex shrink-0 items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs">
+      <Wifi className="h-3 w-3" />
+      已选
+    </span>
   );
 }

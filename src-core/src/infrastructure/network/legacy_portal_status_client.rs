@@ -1,7 +1,5 @@
-use std::collections::HashMap;
-
 use crate::application::error::AppResult;
-use crate::infrastructure::network::http_transport::HttpTransport;
+use crate::infrastructure::network::http_transport::{HttpRequestSpec, HttpTransport};
 use crate::infrastructure::parsers::legacy_portal_online_info_parser::{
     parse_legacy_portal_online_info, LegacyPortalOnlineInfo,
 };
@@ -32,14 +30,7 @@ impl LegacyPortalStatusClient {
         );
         let response = self
             .transport
-            .request(
-                "GET",
-                &url,
-                HashMap::new(),
-                String::new(),
-                HashMap::new(),
-                1,
-            )
+            .request(HttpRequestSpec::get(url).max_redirects(1))
             .await?;
         parse_legacy_portal_online_info(&response.text)
     }
@@ -48,14 +39,7 @@ impl LegacyPortalStatusClient {
         let url = join_url(&self.settings.portal_url, "/srun_portal_pc_success.php");
         let response = self
             .transport
-            .request(
-                "GET",
-                &url,
-                HashMap::new(),
-                String::new(),
-                HashMap::new(),
-                1,
-            )
+            .request(HttpRequestSpec::get(url).max_redirects(1))
             .await?;
         parse_legacy_portal_success_page(&response.text)
     }

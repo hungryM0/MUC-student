@@ -4,7 +4,9 @@ use chrono::Local;
 
 use crate::application::error::{AppError, AppResult};
 use crate::domain::models::{LoginResult, PortalHiddenFields};
-use crate::infrastructure::network::http_transport::{encode_password, HttpTransport};
+use crate::infrastructure::network::http_transport::{
+    build_form_headers, encode_password, HttpRequestSpec, HttpTransport,
+};
 use crate::infrastructure::network::models::PortalPageData;
 use crate::infrastructure::parsers::legacy_portal_success_page_parser::parse_legacy_portal_success_page;
 use crate::infrastructure::parsers::portal_page_parser::{
@@ -41,14 +43,7 @@ impl LegacyPortalAuthClient {
     pub async fn fetch_login_page(&self) -> AppResult<PortalPageData> {
         let response = self
             .transport
-            .request(
-                "GET",
-                &self.settings.portal_url,
-                HashMap::new(),
-                String::new(),
-                HashMap::new(),
-                5,
-            )
+            .request(HttpRequestSpec::get(&self.settings.portal_url).max_redirects(5))
             .await?;
         Ok(PortalPageData {
             login_url: response.final_url.clone(),
@@ -140,7 +135,7 @@ impl LegacyPortalAuthClient {
     }
 
     fn build_login_headers(&self, referer_url: &str) -> HashMap<String, String> {
-        let mut headers = self.build_form_headers(referer_url);
+        let mut headers = build_form_headers(referer_url);
         headers.insert("X-Requested-With".to_string(), "XMLHttpRequest".to_string());
         headers
     }
@@ -163,12 +158,10 @@ impl LegacyPortalAuthClient {
             .finish();
         self.transport
             .request(
-                "POST",
-                &post_url,
-                self.build_login_headers(&self.settings.portal_url),
-                payload,
-                HashMap::new(),
-                1,
+                HttpRequestSpec::post(post_url)
+                    .headers(self.build_login_headers(&self.settings.portal_url))
+                    .body(payload)
+                    .max_redirects(1),
             )
             .await
     }
@@ -188,12 +181,10 @@ impl LegacyPortalAuthClient {
         let response = self
             .transport
             .request(
-                "POST",
-                &post_url,
-                self.build_login_headers(&page_data.login_url),
-                payload,
-                HashMap::new(),
-                1,
+                HttpRequestSpec::post(post_url)
+                    .headers(self.build_login_headers(&page_data.login_url))
+                    .body(payload)
+                    .max_redirects(1),
             )
             .await?;
         let response_text = response.text.trim().to_string();
@@ -240,30 +231,14 @@ impl LegacyPortalAuthClient {
         let response = self
             .transport
             .request(
-                "POST",
-                &post_url,
-                self.build_form_headers(&page_data.login_url),
-                payload,
-                page_data.cookies.clone(),
-                1,
+                HttpRequestSpec::post(post_url)
+                    .headers(build_form_headers(&page_data.login_url))
+                    .body(payload)
+                    .cookies(page_data.cookies.clone())
+                    .max_redirects(1),
             )
             .await?;
         Ok(response.text.trim().to_string())
-    }
-
-    fn build_form_headers(&self, referer_url: &str) -> HashMap<String, String> {
-        let origin = url::Url::parse(referer_url)
-            .ok()
-            .and_then(|url| Some(format!("{}://{}", url.scheme(), url.host_str()?)))
-            .unwrap_or_default();
-        HashMap::from([
-            (
-                "Content-Type".to_string(),
-                "application/x-www-form-urlencoded; charset=UTF-8".to_string(),
-            ),
-            ("Origin".to_string(), origin),
-            ("Referer".to_string(), referer_url.to_string()),
-        ])
     }
 }
 

@@ -5,6 +5,15 @@ use crate::infrastructure::parsers::portal_page_parser::extract_meta_content;
 
 const FREE_PRODUCT_QUOTA_GB: f64 = 70.0;
 
+pub struct PanelHomeSnapshot {
+    pub package_name: String,
+    pub billing_policy: String,
+    pub used_traffic: String,
+    pub product_balance: String,
+    pub online_devices: Vec<OnlineDeviceRecord>,
+    pub matched_local_ip_device: Option<OnlineDeviceRecord>,
+}
+
 pub fn parse_home_table(html: &str) -> AppResult<(String, String, String, String)> {
     let row_regex = regex::Regex::new(r"(?is)<tr[^>]*>(?P<body>.*?)</tr>").expect("valid regex");
     let cell_regex =
@@ -40,15 +49,26 @@ pub fn parse_home_table(html: &str) -> AppResult<(String, String, String, String
             .iter()
             .all(|name| row.iter().any(|cell| cell == name))
         {
-            let package_idx = row.iter().position(|cell| cell == "产品名称").unwrap();
-            let billing_idx = row.iter().position(|cell| cell == "计费策略").unwrap();
-            let used_idx = row.iter().position(|cell| cell == "已用流量").unwrap();
-            let balance_idx = row.iter().position(|cell| cell == "产品余额").unwrap();
+            let Some(package_idx) = row.iter().position(|cell| cell == "产品名称") else {
+                continue;
+            };
+            let Some(billing_idx) = row.iter().position(|cell| cell == "计费策略") else {
+                continue;
+            };
+            let Some(used_idx) = row.iter().position(|cell| cell == "已用流量") else {
+                continue;
+            };
+            let Some(balance_idx) = row.iter().position(|cell| cell == "产品余额") else {
+                continue;
+            };
             for data_row in rows.iter().skip(idx + 1) {
-                let max_idx = *[package_idx, billing_idx, used_idx, balance_idx]
+                let Some(max_idx) = [package_idx, billing_idx, used_idx, balance_idx]
                     .iter()
                     .max()
-                    .unwrap();
+                    .copied()
+                else {
+                    continue;
+                };
                 if data_row.len() <= max_idx {
                     continue;
                 }
@@ -112,29 +132,19 @@ pub fn match_local_ip_device(
         .cloned()
 }
 
-pub fn parse_panel_home(
-    html: &str,
-    local_ip: Option<&str>,
-) -> AppResult<(
-    String,
-    String,
-    String,
-    String,
-    Vec<OnlineDeviceRecord>,
-    Option<OnlineDeviceRecord>,
-)> {
+pub fn parse_panel_home(html: &str, local_ip: Option<&str>) -> AppResult<PanelHomeSnapshot> {
     let (package_name, billing_policy, used_traffic, _) = parse_home_table(html)?;
     let (product_balance, _included_package_text) = build_product_balance_texts(html);
     let online_devices = parse_online_devices(html);
     let matched = match_local_ip_device(&online_devices, local_ip.unwrap_or_default());
-    Ok((
+    Ok(PanelHomeSnapshot {
         package_name,
         billing_policy,
         used_traffic,
         product_balance,
         online_devices,
-        matched,
-    ))
+        matched_local_ip_device: matched,
+    })
 }
 
 fn convert_to_gigabytes(value: f64, unit: &str) -> f64 {

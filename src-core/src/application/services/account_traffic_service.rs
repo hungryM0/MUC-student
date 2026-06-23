@@ -47,31 +47,27 @@ impl AccountTrafficService {
             .panel_client
             .fetch_authenticated_html(account, "/home")
             .await?;
-        let (
-            package_name,
-            billing_policy,
-            used_traffic,
-            product_balance,
-            online_devices,
-            matched_local,
-        ) = parse_panel_home(&home_html, local_ip)?;
+        let panel_home = parse_panel_home(&home_html, local_ip)?;
         Ok(AccountTrafficSnapshot {
             account_id: account.account.id.clone(),
-            used_traffic_text: used_traffic.clone(),
-            product_balance_text: product_balance.clone(),
+            used_traffic_text: panel_home.used_traffic.clone(),
+            product_balance_text: panel_home.product_balance.clone(),
             included_package_text:
                 crate::infrastructure::parsers::panel_home_parser::build_product_balance_texts(
                     &home_html,
                 )
                 .1,
-            online_device_count_text: online_devices.len().to_string(),
-            package_text: package_name,
+            online_device_count_text: panel_home.online_devices.len().to_string(),
+            package_text: panel_home.package_name,
             status_text: "已同步".to_string(),
-            detail_text: format!("计费策略：{billing_policy}"),
+            detail_text: format!("计费策略：{}", panel_home.billing_policy),
             queried_at: Local::now(),
-            online_devices,
-            matched_local_ip_device: matched_local,
-            progress_percent: build_progress_percent(&used_traffic, &product_balance),
+            online_devices: panel_home.online_devices,
+            matched_local_ip_device: panel_home.matched_local_ip_device,
+            progress_percent: build_progress_percent(
+                &panel_home.used_traffic,
+                &panel_home.product_balance,
+            ),
         })
     }
 

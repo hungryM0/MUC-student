@@ -16,20 +16,63 @@ pub struct HttpTransport {
     settings: AppSettings,
 }
 
+#[derive(Clone, Debug)]
+pub struct HttpRequestSpec {
+    pub method: String,
+    pub url: String,
+    pub headers: HashMap<String, String>,
+    pub body: String,
+    pub cookies: HashMap<String, String>,
+    pub max_redirects: usize,
+}
+
+impl HttpRequestSpec {
+    pub fn new(method: impl Into<String>, url: impl Into<String>) -> Self {
+        Self {
+            method: method.into(),
+            url: url.into(),
+            headers: HashMap::new(),
+            body: String::new(),
+            cookies: HashMap::new(),
+            max_redirects: 5,
+        }
+    }
+
+    pub fn get(url: impl Into<String>) -> Self {
+        Self::new("GET", url)
+    }
+
+    pub fn post(url: impl Into<String>) -> Self {
+        Self::new("POST", url)
+    }
+
+    pub fn headers(mut self, headers: HashMap<String, String>) -> Self {
+        self.headers = headers;
+        self
+    }
+
+    pub fn body(mut self, body: impl Into<String>) -> Self {
+        self.body = body.into();
+        self
+    }
+
+    pub fn cookies(mut self, cookies: HashMap<String, String>) -> Self {
+        self.cookies = cookies;
+        self
+    }
+
+    pub fn max_redirects(mut self, max_redirects: usize) -> Self {
+        self.max_redirects = max_redirects;
+        self
+    }
+}
+
 impl HttpTransport {
     pub fn new(settings: AppSettings) -> Self {
         Self { settings }
     }
 
-    pub async fn request(
-        &self,
-        method: &str,
-        url: &str,
-        headers: HashMap<String, String>,
-        body: String,
-        cookies: HashMap<String, String>,
-        max_redirects: usize,
-    ) -> AppResult<HttpResponseData> {
+    pub async fn request(&self, spec: HttpRequestSpec) -> AppResult<HttpResponseData> {
         let modes = if self.settings.bind_preferred_source_ip
             && !self.settings.preferred_source_ip.trim().is_empty()
         {
@@ -40,18 +83,7 @@ impl HttpTransport {
 
         let mut last_error = None;
         for use_source_ip in modes {
-            match self
-                .request_with_mode(
-                    method,
-                    url,
-                    &headers,
-                    &body,
-                    &cookies,
-                    max_redirects,
-                    use_source_ip,
-                )
-                .await
-            {
+            match self.request_with_mode(&spec, use_source_ip).await {
                 Ok(response) => return Ok(response),
                 Err(err) => last_error = Some(err),
             }
@@ -62,25 +94,20 @@ impl HttpTransport {
             self.settings.preferred_interface_name,
             if self.settings.bind_preferred_source_ip { self.settings.preferred_source_ip.as_str() } else { "disabled" },
             self.settings.bind_preferred_source_ip,
-            url,
+            spec.url,
             last_error.map(|err| err.to_string()).unwrap_or_else(|| "unknown".to_string())
         )))
     }
 
     async fn request_with_mode(
         &self,
-        method: &str,
-        url: &str,
-        headers: &HashMap<String, String>,
-        body: &str,
-        cookies: &HashMap<String, String>,
-        max_redirects: usize,
+        spec: &HttpRequestSpec,
         use_source_ip: bool,
     ) -> AppResult<HttpResponseData> {
         let mut builder = reqwest::Client::builder()
             .cookie_store(true)
             .timeout(Duration::from_secs(12))
-            .redirect(Policy::limited(max_redirects))
+            .redirect(Policy::limited(spec.max_redirects))
             .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0");
 
         if use_source_ip {
@@ -90,23 +117,25 @@ impl HttpTransport {
         }
 
         let client = builder.build()?;
-        let parsed_url =
-            Url::parse(url).map_err(|err| AppError::Network(format!("无效 URL：{url}，{err}")))?;
-        let method = method
+        let parsed_url = Url::parse(&spec.url)
+            .map_err(|err| AppError::Network(format!("无效 URL：{}，{err}", spec.url)))?;
+        let method = spec
+            .method
             .parse::<reqwest::Method>()
-            .map_err(|err| AppError::Network(format!("无效 HTTP 方法：{method}，{err}")))?;
+            .map_err(|err| AppError::Network(format!("无效 HTTP 方法：{}，{err}", spec.method)))?;
         let mut request = client.request(method, parsed_url);
 
         let mut header_map = HeaderMap::new();
-        for (key, value) in headers {
+        for (key, value) in &spec.headers {
             let header_name = HeaderName::from_bytes(key.as_bytes())
                 .map_err(|err| AppError::Network(format!("无效请求头：{key}，{err}")))?;
             let header_value = HeaderValue::from_str(value)
                 .map_err(|err| AppError::Network(format!("无效请求头值：{key}，{err}")))?;
             header_map.insert(header_name, header_value);
         }
-        if !cookies.is_empty() {
-            let cookie_text = cookies
+        if !spec.cookies.is_empty() {
+            let cookie_text = spec
+                .cookies
                 .iter()
                 .map(|(key, value)| format!("{key}={value}"))
                 .collect::<Vec<_>>()
@@ -118,8 +147,8 @@ impl HttpTransport {
             );
         }
         request = request.headers(header_map);
-        if !body.is_empty() {
-            request = request.body(body.to_string());
+        if !spec.body.is_empty() {
+            request = request.body(spec.body.clone());
         }
 
         let response = request.send().await?;
@@ -140,7 +169,7 @@ impl HttpTransport {
             )));
         }
 
-        let mut cookie_map = cookies.clone();
+        let mut cookie_map = spec.cookies.clone();
         for value in headers.get_all("set-cookie").iter() {
             if let Ok(raw) = value.to_str() {
                 if let Some((name, rest)) = raw.split_once('=') {
@@ -159,6 +188,21 @@ impl HttpTransport {
             cookies: cookie_map,
         })
     }
+}
+
+pub fn build_form_headers(referer_url: &str) -> HashMap<String, String> {
+    let origin = url::Url::parse(referer_url)
+        .ok()
+        .and_then(|url| Some(format!("{}://{}", url.scheme(), url.host_str()?)))
+        .unwrap_or_default();
+    HashMap::from([
+        (
+            "Content-Type".to_string(),
+            "application/x-www-form-urlencoded; charset=UTF-8".to_string(),
+        ),
+        ("Origin".to_string(), origin),
+        ("Referer".to_string(), referer_url.to_string()),
+    ])
 }
 
 pub fn encode_password(password: &str) -> String {

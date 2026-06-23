@@ -10,12 +10,10 @@ pub struct AppRuntimeState {
     pub preferences: UserPreferences,
     pub network: NetworkStatus,
     pub snapshots: std::collections::BTreeMap<String, AccountTrafficSnapshot>,
-    pub selected_account_id: String,
     pub current_online_account_id: String,
     pub login_running: bool,
     pub refresh_running: bool,
     pub logout_running: bool,
-    pub migration_version: u32,
 }
 
 #[derive(Clone, Default)]

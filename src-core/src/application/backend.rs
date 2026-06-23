@@ -1,33 +1,27 @@
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use chrono::Local;
 
-use crate::application::dto::{
-    AccountDto, AppSnapshotDto, LoginStateDto, PoolQuotaDto, PreferenceDto, RefreshStateDto,
-};
+use crate::application::dto::AppSnapshotDto;
 use crate::application::error::{AppError, AppResult};
 use crate::application::platform::{AppEventSink, RuntimePathProvider, StartupController};
 use crate::application::runtime::{AppRuntimeState, SharedRuntimeState};
 use crate::application::services::account_traffic_service::AccountTrafficService;
-use crate::application::services::portal_snapshot_service::{
-    username_matches, PortalSnapshotService,
+use crate::application::services::dashboard_refresh_service::{
+    DashboardRefreshDependencies, DashboardRefreshService,
 };
-use crate::domain::models::traffic::AccountTrafficSnapshot;
-use crate::domain::models::{
-    CachedTrafficSnapshot, LoginResult, NetworkStatus, PortalAccount, UserPreferences,
+use crate::application::services::portal_snapshot_service::PortalSnapshotService;
+use crate::application::services::session_service::SessionService;
+use crate::application::services::snapshot_mapper::{build_app_snapshot, restore_cached_snapshots};
+use crate::domain::models::NetworkStatus;
+use crate::domain::policies::traffic_math::build_auto_switch_candidate;
+use crate::infrastructure::network::{
+    http_transport::HttpTransport, legacy_portal_auth_client::LegacyPortalAuthClient,
+    legacy_portal_status_client::LegacyPortalStatusClient,
+    network_status_service::NetworkStatusService,
+    self_service_panel_client::SelfServicePanelClient,
 };
-use crate::domain::policies::traffic_math::{
-    build_auto_switch_candidate, build_pool_quota_summary, build_status_card_order,
-};
-use crate::infrastructure::network::http_transport::HttpTransport;
-use crate::infrastructure::network::legacy_portal_auth_client::LegacyPortalAuthClient;
-use crate::infrastructure::network::legacy_portal_status_client::LegacyPortalStatusClient;
-use crate::infrastructure::network::network_status_service::NetworkStatusService;
-use crate::infrastructure::network::self_service_panel_client::SelfServicePanelClient;
-use crate::infrastructure::persistence::account_repository::{
-    AccountRepository, AccountWithPassword,
-};
+use crate::infrastructure::persistence::account_repository::AccountRepository;
 use crate::infrastructure::persistence::app_state_repository::AppStateRepository;
 use crate::infrastructure::persistence::migration::MigrationService;
 use crate::infrastructure::persistence::panel_session_repository::PanelSessionRepository;
@@ -40,38 +34,9 @@ pub struct AppCore {
     state: SharedRuntimeState,
     account_repo: AccountRepository,
     app_state_repo: AppStateRepository,
-    auth_client: LegacyPortalAuthClient,
-    portal_status_client: LegacyPortalStatusClient,
-    traffic_service: AccountTrafficService,
-    portal_snapshot_service: PortalSnapshotService,
-    network_status_service: Arc<NetworkStatusService>,
-    startup_controller: Arc<dyn StartupController>,
+    session_service: SessionService,
+    dashboard_refresh_service: DashboardRefreshService,
     event_sink: Arc<dyn AppEventSink>,
-}
-
-#[derive(Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AccountInput {
-    pub remark_name: String,
-    pub username: String,
-    pub password: String,
-}
-
-#[derive(Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AccountUpdateInput {
-    pub account_id: String,
-    pub remark_name: String,
-    pub username: String,
-    pub password: Option<String>,
-}
-
-#[derive(Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PreferenceInput {
-    pub minimize_to_tray_on_close: bool,
-    pub launch_on_startup: bool,
-    pub auto_switch_account_on_traffic_exhausted: bool,
 }
 
 impl AppCore {
@@ -92,7 +57,7 @@ impl AppCore {
 
     pub fn build_with_paths(
         paths: RuntimePaths,
-        startup_controller: Arc<dyn StartupController>,
+        _startup_controller: Arc<dyn StartupController>,
         event_sink: Arc<dyn AppEventSink>,
     ) -> AppResult<Self> {
         let settings = AppSettings::default();
@@ -133,23 +98,36 @@ impl AppCore {
             preferences: preferences.clone(),
             network: NetworkStatus::default(),
             snapshots,
-            selected_account_id: account_store.selected_account_id.clone(),
             current_online_account_id: account_store.current_online_account_id.clone(),
             login_running: false,
             refresh_running: false,
             logout_running: false,
-            migration_version: 1,
         });
+        let session_service = SessionService::new(
+            runtime.clone(),
+            account_repo.clone(),
+            app_state_repo.clone(),
+            auth_client.clone(),
+            portal_status_client.clone(),
+            network_status_service.clone(),
+        );
+        let dashboard_refresh_service =
+            DashboardRefreshService::new(DashboardRefreshDependencies {
+                state: runtime.clone(),
+                account_repo: account_repo.clone(),
+                app_state_repo: app_state_repo.clone(),
+                portal_status_client,
+                traffic_service,
+                portal_snapshot_service,
+                network_status_service,
+                event_sink: event_sink.clone(),
+            });
         let backend = Self {
             state: runtime,
             account_repo,
             app_state_repo,
-            auth_client,
-            portal_status_client,
-            traffic_service,
-            portal_snapshot_service,
-            network_status_service,
-            startup_controller,
+            session_service,
+            dashboard_refresh_service,
             event_sink,
         };
         Ok(backend)
@@ -185,128 +163,8 @@ impl AppCore {
         self.emit_state()
     }
 
-    pub async fn create_account(&self, input: AccountInput) -> AppResult<AppSnapshotDto> {
-        let remark_name = require_input_text(&input.remark_name, "备注名")?;
-        let username = require_input_text(&input.username, "账号")?;
-        let password = require_input_text(&input.password, "密码")?;
-        self.validate_panel_credentials(AccountWithPassword {
-            account: PortalAccount {
-                id: "__new_account_validation__".to_string(),
-                remark_name: remark_name.clone(),
-                username: username.clone(),
-            },
-            password: password.clone(),
-        })
-        .await?;
-        let account = self
-            .account_repo
-            .add_account(&remark_name, &username, &password)?;
-        self.refresh_runtime_from_disk()?;
-        let _ = account;
-        self.emit_state()
-    }
-
-    pub async fn update_account(&self, input: AccountUpdateInput) -> AppResult<AppSnapshotDto> {
-        let remark_name = require_input_text(&input.remark_name, "备注名")?;
-        let username = require_input_text(&input.username, "账号")?;
-        let store = self.account_repo.load_store()?;
-        let existing = self
-            .account_repo
-            .get_account_by_id(&store, &input.account_id)
-            .ok_or_else(|| AppError::NotFound("找不到要编辑的账号".to_string()))?;
-        let new_password = input
-            .password
-            .as_deref()
-            .map(str::trim)
-            .filter(|text| !text.is_empty())
-            .map(str::to_string);
-        let password = if let Some(password) = &new_password {
-            password.clone()
-        } else {
-            self.account_repo
-                .load_account_with_password(&existing)?
-                .password
-        };
-        self.validate_panel_credentials(AccountWithPassword {
-            account: PortalAccount {
-                id: input.account_id.clone(),
-                remark_name: remark_name.clone(),
-                username: username.clone(),
-            },
-            password,
-        })
-        .await?;
-        let account = self.account_repo.update_account(
-            &input.account_id,
-            &remark_name,
-            &username,
-            new_password.as_deref(),
-        )?;
-        self.refresh_runtime_from_disk()?;
-        let _ = account;
-        self.emit_state()
-    }
-
-    pub async fn delete_account(&self, account_id: String) -> AppResult<AppSnapshotDto> {
-        let account = self.account_repo.delete_account(&account_id)?;
-        self.refresh_runtime_from_disk()?;
-        {
-            let mut state = self.state.write();
-            state.snapshots.remove(&account_id);
-            if state.current_online_account_id == account_id {
-                state.current_online_account_id.clear();
-            }
-        }
-        let _ = account;
-        self.emit_state()
-    }
-
-    pub async fn update_preferences(&self, input: PreferenceInput) -> AppResult<AppSnapshotDto> {
-        let preferences = UserPreferences {
-            minimize_to_tray_on_close: input.minimize_to_tray_on_close,
-            launch_on_startup: input.launch_on_startup,
-            auto_switch_account_on_traffic_exhausted: input
-                .auto_switch_account_on_traffic_exhausted,
-        };
-        self.startup_controller
-            .set_launch_on_startup(preferences.launch_on_startup)?;
-        self.app_state_repo.save_preferences(&preferences)?;
-        self.refresh_runtime_from_disk()?;
-        self.emit_state()
-    }
-
     pub async fn refresh_dashboard(&self) -> AppResult<AppSnapshotDto> {
         self.run_refresh(true).await
-    }
-
-    pub async fn import_legacy_accounts(&self) -> AppResult<AppSnapshotDto> {
-        let migration = MigrationService::new(
-            self.account_repo.paths().clone(),
-            self.account_repo.vault().clone(),
-            self.account_repo.clone(),
-            self.app_state_repo.clone(),
-        );
-        let imported = migration.import_legacy_if_current_store_empty()?;
-        if !imported {
-            let has_current_accounts = !self.account_repo.load_store()?.accounts.is_empty();
-            let has_legacy_files = self.account_repo.paths().legacy_accounts_path().exists()
-                || self.account_repo.paths().legacy_app_state_path().exists();
-            if has_current_accounts {
-                return Err(AppError::Conflict(
-                    "开发环境已有账号数据，已跳过旧 accounts.json 导入".to_string(),
-                ));
-            }
-            if !has_legacy_files {
-                return Err(AppError::NotFound(
-                    "根目录没找到可导入的旧 accounts.json 或 app_state.json".to_string(),
-                ));
-            }
-            return Err(AppError::Validation(
-                "旧数据未导入，检查根目录旧文件格式对不对".to_string(),
-            ));
-        }
-        self.refresh_runtime_from_disk()?;
-        self.emit_state()
     }
 
     pub async fn login_selected_account(&self) -> AppResult<AppSnapshotDto> {
@@ -320,7 +178,7 @@ impl AppCore {
             state.login_running = true;
         }
         self.emit_task_started("login")?;
-        let result = self.login_selected_account_inner().await;
+        let result = self.session_service.login_selected_account_inner().await;
         {
             let mut state = self.state.write();
             state.login_running = false;
@@ -341,7 +199,11 @@ impl AppCore {
             state.logout_running = true;
         }
         self.emit_task_started("logout")?;
-        let result = self.logout_local_device_inner().await;
+        let result = async {
+            self.session_service.logout_local_device_inner().await?;
+            self.run_refresh(true).await.map(|_| ())
+        }
+        .await;
         {
             let mut state = self.state.write();
             state.logout_running = false;
@@ -351,120 +213,6 @@ impl AppCore {
         self.emit_state()
     }
 
-    async fn login_selected_account_inner(&self) -> AppResult<()> {
-        let store = self.account_repo.load_store()?;
-        let selected = self
-            .account_repo
-            .get_selected_account(&store)
-            .ok_or_else(|| AppError::Validation("当前没有可用账号，请先添加账号".to_string()))?;
-        let target = self.account_repo.load_account_with_password(&selected)?;
-
-        let network = self.network_status_service.detect_network_status();
-        {
-            let mut state = self.state.write();
-            state.network = network.clone();
-        }
-        let local_ip = if network.ip == "unknown" {
-            None
-        } else {
-            Some(network.ip.as_str())
-        };
-
-        let mut current_online_account = None;
-        if let Some(local_ip) = local_ip {
-            let current_online = self
-                .detect_current_online_account_fast(&store.accounts, local_ip)
-                .await;
-            if let Some(current) = current_online {
-                {
-                    let mut state = self.state.write();
-                    state.current_online_account_id = current.id.clone();
-                    state.account_store.current_online_account_id = current.id.clone();
-                }
-                current_online_account = Some(current);
-            }
-        }
-
-        let detected_current_id = current_online_account
-            .as_ref()
-            .map(|account| account.id.clone())
-            .unwrap_or_default();
-        let mut login_result = if let Some(current) = current_online_account {
-            if current.id == target.account.id {
-                LoginResult {
-                    success: true,
-                    message: format!(
-                        "当前 IP 已在线（{}），无需重复登录",
-                        target.account.display_name()
-                    ),
-                    login_url: String::new(),
-                    hidden_fields: Default::default(),
-                    response_text: String::new(),
-                    checked_at: Local::now(),
-                    already_online: false,
-                }
-            } else {
-                self.auth_client.login_target_account(&target).await?
-            }
-        } else {
-            self.auth_client.verify_login(&target).await?
-        };
-        if login_result.already_online {
-            if detected_current_id == target.account.id
-                || self.confirm_target_online(&target, local_ip).await
-            {
-                login_result.success = true;
-                login_result.message = format!(
-                    "当前 IP 已在线（{}），无需重复登录",
-                    target.account.display_name()
-                );
-            } else {
-                login_result.success = false;
-                login_result.message =
-                    "当前 IP 已在线，但无法确认是不是目标账号，请先本机下线后再登录".to_string();
-            }
-        }
-
-        let mut app_state = self.app_state_repo.load_state()?;
-        app_state.last_login_time = Some(login_result.checked_at);
-        app_state.last_login_result = if login_result.success {
-            "成功".to_string()
-        } else {
-            "失败".to_string()
-        };
-        app_state.last_login_message = login_result.message.clone();
-        self.app_state_repo.save_state(&app_state)?;
-        if login_result.success {
-            self.confirm_and_persist_online_account(&target, local_ip)
-                .await?;
-            self.app_state_repo.mark_account_used(&target.account.id)?;
-        }
-        self.refresh_runtime_from_disk()?;
-        Ok(())
-    }
-
-    async fn logout_local_device_inner(&self) -> AppResult<()> {
-        let network = self.network_status_service.detect_network_status();
-        if network.ip == "unknown" || network.ip.trim().is_empty() {
-            return Err(AppError::Validation(
-                "本机内网 IP 未识别到，无法执行本机下线".to_string(),
-            ));
-        }
-        let current_id = { self.state.read().current_online_account_id.clone() };
-        if current_id.is_empty() {
-            return Err(AppError::Validation("当前没有可下线的在线账号".to_string()));
-        }
-        let store = self.account_repo.load_store()?;
-        let account = self
-            .account_repo
-            .get_account_by_id(&store, &current_id)
-            .ok_or_else(|| AppError::NotFound("找不到当前在线账号".to_string()))?;
-        let account = self.account_repo.load_account_with_password(&account)?;
-        self.auth_client.logout_current_ip(&account).await?;
-        self.run_refresh(true).await?;
-        Ok(())
-    }
-
     async fn run_refresh(&self, force: bool) -> AppResult<AppSnapshotDto> {
         if !force && self.is_quota_refresh_in_cooldown() {
             return self.emit_state();
@@ -472,12 +220,16 @@ impl AppCore {
         {
             let mut state = self.state.write();
             if state.refresh_running {
-                return Ok(self.build_snapshot()?);
+                return self.build_snapshot();
             }
             state.refresh_running = true;
         }
         self.emit_task_started("refresh")?;
-        let result = self.refresh_inner(force).await;
+        let result = async {
+            self.dashboard_refresh_service.refresh_accounts().await?;
+            self.try_auto_switch().await
+        }
+        .await;
         {
             let mut state = self.state.write();
             state.refresh_running = false;
@@ -485,115 +237,6 @@ impl AppCore {
         self.emit_task_finished("refresh")?;
         result?;
         self.emit_state()
-    }
-
-    async fn refresh_inner(&self, _force: bool) -> AppResult<()> {
-        let network = self.network_status_service.detect_network_status();
-        let local_ip = if network.ip == "unknown" {
-            None
-        } else {
-            Some(network.ip.as_str())
-        };
-        let store = self.account_repo.load_store()?;
-        let accounts = self
-            .account_repo
-            .load_accounts_with_passwords(&store.accounts)?;
-        {
-            let mut state = self.state.write();
-            state.network = network.clone();
-            state.snapshots.clear();
-            let now = Local::now();
-            for account in &store.accounts {
-                state.snapshots.insert(
-                    account.id.clone(),
-                    AccountTrafficSnapshot::loading(account.id.clone(), now),
-                );
-            }
-        }
-        self.emit_state()?;
-        let success_info = self.portal_status_client.fetch_success_info().await.ok();
-        let success_account = success_info.as_ref().and_then(|info| {
-            local_ip
-                .filter(|ip| info.ip.trim() == ip.trim())
-                .and_then(|_| {
-                    store
-                        .accounts
-                        .iter()
-                        .find(|account| username_matches(&account.username, &info.username))
-                })
-        });
-        let current_account = success_account
-            .and_then(|account| self.account_repo.load_account_with_password(account).ok());
-        let mut current_online_id = success_account
-            .map(|account| account.id.clone())
-            .unwrap_or_default();
-        let snapshot_map = if let Some(current_account) = current_account {
-            self.portal_snapshot_service
-                .fetch_balances_with_probe(
-                    &store.accounts,
-                    &store.cached_traffic_snapshots,
-                    current_account,
-                )
-                .await?
-        } else {
-            let snapshots = self
-                .traffic_service
-                .fetch_balances(&accounts, local_ip)
-                .await;
-            AccountTrafficService::to_snapshot_map(snapshots)
-        };
-        for account in &store.accounts {
-            if !current_online_id.is_empty() {
-                break;
-            }
-            if snapshot_map
-                .get(&account.id)
-                .and_then(|snapshot| snapshot.matched_local_ip_device.as_ref())
-                .is_some()
-            {
-                current_online_id = account.id.clone();
-                break;
-            }
-        }
-        let order = build_status_card_order(
-            &store,
-            &snapshot_map,
-            &current_online_id,
-            &store.status_card_order_snapshot,
-        );
-        let cached = to_cached_snapshots(&snapshot_map);
-        self.account_repo.save_cached_traffic_snapshots(
-            cached,
-            current_online_id.clone(),
-            order,
-        )?;
-        let mut app_state = self.app_state_repo.load_state()?;
-        app_state.last_quota_refresh_time = Some(Local::now());
-        self.app_state_repo.save_state(&app_state)?;
-        self.refresh_runtime_from_disk()?;
-        {
-            let mut state = self.state.write();
-            state.snapshots = snapshot_map;
-            state.current_online_account_id = current_online_id.clone();
-            state.account_store.current_online_account_id = current_online_id;
-        }
-        self.try_auto_switch().await?;
-        Ok(())
-    }
-
-    async fn detect_current_online_account_fast(
-        &self,
-        accounts: &[PortalAccount],
-        local_ip: &str,
-    ) -> Option<PortalAccount> {
-        let online_info = self.portal_status_client.fetch_online_info().await.ok()?;
-        if online_info.ip.trim() != local_ip.trim() {
-            return None;
-        }
-        accounts
-            .iter()
-            .find(|account| username_matches(&account.username, &online_info.username))
-            .cloned()
     }
 
     async fn try_auto_switch(&self) -> AppResult<()> {
@@ -619,46 +262,8 @@ impl AppCore {
         self.account_repo.select_account(&target.id)?;
         self.app_state_repo.mark_account_used(&target.id)?;
         self.refresh_runtime_from_disk()?;
-        self.login_selected_account_inner().await?;
+        self.session_service.login_selected_account_inner().await?;
         let _ = current;
-        Ok(())
-    }
-
-    async fn confirm_target_online(
-        &self,
-        target: &AccountWithPassword,
-        local_ip: Option<&str>,
-    ) -> bool {
-        let Ok(info) = self.portal_status_client.fetch_success_info().await else {
-            return false;
-        };
-        if let Some(local_ip) = local_ip {
-            if info.ip.trim() != local_ip.trim() {
-                return false;
-            }
-        }
-        username_matches(&target.account.username, &info.username)
-    }
-
-    async fn confirm_and_persist_online_account(
-        &self,
-        target: &AccountWithPassword,
-        local_ip: Option<&str>,
-    ) -> AppResult<()> {
-        if !self.confirm_target_online(target, local_ip).await {
-            return Err(AppError::Network(format!(
-                "Portal 登录返回成功，但成功页没有确认目标账号在线：{}",
-                target.account.display_name()
-            )));
-        }
-        let mut store = self.account_repo.load_store()?;
-        store.current_online_account_id = target.account.id.clone();
-        self.account_repo.save_store(&store)?;
-        {
-            let mut state = self.state.write();
-            state.current_online_account_id = target.account.id.clone();
-            state.account_store.current_online_account_id = target.account.id.clone();
-        }
         Ok(())
     }
 
@@ -672,7 +277,6 @@ impl AppCore {
             .map(|account| account.id.clone())
             .collect::<std::collections::HashSet<_>>();
         let mut state = self.state.write();
-        state.selected_account_id = account_store.selected_account_id.clone();
         state.current_online_account_id = account_store.current_online_account_id.clone();
         state.snapshots.retain(|id, _| valid_ids.contains(id));
         for (id, snapshot) in restore_cached_snapshots(&account_store.cached_traffic_snapshots) {
@@ -686,39 +290,7 @@ impl AppCore {
 
     fn build_snapshot(&self) -> AppResult<AppSnapshotDto> {
         let state = self.state.read();
-        let (used, total, included, progress) =
-            build_pool_quota_summary(&state.account_store, &state.snapshots);
-        let accounts = state
-            .account_store
-            .accounts
-            .iter()
-            .map(|account| {
-                AccountDto::from_store(
-                    account,
-                    &state.account_store,
-                    state.snapshots.get(&account.id),
-                )
-            })
-            .collect();
-        let mut login_state = LoginStateDto::from(&state.app_state);
-        login_state.running = state.login_running;
-        let mut refresh_state = RefreshStateDto::from(&state.app_state);
-        refresh_state.running = state.refresh_running || state.logout_running;
-        Ok(AppSnapshotDto {
-            network: state.network.clone(),
-            accounts,
-            selected_account_id: state.account_store.selected_account_id.clone(),
-            current_online_account_id: state.current_online_account_id.clone(),
-            pool_quota: PoolQuotaDto {
-                used_traffic_text: used,
-                product_balance_text: total,
-                included_package_text: included,
-                progress_percent: progress,
-            },
-            login_state,
-            refresh_state,
-            preferences: PreferenceDto::from(&state.preferences),
-        })
+        Ok(build_app_snapshot(&state))
     }
 
     fn emit_state(&self) -> AppResult<AppSnapshotDto> {
@@ -735,17 +307,6 @@ impl AppCore {
         self.event_sink.task_finished(task)
     }
 
-    async fn validate_panel_credentials(&self, account: AccountWithPassword) -> AppResult<()> {
-        let login_result = self.auth_client.verify_login(&account).await?;
-        if !login_result.success {
-            return Err(AppError::Validation(format!(
-                "Portal 账号校验失败：{}",
-                login_result.message
-            )));
-        }
-        Ok(())
-    }
-
     fn is_quota_refresh_in_cooldown(&self) -> bool {
         let state = self.state.read();
         let Some(last_refresh_time) = state.app_state.last_quota_refresh_time else {
@@ -755,68 +316,5 @@ impl AppCore {
             .signed_duration_since(last_refresh_time)
             .num_minutes()
             < Self::QUOTA_REFRESH_COOLDOWN_MINUTES
-    }
-}
-
-fn restore_cached_snapshots(
-    cached: &BTreeMap<String, CachedTrafficSnapshot>,
-) -> BTreeMap<String, AccountTrafficSnapshot> {
-    cached
-        .iter()
-        .map(|(account_id, snapshot)| {
-            (
-                account_id.clone(),
-                AccountTrafficSnapshot {
-                    account_id: account_id.clone(),
-                    used_traffic_text: snapshot.used_traffic_text.clone(),
-                    product_balance_text: snapshot.product_balance_text.clone(),
-                    included_package_text: snapshot.included_package_text.clone(),
-                    online_device_count_text: snapshot.online_device_count_text.clone(),
-                    package_text: snapshot.package_text.clone(),
-                    status_text: snapshot.status_text.clone(),
-                    detail_text: snapshot.detail_text.clone(),
-                    queried_at: snapshot.queried_at.unwrap_or_else(Local::now),
-                    online_devices: Vec::new(),
-                    matched_local_ip_device: None,
-                    progress_percent: snapshot.progress_percent,
-                },
-            )
-        })
-        .collect()
-}
-
-fn to_cached_snapshots(
-    snapshots: &BTreeMap<String, AccountTrafficSnapshot>,
-) -> BTreeMap<String, CachedTrafficSnapshot> {
-    snapshots
-        .iter()
-        .filter(|(_, snapshot)| {
-            snapshot.status_text != "查询中..." && snapshot.status_text != "查询失败"
-        })
-        .map(|(account_id, snapshot)| {
-            (
-                account_id.clone(),
-                CachedTrafficSnapshot {
-                    used_traffic_text: snapshot.used_traffic_text.clone(),
-                    product_balance_text: snapshot.product_balance_text.clone(),
-                    included_package_text: snapshot.included_package_text.clone(),
-                    online_device_count_text: snapshot.online_device_count_text.clone(),
-                    package_text: snapshot.package_text.clone(),
-                    status_text: snapshot.status_text.clone(),
-                    detail_text: snapshot.detail_text.clone(),
-                    queried_at: Some(snapshot.queried_at),
-                    progress_percent: snapshot.progress_percent,
-                },
-            )
-        })
-        .collect()
-}
-
-fn require_input_text(value: &str, field_name: &str) -> AppResult<String> {
-    let clean = value.trim();
-    if clean.is_empty() {
-        Err(AppError::Validation(format!("{field_name}不能为空")))
-    } else {
-        Ok(clean.to_string())
     }
 }
