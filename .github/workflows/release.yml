@@ -16,10 +16,24 @@ jobs:
       - name: Pull repository
         uses: actions/checkout@v4
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Restore Rust cache
         uses: swatinem/rust-cache@v2
@@ -33,24 +47,30 @@ jobs:
       - name: Test workspace
         run: cargo test
 
-      - name: Build WinUI app
-        run: cargo build --release
+      - name: Build Tauri app
+        run: pnpm tauri:build
 
       - name: Prepare artifact
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item -LiteralPath target\release\MUC-student.exe -Destination dist\MUC-student.exe
+          $installer = Get-ChildItem -Path target,src-tauri\target -Recurse -Filter '*.exe' -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match '\\bundle\\nsis\\' } |
+            Select-Object -First 1
+          if (-not $installer) {
+            throw "未找到 Tauri NSIS 安装包"
+          }
+          Copy-Item -LiteralPath $installer.FullName -Destination dist\MUC-student-setup.exe
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: MUC-student-Windows
-          path: dist/MUC-student.exe
+          path: dist/MUC-student-setup.exe
 
       - name: Draft GitHub release
         if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "${{ github.ref_name }}" dist/MUC-student.exe --draft --title "${{ github.ref_name }}" --notes "自动构建的 Windows 可执行文件，详见附件。"
+        run: gh release create "${{ github.ref_name }}" dist\MUC-student-setup.exe --draft --title "${{ github.ref_name }}" --notes "自动构建的 Windows 安装包，详见附件。"

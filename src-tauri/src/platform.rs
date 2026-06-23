@@ -1,26 +1,12 @@
-#![allow(dead_code)]
-
 use std::env;
 use std::path::PathBuf;
 
 use muc_student_core::application::error::{AppError, AppResult};
 use muc_student_core::application::platform::{RuntimePathProvider, StartupController};
-use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS, HWND, WIN32_ERROR};
-use windows::Win32::System::Registry::{
-    RegCloseKey, RegCreateKeyExW, RegDeleteValueW, RegQueryValueExW, RegSetValueExW, HKEY,
-    HKEY_CURRENT_USER, KEY_READ, KEY_SET_VALUE, REG_OPTION_NON_VOLATILE, REG_SZ,
-};
-use windows::Win32::UI::Shell::{
-    Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW,
-};
-use windows::Win32::UI::WindowsAndMessaging::{
-    LoadIconW, ShowWindow, IDI_APPLICATION, SW_HIDE, SW_RESTORE, WM_USER,
-};
-use windows_core::PCWSTR;
 
-pub struct Win32RuntimePathProvider;
+pub struct TauriRuntimePathProvider;
 
-impl RuntimePathProvider for Win32RuntimePathProvider {
+impl RuntimePathProvider for TauriRuntimePathProvider {
     fn app_data_dir(&self) -> AppResult<PathBuf> {
         dirs::data_local_dir()
             .map(|path| path.join("MUC-student"))
@@ -52,8 +38,15 @@ impl RunKeyStartupController {
     }
 }
 
+#[cfg(windows)]
 impl StartupController for RunKeyStartupController {
     fn set_launch_on_startup(&self, enabled: bool) -> AppResult<()> {
+        use windows::core::PCWSTR;
+        use windows::Win32::Foundation::ERROR_FILE_NOT_FOUND;
+        use windows::Win32::System::Registry::{
+            RegDeleteValueW, RegSetValueExW, KEY_SET_VALUE, REG_SZ,
+        };
+
         let exe = env::current_exe()
             .map_err(|err| AppError::System(format!("读取程序路径失败：{err}")))?;
         let command = format!("\"{}\"", exe.display());
@@ -79,12 +72,16 @@ impl StartupController for RunKeyStartupController {
                     win32_ok(code, "关闭开机自启失败")
                 }
             };
-            let _ = RegCloseKey(key);
+            close_key(key);
             result
         }
     }
 
     fn is_enabled(&self) -> AppResult<bool> {
+        use windows::core::PCWSTR;
+        use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS};
+        use windows::Win32::System::Registry::{RegQueryValueExW, KEY_READ};
+
         let name = wide_null(&self.app_name);
         unsafe {
             let key = open_run_key(KEY_READ)?;
@@ -96,69 +93,32 @@ impl StartupController for RunKeyStartupController {
             } else {
                 Err(AppError::System(format!("读取开机自启状态失败：{code:?}")))
             };
-            let _ = RegCloseKey(key);
+            close_key(key);
             result
         }
     }
 }
 
-pub struct TrayIcon {
-    hwnd: HWND,
-    id: u32,
-}
-
-impl TrayIcon {
-    pub fn add(hwnd: HWND) -> AppResult<Self> {
-        let id = 1;
-        let mut data = NOTIFYICONDATAW {
-            cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
-            hWnd: hwnd,
-            uID: id,
-            uFlags: NIF_ICON | NIF_TIP | NIF_MESSAGE,
-            uCallbackMessage: WM_USER + 1,
-            ..Default::default()
-        };
-        data.hIcon = unsafe { LoadIconW(None, IDI_APPLICATION) }
-            .map_err(|err| AppError::System(format!("加载托盘图标失败：{err}")))?;
-        write_tip(&mut data, "MUC-student");
-
-        if unsafe { Shell_NotifyIconW(NIM_ADD, &data) }.as_bool() {
-            Ok(Self { hwnd, id })
-        } else {
-            Err(AppError::System("创建托盘图标失败".to_string()))
-        }
+#[cfg(not(windows))]
+impl StartupController for RunKeyStartupController {
+    fn set_launch_on_startup(&self, _enabled: bool) -> AppResult<()> {
+        Ok(())
     }
 
-    #[allow(dead_code)]
-    pub fn hide_window(&self) {
-        unsafe {
-            let _ = ShowWindow(self.hwnd, SW_HIDE);
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn show_window(&self) {
-        unsafe {
-            let _ = ShowWindow(self.hwnd, SW_RESTORE);
-        }
+    fn is_enabled(&self) -> AppResult<bool> {
+        Ok(false)
     }
 }
 
-impl Drop for TrayIcon {
-    fn drop(&mut self) {
-        let data = NOTIFYICONDATAW {
-            cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
-            hWnd: self.hwnd,
-            uID: self.id,
-            ..Default::default()
-        };
-        unsafe {
-            let _ = Shell_NotifyIconW(NIM_DELETE, &data);
-        }
-    }
-}
+#[cfg(windows)]
+unsafe fn open_run_key(
+    access: windows::Win32::System::Registry::REG_SAM_FLAGS,
+) -> AppResult<windows::Win32::System::Registry::HKEY> {
+    use windows::core::PCWSTR;
+    use windows::Win32::System::Registry::{
+        RegCreateKeyExW, HKEY, HKEY_CURRENT_USER, REG_OPTION_NON_VOLATILE,
+    };
 
-unsafe fn open_run_key(access: windows::Win32::System::Registry::REG_SAM_FLAGS) -> AppResult<HKEY> {
     let subkey = wide_null("Software\\Microsoft\\Windows\\CurrentVersion\\Run");
     let mut key = HKEY::default();
     let code = RegCreateKeyExW(
@@ -176,7 +136,10 @@ unsafe fn open_run_key(access: windows::Win32::System::Registry::REG_SAM_FLAGS) 
     Ok(key)
 }
 
-fn win32_ok(code: WIN32_ERROR, context: &str) -> AppResult<()> {
+#[cfg(windows)]
+fn win32_ok(code: windows::Win32::Foundation::WIN32_ERROR, context: &str) -> AppResult<()> {
+    use windows::Win32::Foundation::ERROR_SUCCESS;
+
     if code == ERROR_SUCCESS {
         Ok(())
     } else {
@@ -184,13 +147,14 @@ fn win32_ok(code: WIN32_ERROR, context: &str) -> AppResult<()> {
     }
 }
 
-fn wide_null(value: &str) -> Vec<u16> {
-    value.encode_utf16().chain(std::iter::once(0)).collect()
+#[cfg(windows)]
+unsafe fn close_key(key: windows::Win32::System::Registry::HKEY) {
+    use windows::Win32::System::Registry::RegCloseKey;
+
+    let _ = RegCloseKey(key);
 }
 
-fn write_tip(data: &mut NOTIFYICONDATAW, value: &str) {
-    let wide = wide_null(value);
-    for (slot, ch) in data.szTip.iter_mut().zip(wide.into_iter()) {
-        *slot = ch;
-    }
+#[cfg(windows)]
+fn wide_null(value: &str) -> Vec<u16> {
+    value.encode_utf16().chain(std::iter::once(0)).collect()
 }

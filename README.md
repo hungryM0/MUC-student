@@ -1,9 +1,10 @@
 # MUC-student
 
-适用于 MUC 校园网多账号拼车的桌面应用，节省网费
+适用于 MUC 校园网多账号拼车的桌面应用。
 
+![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)
 ![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)
-![WinUI 3](https://img.shields.io/badge/WinUI%203-0078D4?logo=windows&logoColor=white)
 ![Windows](https://img.shields.io/badge/Windows-0078D4?logo=windows&logoColor=white)
 
 > [!NOTE]
@@ -21,10 +22,18 @@
 
 ## 开发
 
-当前是 Rust workspace：
-
 ```powershell
-cargo run
+pnpm install
+pnpm tauri:dev
 ```
 
-核心业务在 `src-core/`，Windows 原生界面入口在 `src-winui/`。
+核心业务在 `src-core/`。Tauri 桌面壳在 `src-tauri/`。React 前端在 `src/`。
+
+常用检查：
+
+```powershell
+pnpm build
+cargo fmt --check
+cargo check
+cargo test
+```

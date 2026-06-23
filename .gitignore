@@ -1,14 +1,17 @@
 # Node
 node_modules/
+dist/
 
 # Rust
 target/
 build/
+src-tauri/gen/
 
 # Local configuration
 .idea/
 .playwright-mcp/
 .codex/config.toml
+.codex/environments/
 accounts.json
 app_state.json
 *.log

@@ -1,9 +1,8 @@
 [workspace]
-members = ["src-core", "src-winui"]
+members = ["src-core", "src-tauri"]
 resolver = "2"
 
 [workspace.package]
 edition = "2021"
 version = "0.1.0"
 publish = false
-
