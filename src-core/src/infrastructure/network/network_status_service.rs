@@ -20,9 +20,9 @@ impl NetworkStatusService {
         NetworkStatus {
             is_online,
             status_text: if is_online {
-                "在线".to_string()
+                "IP 已识别".to_string()
             } else {
-                "未认证".to_string()
+                "IP 未识别".to_string()
             },
             ip,
             checked_at: Local::now(),

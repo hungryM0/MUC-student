@@ -4,14 +4,45 @@ mod plugins;
 use std::sync::Arc;
 
 use muc_student_core::application::{
-    AppCore, AppErrorDto, AppSnapshotDto, IntoCommandResult, NoopEventSink,
+    AppCore, AppError, AppErrorDto, AppEventSink, AppResult, AppSnapshotDto, IntoCommandResult,
 };
 use platform::{RunKeyStartupController, TauriRuntimePathProvider};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 #[derive(Clone)]
 struct ManagedAppCore {
     core: Arc<AppCore>,
+}
+
+#[derive(Clone)]
+struct TauriEventSink {
+    app: tauri::AppHandle,
+}
+
+impl TauriEventSink {
+    fn new(app: tauri::AppHandle) -> Self {
+        Self { app }
+    }
+}
+
+impl AppEventSink for TauriEventSink {
+    fn state_updated(&self, snapshot: &AppSnapshotDto) -> AppResult<()> {
+        self.app
+            .emit("muc://state-updated", snapshot.clone())
+            .map_err(|err| AppError::System(err.to_string()))
+    }
+
+    fn task_started(&self, task: &str) -> AppResult<()> {
+        self.app
+            .emit("muc://task-started", task.to_string())
+            .map_err(|err| AppError::System(err.to_string()))
+    }
+
+    fn task_finished(&self, task: &str) -> AppResult<()> {
+        self.app
+            .emit("muc://task-finished", task.to_string())
+            .map_err(|err| AppError::System(err.to_string()))
+    }
 }
 
 #[tauri::command]
@@ -77,7 +108,7 @@ pub fn run() {
             let core = AppCore::build(
                 Arc::new(TauriRuntimePathProvider),
                 Arc::new(RunKeyStartupController::new("MUC-student")),
-                Arc::new(NoopEventSink),
+                Arc::new(TauriEventSink::new(app.handle().clone())),
             )?;
             app.manage(ManagedAppCore {
                 core: Arc::new(core),

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use chrono::Local;
+use tokio::sync::Mutex;
 
 use crate::application::dto::AppSnapshotDto;
 use crate::application::error::{AppError, AppResult};
@@ -10,7 +11,6 @@ use crate::application::services::account_traffic_service::AccountTrafficService
 use crate::application::services::dashboard_refresh_service::{
     DashboardRefreshDependencies, DashboardRefreshService,
 };
-use crate::application::services::portal_snapshot_service::PortalSnapshotService;
 use crate::application::services::session_service::SessionService;
 use crate::application::services::snapshot_mapper::{build_app_snapshot, restore_cached_snapshots};
 use crate::domain::models::NetworkStatus;
@@ -36,6 +36,7 @@ pub struct AppCore {
     app_state_repo: AppStateRepository,
     session_service: SessionService,
     dashboard_refresh_service: DashboardRefreshService,
+    network_task_lock: Arc<Mutex<()>>,
     event_sink: Arc<dyn AppEventSink>,
 }
 
@@ -76,20 +77,15 @@ impl AppCore {
         let preferences = app_state_repo.load_preferences()?;
         let panel_session_repo = PanelSessionRepository::new(paths.clone());
 
-        let auth_transport = HttpTransport::new(settings.clone());
-        let legacy_portal_transport = HttpTransport::new(settings.clone());
-        let panel_transport = HttpTransport::new(settings.clone());
+        let auth_transport = HttpTransport::new(settings.clone())?;
+        let legacy_portal_transport = HttpTransport::new(settings.clone())?;
+        let panel_transport = HttpTransport::new(settings.clone())?;
         let auth_client = LegacyPortalAuthClient::new(settings.clone(), auth_transport);
         let portal_status_client =
             LegacyPortalStatusClient::new(settings.clone(), legacy_portal_transport);
         let panel_client =
             SelfServicePanelClient::new(settings.clone(), panel_transport, panel_session_repo);
         let traffic_service = AccountTrafficService::new(panel_client.clone());
-        let portal_snapshot_service = PortalSnapshotService::new(
-            account_repo.clone(),
-            auth_client.clone(),
-            portal_status_client.clone(),
-        );
         let network_status_service = Arc::new(NetworkStatusService::new(settings));
         let snapshots = restore_cached_snapshots(&account_store.cached_traffic_snapshots);
         let runtime = SharedRuntimeState::new(AppRuntimeState {
@@ -118,7 +114,6 @@ impl AppCore {
                 app_state_repo: app_state_repo.clone(),
                 portal_status_client,
                 traffic_service,
-                portal_snapshot_service,
                 network_status_service,
                 event_sink: event_sink.clone(),
             });
@@ -128,6 +123,7 @@ impl AppCore {
             app_state_repo,
             session_service,
             dashboard_refresh_service,
+            network_task_lock: Arc::new(Mutex::new(())),
             event_sink,
         };
         Ok(backend)
@@ -168,6 +164,7 @@ impl AppCore {
     }
 
     pub async fn login_selected_account(&self) -> AppResult<AppSnapshotDto> {
+        let _task_guard = self.network_task_lock.lock().await;
         {
             let mut state = self.state.write();
             if state.login_running {
@@ -189,6 +186,7 @@ impl AppCore {
     }
 
     pub async fn logout_local_device(&self) -> AppResult<AppSnapshotDto> {
+        let _task_guard = self.network_task_lock.lock().await;
         {
             let mut state = self.state.write();
             if state.logout_running || state.login_running {
@@ -201,7 +199,7 @@ impl AppCore {
         self.emit_task_started("logout")?;
         let result = async {
             self.session_service.logout_local_device_inner().await?;
-            self.run_refresh(true).await.map(|_| ())
+            self.run_refresh_inner(true).await.map(|_| ())
         }
         .await;
         {
@@ -214,6 +212,11 @@ impl AppCore {
     }
 
     async fn run_refresh(&self, force: bool) -> AppResult<AppSnapshotDto> {
+        let _task_guard = self.network_task_lock.lock().await;
+        self.run_refresh_inner(force).await
+    }
+
+    async fn run_refresh_inner(&self, force: bool) -> AppResult<AppSnapshotDto> {
         if !force && self.is_quota_refresh_in_cooldown() {
             return self.emit_state();
         }

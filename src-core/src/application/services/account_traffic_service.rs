@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use chrono::Local;
+use tokio::sync::Semaphore;
+use tokio::task::JoinSet;
 
 use crate::application::error::AppResult;
 use crate::domain::models::traffic::AccountTrafficSnapshot;
@@ -15,6 +18,8 @@ pub struct AccountTrafficService {
 }
 
 impl AccountTrafficService {
+    pub const DEFAULT_PANEL_QUERY_CONCURRENCY: usize = 2;
+
     pub fn new(panel_client: SelfServicePanelClient) -> Self {
         Self { panel_client }
     }
@@ -33,6 +38,50 @@ impl AccountTrafficService {
                     err.to_string(),
                     Local::now(),
                 )),
+            }
+        }
+        snapshots
+    }
+
+    pub async fn fetch_balances_limited(
+        &self,
+        accounts: &[AccountWithPassword],
+        local_ip: Option<&str>,
+        max_concurrent: usize,
+    ) -> Vec<AccountTrafficSnapshot> {
+        let limit = max_concurrent.max(1);
+        let semaphore = Arc::new(Semaphore::new(limit));
+        let local_ip = local_ip.map(str::to_string);
+        let mut join_set = JoinSet::new();
+
+        for account in accounts.iter().cloned() {
+            let service = self.clone();
+            let semaphore = semaphore.clone();
+            let local_ip = local_ip.clone();
+            join_set.spawn(async move {
+                let account_id = account.account.id.clone();
+                let Ok(_permit) = semaphore.acquire_owned().await else {
+                    return AccountTrafficSnapshot::failed(
+                        account_id,
+                        "面板查询队列已关闭",
+                        Local::now(),
+                    );
+                };
+                match service.fetch_balance(&account, local_ip.as_deref()).await {
+                    Ok(snapshot) => snapshot,
+                    Err(err) => AccountTrafficSnapshot::failed(
+                        account.account.id.clone(),
+                        err.to_string(),
+                        Local::now(),
+                    ),
+                }
+            });
+        }
+
+        let mut snapshots = Vec::new();
+        while let Some(result) = join_set.join_next().await {
+            if let Ok(snapshot) = result {
+                snapshots.push(snapshot);
             }
         }
         snapshots

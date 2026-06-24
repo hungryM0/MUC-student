@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 
@@ -9,6 +10,7 @@ use crate::infrastructure::persistence::runtime_paths::RuntimePaths;
 #[derive(Clone)]
 pub struct PanelSessionRepository {
     paths: RuntimePaths,
+    file_lock: Arc<Mutex<()>>,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -19,10 +21,18 @@ struct PanelSessionFile {
 
 impl PanelSessionRepository {
     pub fn new(paths: RuntimePaths) -> Self {
-        Self { paths }
+        Self {
+            paths,
+            file_lock: Arc::new(Mutex::new(())),
+        }
     }
 
     pub fn load_session(&self, account_id: &str) -> AppResult<BTreeMap<String, String>> {
+        let _guard = self.file_lock.lock().map_err(|_| {
+            crate::application::error::AppError::Internal(
+                "panel session file lock poisoned".to_string(),
+            )
+        })?;
         let file = self.load_file()?;
         Ok(file
             .sessions
@@ -41,6 +51,11 @@ impl PanelSessionRepository {
             return Ok(());
         }
         let filtered = normalize_cookies(cookies);
+        let _guard = self.file_lock.lock().map_err(|_| {
+            crate::application::error::AppError::Internal(
+                "panel session file lock poisoned".to_string(),
+            )
+        })?;
         let mut file = self.load_file()?;
         if filtered.is_empty() {
             file.sessions.remove(clean_id);
@@ -55,6 +70,11 @@ impl PanelSessionRepository {
         if clean_id.is_empty() {
             return Ok(());
         }
+        let _guard = self.file_lock.lock().map_err(|_| {
+            crate::application::error::AppError::Internal(
+                "panel session file lock poisoned".to_string(),
+            )
+        })?;
         let mut file = self.load_file()?;
         file.sessions.remove(clean_id);
         self.save_file(&file)

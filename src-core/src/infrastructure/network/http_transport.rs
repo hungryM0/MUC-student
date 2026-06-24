@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::net::IpAddr;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use base64::Engine;
@@ -14,6 +15,14 @@ use crate::infrastructure::settings::AppSettings;
 #[derive(Clone)]
 pub struct HttpTransport {
     settings: AppSettings,
+    source_ip: Option<IpAddr>,
+    clients: Arc<Mutex<HashMap<ClientKey, reqwest::Client>>>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+struct ClientKey {
+    use_source_ip: bool,
+    max_redirects: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -68,14 +77,23 @@ impl HttpRequestSpec {
 }
 
 impl HttpTransport {
-    pub fn new(settings: AppSettings) -> Self {
-        Self { settings }
+    pub fn new(settings: AppSettings) -> AppResult<Self> {
+        let source_ip_client = if settings.bind_preferred_source_ip
+            && !settings.preferred_source_ip.trim().is_empty()
+        {
+            settings.preferred_source_ip.parse::<IpAddr>().ok()
+        } else {
+            None
+        };
+        Ok(Self {
+            settings,
+            source_ip: source_ip_client,
+            clients: Arc::new(Mutex::new(HashMap::new())),
+        })
     }
 
     pub async fn request(&self, spec: HttpRequestSpec) -> AppResult<HttpResponseData> {
-        let modes = if self.settings.bind_preferred_source_ip
-            && !self.settings.preferred_source_ip.trim().is_empty()
-        {
+        let modes = if self.source_ip.is_some() {
             vec![true, false]
         } else {
             vec![false]
@@ -104,19 +122,7 @@ impl HttpTransport {
         spec: &HttpRequestSpec,
         use_source_ip: bool,
     ) -> AppResult<HttpResponseData> {
-        let mut builder = reqwest::Client::builder()
-            .cookie_store(true)
-            .timeout(Duration::from_secs(12))
-            .redirect(Policy::limited(spec.max_redirects))
-            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0");
-
-        if use_source_ip {
-            if let Ok(ip) = self.settings.preferred_source_ip.parse::<IpAddr>() {
-                builder = builder.local_address(ip);
-            }
-        }
-
-        let client = builder.build()?;
+        let client = self.client_for(use_source_ip, spec.max_redirects)?;
         let parsed_url = Url::parse(&spec.url)
             .map_err(|err| AppError::Network(format!("无效 URL：{}，{err}", spec.url)))?;
         let method = spec
@@ -188,6 +194,37 @@ impl HttpTransport {
             cookies: cookie_map,
         })
     }
+
+    fn client_for(&self, use_source_ip: bool, max_redirects: usize) -> AppResult<reqwest::Client> {
+        let key = ClientKey {
+            use_source_ip,
+            max_redirects,
+        };
+        let mut clients = self
+            .clients
+            .lock()
+            .map_err(|_| AppError::Internal("HTTP client cache lock poisoned".to_string()))?;
+        if let Some(client) = clients.get(&key) {
+            return Ok(client.clone());
+        }
+        let source_ip = if use_source_ip { self.source_ip } else { None };
+        let client = build_client(source_ip, max_redirects)?;
+        clients.insert(key, client.clone());
+        Ok(client)
+    }
+}
+
+fn build_client(source_ip: Option<IpAddr>, max_redirects: usize) -> AppResult<reqwest::Client> {
+    let mut builder = reqwest::Client::builder()
+        .timeout(Duration::from_secs(12))
+        .redirect(Policy::limited(max_redirects))
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0");
+
+    if let Some(ip) = source_ip {
+        builder = builder.local_address(ip);
+    }
+
+    Ok(builder.build()?)
 }
 
 pub fn build_form_headers(referer_url: &str) -> HashMap<String, String> {

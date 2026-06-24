@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import {
   Activity,
   CheckCircle2,
@@ -53,6 +54,28 @@ export default function HomePage() {
     };
 
     void initTrayMenu();
+  }, []);
+
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    let disposed = false;
+
+    void listen<AppSnapshotDto>("muc://state-updated", (event) => {
+      if (!disposed) {
+        setSnapshot(event.payload);
+      }
+    }).then((handler) => {
+      if (disposed) {
+        handler();
+      } else {
+        unlisten = handler;
+      }
+    });
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
   }, []);
 
   useEffect(() => {
@@ -156,7 +179,7 @@ export default function HomePage() {
           <div className="mt-auto space-y-3">
             <StatusPill
               tone={snapshot?.network.isOnline ? "green" : "amber"}
-              label={snapshot?.network.statusText || "未认证"}
+              label={snapshot?.network.statusText || "IP 未识别"}
             />
             <div className="text-muted-foreground truncate text-xs">
               {snapshot?.network.ip && snapshot.network.ip !== "unknown"

@@ -8,7 +8,7 @@ use crate::application::platform::AppEventSink;
 use crate::application::runtime::SharedRuntimeState;
 use crate::application::services::account_traffic_service::AccountTrafficService;
 use crate::application::services::portal_snapshot_service::{
-    username_matches, PortalSnapshotService,
+    build_single_success_snapshot, username_matches,
 };
 use crate::application::services::snapshot_mapper::{
     build_app_snapshot, restore_cached_snapshots, to_cached_snapshots,
@@ -27,7 +27,6 @@ pub struct DashboardRefreshService {
     app_state_repo: AppStateRepository,
     portal_status_client: LegacyPortalStatusClient,
     traffic_service: AccountTrafficService,
-    portal_snapshot_service: PortalSnapshotService,
     network_status_service: Arc<NetworkStatusService>,
     event_sink: Arc<dyn AppEventSink>,
 }
@@ -38,7 +37,6 @@ pub struct DashboardRefreshDependencies {
     pub app_state_repo: AppStateRepository,
     pub portal_status_client: LegacyPortalStatusClient,
     pub traffic_service: AccountTrafficService,
-    pub portal_snapshot_service: PortalSnapshotService,
     pub network_status_service: Arc<NetworkStatusService>,
     pub event_sink: Arc<dyn AppEventSink>,
 }
@@ -51,7 +49,6 @@ impl DashboardRefreshService {
             app_state_repo: deps.app_state_repo,
             portal_status_client: deps.portal_status_client,
             traffic_service: deps.traffic_service,
-            portal_snapshot_service: deps.portal_snapshot_service,
             network_status_service: deps.network_status_service,
             event_sink: deps.event_sink,
         }
@@ -93,26 +90,37 @@ impl DashboardRefreshService {
                         .find(|account| username_matches(&account.username, &info.username))
                 })
         });
-        let current_account = success_account
-            .and_then(|account| self.account_repo.load_account_with_password(account).ok());
         let mut current_online_id = success_account
             .map(|account| account.id.clone())
             .unwrap_or_default();
-        let snapshot_map = if let Some(current_account) = current_account {
-            self.portal_snapshot_service
-                .fetch_balances_with_probe(
-                    &store.accounts,
-                    &store.cached_traffic_snapshots,
-                    current_account,
-                )
-                .await?
-        } else {
-            let snapshots = self
-                .traffic_service
-                .fetch_balances(&accounts, local_ip)
-                .await;
-            AccountTrafficService::to_snapshot_map(snapshots)
-        };
+        let panel_accounts = accounts
+            .iter()
+            .filter(|account| {
+                success_account
+                    .as_ref()
+                    .map_or(true, |current| account.account.id != current.id)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        let panel_snapshots = self
+            .traffic_service
+            .fetch_balances_limited(
+                &panel_accounts,
+                local_ip,
+                AccountTrafficService::DEFAULT_PANEL_QUERY_CONCURRENCY,
+            )
+            .await;
+        let mut snapshot_map = AccountTrafficService::to_snapshot_map(panel_snapshots);
+        if let (Some(account), Some(info)) = (success_account, success_info.as_ref()) {
+            snapshot_map.insert(
+                account.id.clone(),
+                build_single_success_snapshot(
+                    account,
+                    info,
+                    store.cached_traffic_snapshots.get(&account.id),
+                ),
+            );
+        }
         for account in &store.accounts {
             if !current_online_id.is_empty() {
                 break;
