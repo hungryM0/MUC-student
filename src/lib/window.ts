@@ -12,7 +12,6 @@ export function cancelDestroyWindow(label: string) {
   if (destroyTimers[label]) {
     clearTimeout(destroyTimers[label]);
     delete destroyTimers[label];
-    console.log("Cleared window destroy timer:", label);
   }
 }
 
@@ -48,7 +47,6 @@ async function calcCenterPosition(
 
     // Validate all values exist
     if (!position || !size || !scaleFactor) {
-      console.warn("Unable to get parent window info, using screen center");
       return { center: true };
     }
 
@@ -60,13 +58,11 @@ async function calcCenterPosition(
 
     // Validate calculation result
     if (isNaN(x) || isNaN(y)) {
-      console.warn("Position calculation failed, using screen center");
       return { center: true };
     }
 
     return { x, y };
-  } catch (e) {
-    console.warn("Failed to calculate centered position:", e);
+  } catch {
     return { center: true };
   }
 }
@@ -163,7 +159,6 @@ export async function destroyWindow(label: string, delay = 0) {
       await currentWindow.destroy();
       delete destroyVersions[label];
     }, delay) as unknown as number;
-    console.log(`Window will be destroyed in ${delay}ms:`, label);
   }
 }
 
@@ -210,8 +205,6 @@ export async function createWindow(
 
     // If window already exists, center and show it
     if (window) {
-      console.log("Window already exists, showing:", label);
-
       if (options.parent) {
         try {
           const size = await window.outerSize();
@@ -231,8 +224,8 @@ export async function createWindow(
               new LogicalPosition(centerPos.x, centerPos.y),
             );
           }
-        } catch (error) {
-          console.error("Failed to center window:", error);
+        } catch {
+          // Centering is best effort.
         }
       }
 
@@ -259,19 +252,16 @@ export async function createWindow(
 
     const webview = new WebviewWindow(label, finalOptions);
     await webview.once("tauri://created", async () => {
-      console.log("Window created successfully:", label);
       handlers?.onCreated?.();
 
       // Register destroy callback
       if (handlers?.onDestroy) {
         await once("destroy-window:" + label, () => {
-          console.log("Window destroyed:", label);
           handlers.onDestroy?.();
         });
       }
     });
-    await webview.once("tauri://error", (e) => {
-      console.log("Failed to create window:", label, e);
+    await webview.once("tauri://error", () => {
       handlers?.onError?.();
     });
   } finally {

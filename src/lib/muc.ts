@@ -75,6 +75,36 @@ export async function selectAccount(accountId: string) {
   return invoke<AppSnapshotDto>("select_account", { accountId });
 }
 
+export async function addAccount(
+  remarkName: string,
+  username: string,
+  password: string,
+) {
+  return invoke<AppSnapshotDto>("add_account", {
+    remarkName,
+    username,
+    password,
+  });
+}
+
+export async function updateAccount(
+  accountId: string,
+  remarkName: string,
+  username: string,
+  password?: string,
+) {
+  return invoke<AppSnapshotDto>("update_account", {
+    accountId,
+    remarkName,
+    username,
+    password: password?.trim() ? password : null,
+  });
+}
+
+export async function deleteAccount(accountId: string) {
+  return invoke<AppSnapshotDto>("delete_account", { accountId });
+}
+
 export async function loginSelectedAccount() {
   return invoke<AppSnapshotDto>("login_selected_account");
 }
@@ -85,6 +115,17 @@ export async function refreshDashboard() {
 
 export async function logoutLocalDevice() {
   return invoke<AppSnapshotDto>("logout_local_device");
+}
+
+export async function updatePreferences(
+  preferences: AppSnapshotDto["preferences"],
+) {
+  return invoke<AppSnapshotDto>("update_preferences", {
+    minimizeToTrayOnClose: preferences.minimizeToTrayOnClose,
+    launchOnStartup: preferences.launchOnStartup,
+    autoSwitchAccountOnTrafficExhausted:
+      preferences.autoSwitchAccountOnTrafficExhausted,
+  });
 }
 
 export function readErrorMessage(error: unknown) {

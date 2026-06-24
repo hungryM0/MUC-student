@@ -13,7 +13,7 @@ use crate::application::services::dashboard_refresh_service::{
 };
 use crate::application::services::session_service::SessionService;
 use crate::application::services::snapshot_mapper::{build_app_snapshot, restore_cached_snapshots};
-use crate::domain::models::NetworkStatus;
+use crate::domain::models::{NetworkStatus, PortalAccount};
 use crate::domain::policies::traffic_math::build_auto_switch_candidate;
 use crate::infrastructure::network::{
     http_transport::HttpTransport, legacy_portal_auth_client::LegacyPortalAuthClient,
@@ -21,7 +21,9 @@ use crate::infrastructure::network::{
     network_status_service::NetworkStatusService,
     self_service_panel_client::SelfServicePanelClient,
 };
-use crate::infrastructure::persistence::account_repository::AccountRepository;
+use crate::infrastructure::persistence::account_repository::{
+    AccountRepository, AccountWithPassword,
+};
 use crate::infrastructure::persistence::app_state_repository::AppStateRepository;
 use crate::infrastructure::persistence::migration::MigrationService;
 use crate::infrastructure::persistence::panel_session_repository::PanelSessionRepository;
@@ -34,10 +36,12 @@ pub struct AppCore {
     state: SharedRuntimeState,
     account_repo: AccountRepository,
     app_state_repo: AppStateRepository,
+    account_traffic_service: AccountTrafficService,
     session_service: SessionService,
     dashboard_refresh_service: DashboardRefreshService,
     network_task_lock: Arc<Mutex<()>>,
     event_sink: Arc<dyn AppEventSink>,
+    startup_controller: Arc<dyn StartupController>,
 }
 
 impl AppCore {
@@ -58,7 +62,7 @@ impl AppCore {
 
     pub fn build_with_paths(
         paths: RuntimePaths,
-        _startup_controller: Arc<dyn StartupController>,
+        startup_controller: Arc<dyn StartupController>,
         event_sink: Arc<dyn AppEventSink>,
     ) -> AppResult<Self> {
         let settings = AppSettings::default();
@@ -74,7 +78,8 @@ impl AppCore {
         let _migrated = migration.migrate_if_needed()?;
         let account_store = account_repo.ensure_store()?;
         let app_state = app_state_repo.load_state()?;
-        let preferences = app_state_repo.load_preferences()?;
+        let mut preferences = app_state_repo.load_preferences()?;
+        preferences.launch_on_startup = startup_controller.is_enabled()?;
         let panel_session_repo = PanelSessionRepository::new(paths.clone());
 
         let auth_transport = HttpTransport::new(settings.clone())?;
@@ -113,7 +118,7 @@ impl AppCore {
                 account_repo: account_repo.clone(),
                 app_state_repo: app_state_repo.clone(),
                 portal_status_client,
-                traffic_service,
+                traffic_service: traffic_service.clone(),
                 network_status_service,
                 event_sink: event_sink.clone(),
             });
@@ -121,10 +126,12 @@ impl AppCore {
             state: runtime,
             account_repo,
             app_state_repo,
+            account_traffic_service: traffic_service,
             session_service,
             dashboard_refresh_service,
             network_task_lock: Arc::new(Mutex::new(())),
             event_sink,
+            startup_controller,
         };
         Ok(backend)
     }
@@ -155,6 +162,71 @@ impl AppCore {
     pub async fn select_account(&self, account_id: String) -> AppResult<AppSnapshotDto> {
         let account = self.account_repo.select_account(&account_id)?;
         self.app_state_repo.mark_account_used(&account.id)?;
+        self.refresh_runtime_from_disk()?;
+        self.emit_state()
+    }
+
+    pub async fn add_account(
+        &self,
+        remark_name: String,
+        username: String,
+        password: String,
+    ) -> AppResult<AppSnapshotDto> {
+        self.validate_account_credentials(&remark_name, &username, &password)
+            .await?;
+        let account = self
+            .account_repo
+            .add_account(&remark_name, &username, &password)?;
+        self.app_state_repo.mark_account_used(&account.id)?;
+        self.refresh_runtime_from_disk()?;
+        self.emit_state()
+    }
+
+    pub async fn update_account(
+        &self,
+        account_id: String,
+        remark_name: String,
+        username: String,
+        password: Option<String>,
+    ) -> AppResult<AppSnapshotDto> {
+        let account = self.account_repo.update_account(
+            &account_id,
+            &remark_name,
+            &username,
+            password.as_deref(),
+        )?;
+        self.app_state_repo.mark_account_used(&account.id)?;
+        self.refresh_runtime_from_disk()?;
+        self.emit_state()
+    }
+
+    pub async fn delete_account(&self, account_id: String) -> AppResult<AppSnapshotDto> {
+        self.account_repo.delete_account(&account_id)?;
+        let store = self.account_repo.load_store()?;
+        let valid_ids = store
+            .accounts
+            .iter()
+            .map(|account| account.id.clone())
+            .collect::<std::collections::HashSet<_>>();
+        self.app_state_repo.prune_recent_account_ids(&valid_ids)?;
+        self.refresh_runtime_from_disk()?;
+        self.emit_state()
+    }
+
+    pub async fn update_preferences(
+        &self,
+        minimize_to_tray_on_close: bool,
+        launch_on_startup: bool,
+        auto_switch_account_on_traffic_exhausted: bool,
+    ) -> AppResult<AppSnapshotDto> {
+        self.startup_controller
+            .set_launch_on_startup(launch_on_startup)?;
+        let mut preferences = self.app_state_repo.load_preferences()?;
+        preferences.minimize_to_tray_on_close = minimize_to_tray_on_close;
+        preferences.launch_on_startup = launch_on_startup;
+        preferences.auto_switch_account_on_traffic_exhausted =
+            auto_switch_account_on_traffic_exhausted;
+        self.app_state_repo.save_preferences(&preferences)?;
         self.refresh_runtime_from_disk()?;
         self.emit_state()
     }
@@ -289,6 +361,35 @@ impl AppCore {
         state.app_state = app_state;
         state.preferences = preferences;
         Ok(())
+    }
+
+    async fn validate_account_credentials(
+        &self,
+        remark_name: &str,
+        username: &str,
+        password: &str,
+    ) -> AppResult<()> {
+        if remark_name.trim().is_empty() {
+            return Err(AppError::Validation("备注名不能为空".to_string()));
+        }
+        if username.trim().is_empty() {
+            return Err(AppError::Validation("账号不能为空".to_string()));
+        }
+        if password.trim().is_empty() {
+            return Err(AppError::Validation("密码不能为空".to_string()));
+        }
+        let account = AccountWithPassword {
+            account: PortalAccount {
+                id: "pending-validation".to_string(),
+                remark_name: remark_name.trim().to_string(),
+                username: username.trim().to_string(),
+            },
+            password: password.trim().to_string(),
+        };
+        self.account_traffic_service
+            .fetch_balance(&account, None)
+            .await
+            .map(|_| ())
     }
 
     fn build_snapshot(&self) -> AppResult<AppSnapshotDto> {

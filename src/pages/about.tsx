@@ -27,7 +27,6 @@ export default function AboutPage() {
 
     const unlistenClose = appWindow.onCloseRequested(async (event) => {
       event.preventDefault();
-      console.log("About window close requested, will destroy in 5 seconds");
       await destroyWindow(appWindow.label, 5000);
     });
 

@@ -69,6 +69,44 @@ async fn select_account(
 }
 
 #[tauri::command]
+async fn add_account(
+    core: tauri::State<'_, ManagedAppCore>,
+    remark_name: String,
+    username: String,
+    password: String,
+) -> Result<AppSnapshotDto, AppErrorDto> {
+    core.core
+        .add_account(remark_name, username, password)
+        .await
+        .into_command_result()
+}
+
+#[tauri::command]
+async fn update_account(
+    core: tauri::State<'_, ManagedAppCore>,
+    account_id: String,
+    remark_name: String,
+    username: String,
+    password: Option<String>,
+) -> Result<AppSnapshotDto, AppErrorDto> {
+    core.core
+        .update_account(account_id, remark_name, username, password)
+        .await
+        .into_command_result()
+}
+
+#[tauri::command]
+async fn delete_account(
+    core: tauri::State<'_, ManagedAppCore>,
+    account_id: String,
+) -> Result<AppSnapshotDto, AppErrorDto> {
+    core.core
+        .delete_account(account_id)
+        .await
+        .into_command_result()
+}
+
+#[tauri::command]
 async fn login_selected_account(
     core: tauri::State<'_, ManagedAppCore>,
 ) -> Result<AppSnapshotDto, AppErrorDto> {
@@ -90,6 +128,23 @@ async fn logout_local_device(
     core: tauri::State<'_, ManagedAppCore>,
 ) -> Result<AppSnapshotDto, AppErrorDto> {
     core.core.logout_local_device().await.into_command_result()
+}
+
+#[tauri::command]
+async fn update_preferences(
+    core: tauri::State<'_, ManagedAppCore>,
+    minimize_to_tray_on_close: bool,
+    launch_on_startup: bool,
+    auto_switch_account_on_traffic_exhausted: bool,
+) -> Result<AppSnapshotDto, AppErrorDto> {
+    core.core
+        .update_preferences(
+            minimize_to_tray_on_close,
+            launch_on_startup,
+            auto_switch_account_on_traffic_exhausted,
+        )
+        .await
+        .into_command_result()
 }
 
 #[tauri::command]
@@ -128,9 +183,13 @@ pub fn run() {
             bootstrap_app,
             get_app_snapshot,
             select_account,
+            add_account,
+            update_account,
+            delete_account,
             login_selected_account,
             refresh_dashboard,
             logout_local_device,
+            update_preferences,
             update_tray_menu
         ]);
 

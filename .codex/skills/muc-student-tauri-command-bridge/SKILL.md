@@ -1,58 +1,55 @@
 ---
 name: muc-student-tauri-command-bridge
-description: 处理 MUC-student 遗留 Tauri command、事件、DTO、托盘和窗口行为桥接，或把旧 Tauri bridge 迁到 Slint/Rust 调用。仅在改 `src-tauri/src/adapters_tauri`、`tauri.conf.json`、Tauri command、事件 emit、DTO 兼容、托盘/窗口行为，或拆除旧 Tauri 依赖时使用；纯 Slint UI、纯 Rust service、纯 parser 改动不触发。
+description: 处理 MUC-student 的 Tauri command、事件、DTO、托盘和窗口行为桥接。仅在改 `src-tauri/src/lib.rs`、`tauri.conf.json`、Tauri command、事件 emit、DTO 兼容、托盘/窗口行为时使用；纯 React UI、纯 Rust service、纯 parser 改动不触发。
 ---
 
 # MUC Student Tauri Command Bridge
 
-这是遗留 WebView 壳。当前界面已转向 `src-slint/`，不要新增旧 `invoke` 链路。
+当前桌面壳是 Tauri v2 + React。Tauri command 只做薄桥接，业务编排放 `src-core/src/application/`。
 
-## 当前遗留桥
+## 当前桥接
 
 - Tauri command 在 `src-tauri/src/lib.rs`
-- 用例在 `src-tauri/src/application/backend.rs`
-- DTO 在 `src-tauri/src/application/dto.rs`
-- 事件名包括 `app://state-updated`、`app://task-started`、`app://task-finished`
+- 用例在 `src-core/src/application/backend.rs`
+- DTO 在 `src-core/src/application/dto.rs`
+- 前端 invoke 封装在 `src/lib/muc.ts`
+- 事件名包括 `muc://state-updated`、`muc://task-started`、`muc://task-finished`
 
-## 当前 Rust 入口
+## 先读
 
-先读：
-
-- `src-tauri/src/adapters_tauri/`
-- `src-tauri/src/application/backend.rs`
-- `src-tauri/src/application/dto.rs`
+- `src/lib/muc.ts`
+- `src-tauri/src/lib.rs`
+- `src-core/src/application/backend.rs`
+- `src-core/src/application/dto.rs`
 
 ## 改 command 的顺序
 
-1. 先判断是不是还应该保留 Tauri。
-2. 如果是迁到 Slint，先找 `src-slint/src/main.rs` 的 callback。
-3. 找 `Backend` 里的实际用例。
+1. 先找 React 调用点。
+2. 再找 `src/lib/muc.ts` 的 invoke 封装。
+3. 找 `AppCore` 里的实际用例。
 4. 找 DTO 输入输出。
-5. 拆掉 `tauri::AppHandle`、`emit`、Tauri path API 后再给 Slint 调。
+5. Tauri command 只做参数转发和错误映射。
 
 ## DTO 规则
 
-- Slint 字段看 `src-slint/ui/*.slint`
-- Rust 输入输出看 `application/dto.rs` 和 adapter 的反序列化结构
-- 改字段时，Slint global 和 Rust DTO 一起查
+- React 字段看 `src/lib/muc.ts` 和页面组件。
+- Rust 输入输出看 `src-core/src/application/dto.rs`。
+- 改字段时，React 类型和 Rust DTO 一起查。
 
 ## 事件规则
 
-遗留 Tauri 事件：
+Tauri 事件：
 
-- `app://state-updated`
-- `app://log-appended`
-- `app://task-started`
-- `app://task-finished`
-
-迁到 Slint 时，不要把这些事件照搬成必需设计。优先直接写 global 状态。
+- `muc://state-updated`
+- `muc://task-started`
+- `muc://task-finished`
 
 ## 常见坑
 
-- 继续给新 Slint 功能加 Tauri command。
-- Rust DTO 变了，Slint global 没变。
-- 后端还在 emit 事件，Slint 侧却等同步返回。
-- 把业务直接塞进 adapter，桥接层变成屎山。
+- 业务逻辑塞进 Tauri command。
+- Rust DTO 变了，React 类型没变。
+- 事件和同步返回状态不一致。
+- 把业务直接塞进桥接层，桥接层变成屎山。
 
 ## 参考
 

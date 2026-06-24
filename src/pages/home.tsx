@@ -1,35 +1,54 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import {
   Activity,
   CheckCircle2,
   CircleGauge,
   LogIn,
+  Pencil,
   Power,
+  Plus,
   RefreshCw,
-  Router,
-  UserRound,
+  Trash2,
   Wifi,
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { WindowFrame } from "@/components/window-frame";
 import { MainTitleBar } from "@/components/main-title-bar";
 import {
   type AccountDto,
   type AppSnapshotDto,
+  addAccount,
   bootstrapApp,
+  deleteAccount,
   loginSelectedAccount,
   logoutLocalDevice,
   readErrorMessage,
   refreshDashboard,
   selectAccount,
+  updateAccount,
 } from "@/lib/muc";
 import { cn } from "@/lib/utils";
 
 type RunningAction = "login" | "refresh" | "logout";
+type AccountFormState = {
+  accountId: string;
+  remarkName: string;
+  username: string;
+  password: string;
+};
 
 export default function HomePage() {
   const [snapshot, setSnapshot] = useState<AppSnapshotDto | null>(null);
@@ -40,6 +59,9 @@ export default function HomePage() {
   const [runningAction, setRunningAction] = useState<RunningAction | null>(
     null,
   );
+  const [savingAccount, setSavingAccount] = useState(false);
+  const [deletingAccountId, setDeletingAccountId] = useState("");
+  const [accountForm, setAccountForm] = useState<AccountFormState | null>(null);
 
   useEffect(() => {
     const initTrayMenu = async () => {
@@ -48,8 +70,8 @@ export default function HomePage() {
           showText: "显示窗口",
           quitText: "退出",
         });
-      } catch (error) {
-        console.error("Failed to initialize tray menu:", error);
+      } catch {
+        setErrorText("托盘菜单初始化失败");
       }
     };
 
@@ -82,6 +104,20 @@ export default function HomePage() {
     void loadSnapshot();
   }, []);
 
+  useEffect(() => {
+    const appWindow = getCurrentWebviewWindow();
+    const unlisten = appWindow.onCloseRequested(async (event) => {
+      if (snapshot?.preferences.minimizeToTrayOnClose) {
+        event.preventDefault();
+        await appWindow.hide();
+      }
+    });
+
+    return () => {
+      void unlisten.then((handler) => handler());
+    };
+  }, [snapshot?.preferences.minimizeToTrayOnClose]);
+
   const selectedAccount = useMemo(
     () =>
       snapshot?.accounts.find(
@@ -98,6 +134,8 @@ export default function HomePage() {
     loading ||
     !!selectingId ||
     !!runningAction ||
+    savingAccount ||
+    !!deletingAccountId ||
     !!snapshot?.loginState.running ||
     !!snapshot?.refreshState.running;
   const canLogoutLocalDevice = !!snapshot?.accounts.some(
@@ -154,6 +192,76 @@ export default function HomePage() {
     }
   }
 
+  function openAddAccountForm() {
+    setErrorText("");
+    setAccountForm({
+      accountId: "",
+      remarkName: "",
+      username: "",
+      password: "",
+    });
+  }
+
+  function openEditAccountForm(account: AccountDto) {
+    setErrorText("");
+    setAccountForm({
+      accountId: account.id,
+      remarkName: account.remarkName,
+      username: account.username,
+      password: "",
+    });
+  }
+
+  async function handleSaveAccount() {
+    if (!accountForm || savingAccount) {
+      return;
+    }
+
+    setSavingAccount(true);
+    setErrorText("");
+    try {
+      const nextSnapshot = accountForm.accountId
+        ? await updateAccount(
+            accountForm.accountId,
+            accountForm.remarkName,
+            accountForm.username,
+            accountForm.password,
+          )
+        : await addAccount(
+            accountForm.remarkName,
+            accountForm.username,
+            accountForm.password,
+          );
+      setSnapshot(nextSnapshot);
+      setAccountForm(null);
+    } catch (error) {
+      setErrorText(readErrorMessage(error));
+    } finally {
+      setSavingAccount(false);
+    }
+  }
+
+  async function handleDeleteAccount(account: AccountDto) {
+    if (isBusy || deletingAccountId) {
+      return;
+    }
+
+    const confirmed = window.confirm(`删除账号“${account.remarkName}”？`);
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingAccountId(account.id);
+    setErrorText("");
+    try {
+      setSnapshot(await deleteAccount(account.id));
+    } catch (error) {
+      setErrorText(readErrorMessage(error));
+    } finally {
+      setDeletingAccountId("");
+    }
+  }
+
   return (
     <WindowFrame
       titleBar={<MainTitleBar />}
@@ -172,8 +280,6 @@ export default function HomePage() {
 
           <div className="mt-8 space-y-2">
             <NavItem icon={CircleGauge} active label="总览" />
-            <NavItem icon={UserRound} label="账号" />
-            <NavItem icon={Router} label="设备" />
           </div>
 
           <div className="mt-auto space-y-3">
@@ -274,18 +380,30 @@ export default function HomePage() {
                     <Activity className="text-amber-500 h-4 w-4" />
                     账号池
                   </CardTitle>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={loadSnapshot}
-                    disabled={isBusy}
-                    className="h-8 gap-2"
-                  >
-                    <RefreshCw
-                      className={cn("h-3.5 w-3.5", loading && "animate-spin")}
-                    />
-                    同步
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={openAddAccountForm}
+                      disabled={isBusy}
+                      className="h-8 gap-2"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      添加
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={loadSnapshot}
+                      disabled={isBusy}
+                      className="h-8 gap-2"
+                    >
+                      <RefreshCw
+                        className={cn("h-3.5 w-3.5", loading && "animate-spin")}
+                      />
+                      同步
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent className="min-h-0 flex-1">
                   <div className="max-h-[calc(100vh-430px)] min-h-[280px] overflow-y-auto pr-1">
@@ -299,6 +417,9 @@ export default function HomePage() {
                             selecting={selectingId === account.id}
                             loggingIn={loginAccountId === account.id}
                             disabled={isBusy}
+                            deleting={deletingAccountId === account.id}
+                            onEdit={() => openEditAccountForm(account)}
+                            onDelete={() => handleDeleteAccount(account)}
                             onLogin={() => handleLoginAccount(account)}
                           />
                         ))
@@ -354,6 +475,13 @@ export default function HomePage() {
           </div>
         </main>
       </div>
+      <AccountDialog
+        form={accountForm}
+        saving={savingAccount}
+        onChange={setAccountForm}
+        onClose={() => setAccountForm(null)}
+        onSave={handleSaveAccount}
+      />
     </WindowFrame>
   );
 }
@@ -419,6 +547,9 @@ function AccountRow({
   selecting,
   loggingIn,
   disabled,
+  deleting,
+  onEdit,
+  onDelete,
   onLogin,
 }: {
   account: AccountDto;
@@ -426,6 +557,9 @@ function AccountRow({
   selecting: boolean;
   loggingIn: boolean;
   disabled: boolean;
+  deleting: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
   onLogin: () => void;
 }) {
   const snapshot = account.snapshot;
@@ -439,7 +573,7 @@ function AccountRow({
   return (
     <div
       className={cn(
-        "grid min-h-20 grid-cols-[1fr_112px] gap-4 rounded-lg border p-4 text-left transition-colors",
+        "grid min-h-20 grid-cols-[1fr_148px] gap-4 rounded-lg border p-4 text-left transition-colors",
         accountState === "online"
           ? "border-emerald-500/40 bg-emerald-500/10"
           : "border-border hover:bg-muted/50",
@@ -468,7 +602,7 @@ function AccountRow({
             {snapshot?.productBalanceText ?? "-"}
           </div>
         </div>
-        <div className="w-full">
+        <div className="grid w-full grid-cols-[1fr_32px_32px] gap-1.5">
           <Button
             type="button"
             size="sm"
@@ -483,6 +617,30 @@ function AccountRow({
               )}
             />
             {loggingIn || selecting ? "登录中" : "登录"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            disabled={disabled}
+            onClick={onEdit}
+            aria-label="编辑账号"
+            className="h-8 w-8"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            disabled={disabled}
+            onClick={onDelete}
+            aria-label="删除账号"
+            className="h-8 w-8"
+          >
+            <Trash2
+              className={cn("h-3.5 w-3.5", deleting && "animate-pulse")}
+            />
           </Button>
         </div>
       </div>
@@ -513,5 +671,83 @@ function AccountStateBadge({
       <Wifi className="h-3 w-3" />
       已选
     </span>
+  );
+}
+
+function AccountDialog({
+  form,
+  saving,
+  onChange,
+  onClose,
+  onSave,
+}: {
+  form: AccountFormState | null;
+  saving: boolean;
+  onChange: (form: AccountFormState | null) => void;
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  if (!form) {
+    return null;
+  }
+
+  const isEditing = !!form.accountId;
+  const canSave =
+    form.remarkName.trim() &&
+    form.username.trim() &&
+    (isEditing || form.password.trim());
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{isEditing ? "编辑账号" : "添加账号"}</DialogTitle>
+        </DialogHeader>
+
+        <div className="grid gap-3 py-1">
+          <label className="grid gap-1.5 text-sm">
+            <span className="font-medium">备注名</span>
+            <Input
+              value={form.remarkName}
+              onChange={(event) =>
+                onChange({ ...form, remarkName: event.target.value })
+              }
+              autoFocus
+            />
+          </label>
+
+          <label className="grid gap-1.5 text-sm">
+            <span className="font-medium">账号</span>
+            <Input
+              value={form.username}
+              onChange={(event) =>
+                onChange({ ...form, username: event.target.value })
+              }
+            />
+          </label>
+
+          <label className="grid gap-1.5 text-sm">
+            <span className="font-medium">密码</span>
+            <Input
+              type="password"
+              value={form.password}
+              placeholder={isEditing ? "留空则不修改" : ""}
+              onChange={(event) =>
+                onChange({ ...form, password: event.target.value })
+              }
+            />
+          </label>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={saving}>
+            取消
+          </Button>
+          <Button onClick={onSave} disabled={saving || !canSave}>
+            {saving ? "保存中" : "保存"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

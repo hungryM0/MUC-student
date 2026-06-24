@@ -30,8 +30,7 @@ export function useUpdater() {
       await downloadAndInstall((progressEvent) => {
         setProgress(progressEvent);
       });
-    } catch (error) {
-      console.error("Failed to install update:", error);
+    } catch {
       setDownloading(false);
     }
   };
