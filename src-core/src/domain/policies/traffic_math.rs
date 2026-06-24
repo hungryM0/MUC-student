@@ -160,7 +160,7 @@ pub fn build_pool_quota_summary(
     }
 
     let used_text = if has_used_value {
-        format_megabytes(used_total_mb)
+        format_gigabytes(used_total_mb)
     } else {
         "-".to_string()
     };
@@ -205,11 +205,11 @@ pub fn build_remaining_traffic_text(
 ) -> Option<String> {
     let total_mb = parse_traffic_text_to_mb(total_traffic_text)?;
     let used_mb = parse_traffic_text_to_mb(used_traffic_text)?;
-    Some(format_megabytes((total_mb - used_mb).max(0.0)))
+    Some(format_gigabytes((total_mb - used_mb).max(0.0)))
 }
 
 pub fn parse_traffic_text_to_mb(text: &str) -> Option<f64> {
-    let normalized = text.trim().to_uppercase().replace(' ', "");
+    let normalized = text.trim().to_uppercase().replace([' ', ','], "");
     let re = regex::Regex::new(r"(\d+(?:\.\d+)?)(K|M|G|T|B)(?:YTE|YTES|B)?").ok()?;
     let caps = re.captures(&normalized)?;
     let value: f64 = caps.get(1)?.as_str().parse().ok()?;
@@ -225,6 +225,28 @@ pub fn parse_traffic_text_to_mb(text: &str) -> Option<f64> {
 
 pub fn parse_traffic_text_to_gb(text: &str) -> Option<f64> {
     parse_traffic_text_to_mb(text).map(|mb| mb / 1024.0)
+}
+
+pub fn extract_total_quota_from_billing_policy(text: &str) -> Option<String> {
+    let normalized = text.replace([' ', ','], "");
+    let free_re = regex::Regex::new(r"免费([0-9]+(?:\.[0-9]+)?)GB").ok()?;
+    if let Some(caps) = free_re.captures(&normalized) {
+        let value = caps.get(1)?.as_str().parse::<f64>().ok()?;
+        return Some(format!("{value:.2}GB"));
+    }
+
+    let quota_re = regex::Regex::new(r"([0-9]+(?:\.[0-9]+)?)GB").ok()?;
+    quota_re
+        .captures_iter(&normalized)
+        .filter_map(|caps| caps.get(1)?.as_str().parse::<f64>().ok())
+        .max_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|value| format!("{value:.2}GB"))
+}
+
+pub fn format_traffic_text_as_gb(text: &str) -> String {
+    parse_traffic_text_to_mb(text)
+        .map(format_gigabytes)
+        .unwrap_or_else(|| text.trim().replace(',', ""))
 }
 
 pub fn extract_included_package_gb(text: &str) -> Option<f64> {
@@ -247,6 +269,10 @@ pub fn format_megabytes(value_mb: f64) -> String {
     }
 }
 
+pub fn format_gigabytes(value_mb: f64) -> String {
+    format!("{:.2}GB", value_mb.max(0.0) / 1024.0)
+}
+
 fn round_to(value: f64, digits: i32) -> f64 {
     let factor = 10f64.powi(digits.max(0));
     (value * factor).round() / factor
@@ -261,7 +287,28 @@ mod tests {
         assert_eq!(build_progress_percent("1GB", "2GB"), Some(50.0));
         assert_eq!(
             build_remaining_traffic_text("2GB", "512MB"),
-            Some("1.50G".to_string())
+            Some("1.50GB".to_string())
+        );
+    }
+
+    #[test]
+    fn parses_comma_traffic_and_formats_gb() {
+        assert_eq!(
+            format_traffic_text_as_gb("22,230.78M"),
+            "21.71GB".to_string()
+        );
+        assert_eq!(build_progress_percent("22,230.78M", "70GB"), Some(31.0));
+    }
+
+    #[test]
+    fn extracts_total_quota_from_billing_policy() {
+        assert_eq!(
+            extract_total_quota_from_billing_policy("免费70GB"),
+            Some("70.00GB".to_string())
+        );
+        assert_eq!(
+            extract_total_quota_from_billing_policy("免费45GB/1GB1元（超出45GB）/校内流量"),
+            Some("45.00GB".to_string())
         );
     }
 }

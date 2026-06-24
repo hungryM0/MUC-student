@@ -7,7 +7,7 @@ use tokio::task::JoinSet;
 
 use crate::application::error::AppResult;
 use crate::domain::models::traffic::AccountTrafficSnapshot;
-use crate::domain::policies::traffic_math::build_progress_percent;
+use crate::domain::policies::traffic_math::{build_progress_percent, format_traffic_text_as_gb};
 use crate::infrastructure::network::self_service_panel_client::SelfServicePanelClient;
 use crate::infrastructure::parsers::panel_home_parser::parse_panel_home;
 use crate::infrastructure::persistence::account_repository::AccountWithPassword;
@@ -97,9 +97,10 @@ impl AccountTrafficService {
             .fetch_authenticated_html(account, "/home")
             .await?;
         let panel_home = parse_panel_home(&home_html, local_ip)?;
+        let used_traffic_text = format_traffic_text_as_gb(&panel_home.used_traffic);
         Ok(AccountTrafficSnapshot {
             account_id: account.account.id.clone(),
-            used_traffic_text: panel_home.used_traffic.clone(),
+            used_traffic_text: used_traffic_text.clone(),
             product_balance_text: panel_home.product_balance.clone(),
             included_package_text:
                 crate::infrastructure::parsers::panel_home_parser::build_product_balance_texts(
@@ -114,7 +115,7 @@ impl AccountTrafficService {
             online_devices: panel_home.online_devices,
             matched_local_ip_device: panel_home.matched_local_ip_device,
             progress_percent: build_progress_percent(
-                &panel_home.used_traffic,
+                &used_traffic_text,
                 &panel_home.product_balance,
             ),
         })
