@@ -10,6 +10,7 @@ import {
   readErrorMessage,
   updatePreferences,
 } from "@/lib/muc";
+import { cn } from "@/lib/utils";
 
 type Preferences = AppSnapshotDto["preferences"];
 
@@ -69,12 +70,12 @@ export default function SettingsPage() {
   return (
     <WindowFrame
       titleBar={<TitleBar title="设置" showMaximize={false} />}
-      contentClassName="flex flex-1 overflow-auto"
+      contentClassName="flex flex-1 overflow-auto bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.06),transparent_35%),linear-gradient(135deg,rgba(16,185,129,0.03),transparent_45%)]"
     >
-      <div className="w-full max-w-3xl p-4">
+      <div className="w-full max-w-3xl p-6">
         <div className="space-y-6">
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold">外观</h2>
+            <h2 className="text-lg font-semibold tracking-tight">外观</h2>
             <div className="flex flex-wrap gap-2">
               <Button
                 variant={theme === "light" ? "default" : "outline"}
@@ -107,8 +108,8 @@ export default function SettingsPage() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold">行为</h2>
-            <div className="divide-border rounded-lg border">
+            <h2 className="text-lg font-semibold tracking-tight">行为</h2>
+            <div className="divide-y divide-border/60 overflow-hidden rounded-xl border border-border/80 bg-background/50 backdrop-blur-xs">
               <PreferenceRow
                 title="关闭窗口时最小化到托盘"
                 checked={!!preferences?.minimizeToTrayOnClose}
@@ -160,20 +161,37 @@ function PreferenceRow({
   onToggle: () => void;
 }) {
   return (
-    <label className="flex min-h-12 items-center justify-between gap-4 px-4 py-3 text-sm">
-      <span className="font-medium">{title}</span>
-      <span className="flex items-center gap-2">
+    <div
+      onClick={disabled ? undefined : onToggle}
+      className={cn(
+        "flex min-h-[52px] items-center justify-between gap-4 px-4 py-3 text-sm transition-colors select-none",
+        disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-muted/40"
+      )}
+    >
+      <span className="font-medium text-foreground">{title}</span>
+      <span className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
         {saving && (
           <RotateCw className="text-muted-foreground h-3.5 w-3.5 animate-spin" />
         )}
-        <input
-          type="checkbox"
-          checked={checked}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={checked}
           disabled={disabled}
-          onChange={onToggle}
-          className="accent-primary h-4 w-4"
-        />
+          onClick={onToggle}
+          className={cn(
+            "relative inline-flex h-5.5 w-10 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus:outline-hidden disabled:cursor-not-allowed",
+            checked ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-700",
+          )}
+        >
+          <span
+            className={cn(
+              "pointer-events-none block h-4.5 w-4.5 rounded-full bg-background shadow-sm ring-0 transition-transform duration-200",
+              checked ? "translate-x-5" : "translate-x-0.5",
+            )}
+          />
+        </button>
       </span>
-    </label>
+    </div>
   );
 }
