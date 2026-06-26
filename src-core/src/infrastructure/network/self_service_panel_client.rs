@@ -45,6 +45,35 @@ impl SelfServicePanelClient {
         Ok(self.fetch_authenticated_page(account, path).await?.text)
     }
 
+    pub async fn fetch_sso_html(
+        &self,
+        account_id: &str,
+        username: &str,
+        path: &str,
+    ) -> AppResult<String> {
+        Ok(self.fetch_sso_page(account_id, username, path).await?.text)
+    }
+
+    pub async fn fetch_sso_page(
+        &self,
+        account_id: &str,
+        username: &str,
+        path: &str,
+    ) -> AppResult<HttpResponseData> {
+        let target_path = if path.trim().is_empty() {
+            "/home"
+        } else {
+            path.trim()
+        };
+        let response = self
+            .open_with_sso_username(username, target_path)
+            .await?
+            .ok_or_else(|| AppError::Network("自助服务 SSO 没有进入目标页面".to_string()))?;
+        self.session_repo
+            .save_session(account_id, &response.cookies)?;
+        Ok(response)
+    }
+
     pub async fn fetch_authenticated_page(
         &self,
         account: &AccountWithPassword,
@@ -123,7 +152,16 @@ impl SelfServicePanelClient {
         account: &AccountWithPassword,
         target_path: &str,
     ) -> AppResult<Option<HttpResponseData>> {
-        let sso_url = build_sso_url(&self.traffic_entry_url(), &account.account.username);
+        self.open_with_sso_username(&account.account.username, target_path)
+            .await
+    }
+
+    async fn open_with_sso_username(
+        &self,
+        username: &str,
+        target_path: &str,
+    ) -> AppResult<Option<HttpResponseData>> {
+        let sso_url = build_sso_url(&self.traffic_entry_url(), username);
         let response = self
             .transport
             .request(HttpRequestSpec::get(sso_url).max_redirects(5))

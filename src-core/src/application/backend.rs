@@ -118,7 +118,7 @@ impl AppCore {
                 account_repo: account_repo.clone(),
                 app_state_repo: app_state_repo.clone(),
                 portal_status_client,
-                traffic_service: traffic_service.clone(),
+                panel_client: panel_client.clone(),
                 network_status_service,
                 event_sink: event_sink.clone(),
             });

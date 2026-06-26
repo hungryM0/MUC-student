@@ -1,6 +1,6 @@
 ---
 name: muc-student-network-login-flow
-description: 梳理或修改 MUC-student 的校园网认证、轻量 portal 切号、SSO 自助面板、流量查询、本机下线、在线设备识别和自动切号链路。仅在改 `src-tauri/src/application/backend.rs`、`application/services/*traffic*`、`application/services/portal_snapshot_service.rs`、`infrastructure/network/*portal*`、`self_service_panel_client.rs` 或相关 parser/策略时使用；普通前端改动不触发。
+description: 梳理或修改 MUC-student 的校园网认证、轻量 portal 切号、成功页 SSO 免密自助面板查询、流量查询、本机下线、在线设备识别和自动切号链路。仅在改 `src-core/src/application/backend.rs`、`src-core/src/application/services/*traffic*`、`src-core/src/application/services/portal_snapshot_service.rs`、`src-core/src/infrastructure/network/*portal*`、`src-core/src/infrastructure/network/self_service_panel_client.rs` 或相关 parser/策略时使用；普通前端改动不触发。
 ---
 
 # MUC Student Network Login Flow
@@ -9,7 +9,7 @@ description: 梳理或修改 MUC-student 的校园网认证、轻量 portal 切�
 
 ## 入口顺序
 
-先从 `src-tauri/src/application/backend.rs` 开始读，再沿着这条线往下：
+先从 `src-core/src/application/backend.rs` 开始读，再沿着这条线往下：
 
 - `login_selected_account` / `login_selected_account_inner`
 - `refresh_dashboard` / `run_refresh` / `refresh_inner`
@@ -22,7 +22,7 @@ description: 梳理或修改 MUC-student 的校园网认证、轻量 portal 切�
 - `LegacyPortalStatusClient`
 - `SelfServicePanelClient`
 - `AccountTrafficService`
-- `PortalSnapshotService`
+- `portal_snapshot_service`
 - `NetworkStatusService`
 - `traffic_math`
 - 各 parser
@@ -51,10 +51,38 @@ description: 梳理或修改 MUC-student 的校园网认证、轻量 portal 切�
 
 - 入口在 `run_refresh` / `refresh_inner`
 - 先查本机 IP
-- 有 portal 登录态时优先走 `PortalSnapshotService` 轻量切号查询
-- 无 portal 登录态时走 `AccountTrafficService` 通过自助面板 SSO 查询
+- 优先走轻量 SSO 免密查询：`LegacyPortalStatusClient::fetch_success_info` 读 `srun_portal_pc_success.php`
+- 成功页必须能解析出本机 IP、上网用户、已用流量、计费方式
+- 用成功页账号匹配本地账号后，`SelfServicePanelClient::fetch_sso_html` 访问自助服务 `/home`
+- SSO URL 规则是 `traffic_portal_url` 的 origin + `/site/sso?data=base64(username:username)`
+- SSO 第一跳 302 到 `/home`，必须保留这一跳返回的 `PHPSESSID_8800` cookie，再请求 `/home`
+- `/home` 里解析产品信息、计费策略、已用流量、在线设备、下线链接和套餐相关文本
+- SSO 或 `/home` 失败时，回退 `portal_snapshot_service::build_single_success_snapshot`，只用成功页数据和缓存补齐
+- 不要在刷新里串行扫描所有账号；刷新只查当前本机在线账号
 - 用 `build_status_card_order`、`save_cached_traffic_snapshots` 写回缓存
 - 刷新后可能触发 `try_auto_switch`
+
+### 轻量 SSO 免密查询
+
+关键事实：
+
+- 成功页是 `http://rz.muc.edu.cn/srun_portal_pc_success.php`
+- 页面里的“自助服务”按钮形如 `http://192.168.2.231:8800/site/sso?data=...`
+- `data` 不是随机 token，而是 `base64(username:username)`
+- 例子：`25011777:25011777` -> `MjUwMTE3Nzc6MjUwMTE3Nzc=`
+- 这条链路不需要账号密码，不需要 OCR，也不需要登录自助面板表单
+- 自动化时不能简单 `curl -L` 丢 cookie；要保留 `/site/sso` 302 设置的 cookie，再请求 `/home`
+
+代码落点：
+
+- `LegacyPortalStatusClient::fetch_success_info` 取成功页
+- `legacy_portal_success_page_parser` 解析当前 IP、上网用户、已用流量、计费方式
+- `SelfServicePanelClient::fetch_sso_html` / `fetch_sso_page` 走免密 SSO
+- `AccountTrafficService::snapshot_from_panel_home` 把 `/home` HTML 转成 `AccountTrafficSnapshot`
+- `panel_home_parser` 解析产品表和在线设备
+- `online_device_parser` 解析 `/home/delete` 下线链接
+
+不要把这条链路改回“带密码查所有账号”。那是慢路径，容易把所有账号都打到面板，屎山味很冲。
 
 ### 本机下线
 

@@ -117,9 +117,7 @@ export default function HomePage() {
     };
   }, [snapshot?.preferences.minimizeToTrayOnClose]);
 
-  const progressPercent = Math.round(
-    (snapshot?.poolQuota.progressPercent ?? 0) * 100,
-  );
+  const progressPercent = Math.round(snapshot?.poolQuota.progressPercent ?? 0);
   const safeProgress = Math.min(100, Math.max(0, progressPercent));
   const isBusy =
     loading ||
@@ -557,7 +555,7 @@ function AccountRow({
   onLogin: () => void;
 }) {
   const snapshot = account.snapshot;
-  const progress = Math.round((snapshot?.progressPercent ?? 0) * 100);
+  const progress = Math.round(snapshot?.progressPercent ?? 0);
   const accountState = account.isCurrentOnline
     ? "online"
     : selected
