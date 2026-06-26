@@ -153,6 +153,7 @@ impl LegacyPortalAuthClient {
             .append_pair("nas_ip", "")
             .append_pair("user_mac", "")
             .append_pair("save_me", "0")
+            .append_pair("drop", "0")
             .append_pair("ajax", "1")
             .finish();
         self.transport

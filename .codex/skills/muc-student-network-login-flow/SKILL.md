@@ -45,7 +45,7 @@ description: 梳理或修改 MUC-student 的校园网认证、轻量 portal 切�
 - 可能先从在线列表里找当前本机 IP 所属账号
 - 切号不要先本机下线
 - 切号应走 `http://rz.muc.edu.cn/srun_portal_pc.php?ac_id=1&` 登录页表单覆盖登录
-- 登录页表单 POST 到 `srun_portal_pc.php`，字段包含 `action=login`、`username`、明文 `password`、`ac_id=1`、`save_me=0`、`ajax=1`
+- 登录页表单 POST 到 `srun_portal_pc.php`，字段包含 `action=login`、`username`、明文 `password`、`ac_id=1`、`save_me=0`、`drop=0`、`ajax=1`
 - `/include/auth_action.php` 的轻量接口可能返回 `IP has been online, please logout.`，不能把它当切号主链路
 - 最后写回 `app_state`、选中账号、日志和事件
 

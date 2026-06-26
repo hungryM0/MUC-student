@@ -380,11 +380,9 @@ export default function HomePage() {
                     />
                     <Metric
                       label="最近登录"
-                      value={
-                        snapshot?.loginState.resultText ||
-                        snapshot?.loginState.message ||
-                        "无记录"
-                      }
+                      value={formatLocalLoginTime(
+                        snapshot?.loginState.lastLoginTime,
+                      )}
                     />
                   </div>
                   <div className="text-muted-foreground text-xs border-t border-border/40 pt-3">
@@ -446,7 +444,6 @@ export default function HomePage() {
                         <AccountRow
                           key={account.id}
                           account={account}
-                          selected={account.id === snapshot.selectedAccountId}
                           selecting={selectingId === account.id}
                           loggingIn={loginAccountId === account.id}
                           disabled={isBusy}
@@ -533,9 +530,34 @@ function Metric({
   );
 }
 
+function formatLocalLoginTime(value?: string | null) {
+  if (!value) {
+    return "无记录";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "无记录";
+  }
+
+  const parts = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const getPart = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "00";
+
+  return `${getPart("year")}-${getPart("month")}-${getPart("day")} ${getPart("hour")}:${getPart("minute")}:${getPart("second")}`;
+}
+
 function AccountRow({
   account,
-  selected,
   selecting,
   loggingIn,
   disabled,
@@ -545,7 +567,6 @@ function AccountRow({
   onLogin,
 }: {
   account: AccountDto;
-  selected: boolean;
   selecting: boolean;
   loggingIn: boolean;
   disabled: boolean;
@@ -556,11 +577,7 @@ function AccountRow({
 }) {
   const snapshot = account.snapshot;
   const progress = Math.round(snapshot?.progressPercent ?? 0);
-  const accountState = account.isCurrentOnline
-    ? "online"
-    : selected
-      ? "selected"
-      : "idle";
+  const accountState = account.isCurrentOnline ? "online" : "idle";
 
   return (
     <div
@@ -643,25 +660,16 @@ function AccountRow({
 function AccountStateBadge({
   state,
 }: {
-  state: "online" | "selected" | "idle";
+  state: "online" | "idle";
 }) {
   if (state === "idle") {
     return null;
   }
 
-  if (state === "online") {
-    return (
-      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-600">
-        <CheckCircle2 className="h-3 w-3" />
-        在线
-      </span>
-    );
-  }
-
   return (
-    <span className="text-muted-foreground inline-flex shrink-0 items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs">
-      <Wifi className="h-3 w-3" />
-      已选
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-600">
+      <CheckCircle2 className="h-3 w-3" />
+      在线
     </span>
   );
 }
