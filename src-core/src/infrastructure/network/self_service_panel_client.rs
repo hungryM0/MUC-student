@@ -45,6 +45,57 @@ impl SelfServicePanelClient {
         Ok(self.fetch_authenticated_page(account, path).await?.text)
     }
 
+    pub async fn fetch_cached_session_html(
+        &self,
+        account_id: &str,
+        path: &str,
+    ) -> AppResult<Option<String>> {
+        Ok(self
+            .fetch_cached_session_page(account_id, path)
+            .await?
+            .map(|response| response.text))
+    }
+
+    pub async fn fetch_cached_session_page(
+        &self,
+        account_id: &str,
+        path: &str,
+    ) -> AppResult<Option<HttpResponseData>> {
+        let target_url = self.traffic_entry_url();
+        let target_path = if path.trim().is_empty() {
+            "/home"
+        } else {
+            path.trim()
+        };
+        let saved_cookies = self
+            .session_repo
+            .load_session(account_id)?
+            .into_iter()
+            .collect::<HashMap<_, _>>();
+        if saved_cookies.is_empty() {
+            return Ok(None);
+        }
+
+        let response = self
+            .transport
+            .request(
+                HttpRequestSpec::get(join_url(&target_url, target_path))
+                    .cookies(saved_cookies)
+                    .max_redirects(5),
+            )
+            .await?;
+        if is_login_page(&response.text) {
+            self.session_repo.clear_session(account_id)?;
+            return Ok(None);
+        }
+        if is_traffic_home_page(&response.text) {
+            self.session_repo
+                .save_session(account_id, &response.cookies)?;
+            return Ok(Some(response));
+        }
+        Ok(None)
+    }
+
     pub async fn fetch_sso_html(
         &self,
         account_id: &str,

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use chrono::Local;
+use tokio::task::JoinSet;
 
 use crate::application::dto::AppSnapshotDto;
 use crate::application::error::AppResult;
@@ -13,6 +14,8 @@ use crate::application::services::portal_snapshot_service::{
 use crate::application::services::snapshot_mapper::{
     build_app_snapshot, restore_cached_snapshots, to_cached_snapshots,
 };
+use crate::domain::models::traffic::AccountTrafficSnapshot;
+use crate::domain::models::AccountStore;
 use crate::domain::policies::traffic_math::build_status_card_order;
 use crate::infrastructure::network::legacy_portal_status_client::LegacyPortalStatusClient;
 use crate::infrastructure::network::network_status_service::NetworkStatusService;
@@ -102,6 +105,16 @@ impl DashboardRefreshService {
             };
             snapshot_map.insert(account.id.clone(), snapshot);
         }
+        for (account_id, snapshot) in self
+            .refresh_cached_panel_sessions(
+                &store,
+                success_account.map(|account| account.id.as_str()),
+                local_ip,
+            )
+            .await
+        {
+            snapshot_map.insert(account_id, snapshot);
+        }
         let order = build_status_card_order(
             &store,
             &snapshot_map,
@@ -125,6 +138,51 @@ impl DashboardRefreshService {
             state.account_store.current_online_account_id = current_online_id;
         }
         Ok(())
+    }
+
+    async fn refresh_cached_panel_sessions(
+        &self,
+        store: &AccountStore,
+        current_online_id: Option<&str>,
+        local_ip: Option<&str>,
+    ) -> Vec<(String, AccountTrafficSnapshot)> {
+        let mut join_set = JoinSet::new();
+        let current_online_id = current_online_id.map(str::to_string);
+        let local_ip = local_ip.map(str::to_string);
+        for account in store.accounts.iter().cloned() {
+            if current_online_id
+                .as_deref()
+                .is_some_and(|id| id == account.id)
+            {
+                continue;
+            }
+            let panel_client = self.panel_client.clone();
+            let local_ip = local_ip.clone();
+            join_set.spawn(async move {
+                let html = match panel_client
+                    .fetch_cached_session_html(&account.id, "/home")
+                    .await
+                {
+                    Ok(Some(html)) => html,
+                    _ => return None,
+                };
+                AccountTrafficService::snapshot_from_panel_home(
+                    &account,
+                    &html,
+                    local_ip.as_deref(),
+                )
+                .ok()
+                .map(|snapshot| (account.id.clone(), snapshot))
+            });
+        }
+
+        let mut snapshots = Vec::new();
+        while let Some(result) = join_set.join_next().await {
+            if let Ok(Some(snapshot)) = result {
+                snapshots.push(snapshot);
+            }
+        }
+        snapshots
     }
 
     fn refresh_runtime_from_disk(&self) -> AppResult<()> {
