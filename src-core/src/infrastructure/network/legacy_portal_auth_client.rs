@@ -5,7 +5,7 @@ use chrono::Local;
 use crate::application::error::{AppError, AppResult};
 use crate::domain::models::{LoginResult, PortalHiddenFields};
 use crate::infrastructure::network::http_transport::{
-    build_form_headers, encode_password, HttpRequestSpec, HttpTransport,
+    build_form_headers, HttpRequestSpec, HttpTransport,
 };
 use crate::infrastructure::network::models::PortalPageData;
 use crate::infrastructure::parsers::legacy_portal_success_page_parser::parse_legacy_portal_success_page;
@@ -54,7 +54,7 @@ impl LegacyPortalAuthClient {
     }
 
     pub async fn verify_login(&self, account: &AccountWithPassword) -> AppResult<LoginResult> {
-        let response = self.login_with_fixed_ac_id(account).await?;
+        let response = self.login_with_portal_page(account).await?;
 
         let response_text = response.text.trim().to_string();
         let already_online = response_text == Self::RESPONSE_IP_ALREADY_ONLINE;
@@ -92,7 +92,7 @@ impl LegacyPortalAuthClient {
         &self,
         target_account: &AccountWithPassword,
     ) -> AppResult<LoginResult> {
-        let response = self.login_with_fixed_ac_id(target_account).await?;
+        let response = self.login_with_portal_page(target_account).await?;
         let response_text = response.text.trim().to_string();
         let success = is_portal_login_success(&response_text);
 
@@ -140,15 +140,14 @@ impl LegacyPortalAuthClient {
         headers
     }
 
-    async fn login_with_fixed_ac_id(
+    async fn login_with_portal_page(
         &self,
         account: &AccountWithPassword,
     ) -> AppResult<crate::infrastructure::network::models::HttpResponseData> {
-        let post_url = join_url(&self.settings.portal_url, "/include/auth_action.php");
         let payload = url::form_urlencoded::Serializer::new(String::new())
             .append_pair("action", "login")
             .append_pair("username", &account.account.username)
-            .append_pair("password", &encode_password(&account.password))
+            .append_pair("password", &account.password)
             .append_pair("ac_id", "1")
             .append_pair("user_ip", "")
             .append_pair("nas_ip", "")
@@ -158,8 +157,8 @@ impl LegacyPortalAuthClient {
             .finish();
         self.transport
             .request(
-                HttpRequestSpec::post(post_url)
-                    .headers(self.build_login_headers(&self.settings.portal_url))
+                HttpRequestSpec::post(&self.settings.portal_url)
+                    .headers(build_form_headers(&self.settings.portal_url))
                     .body(payload)
                     .max_redirects(1),
             )

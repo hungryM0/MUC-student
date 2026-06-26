@@ -3,7 +3,6 @@ use std::net::IpAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use base64::Engine;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, COOKIE};
 use reqwest::redirect::Policy;
 use url::Url;
@@ -240,11 +239,4 @@ pub fn build_form_headers(referer_url: &str) -> HashMap<String, String> {
         ("Origin".to_string(), origin),
         ("Referer".to_string(), referer_url.to_string()),
     ])
-}
-
-pub fn encode_password(password: &str) -> String {
-    format!(
-        "{{B}}{}",
-        base64::engine::general_purpose::STANDARD.encode(password.as_bytes())
-    )
 }

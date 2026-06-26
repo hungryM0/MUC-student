@@ -43,8 +43,10 @@ description: 梳理或修改 MUC-student 的校园网认证、轻量 portal 切�
 - 实际流程在 `login_selected_account_inner`
 - 会先探测本机网络状态
 - 可能先从在线列表里找当前本机 IP 所属账号
-- 如有必要用 `LegacyPortalAuthClient::switch_account` 轻量切号
-- 再调用 `LegacyPortalAuthClient::verify_login`
+- 切号不要先本机下线
+- 切号应走 `http://rz.muc.edu.cn/srun_portal_pc.php?ac_id=1&` 登录页表单覆盖登录
+- 登录页表单 POST 到 `srun_portal_pc.php`，字段包含 `action=login`、`username`、明文 `password`、`ac_id=1`、`save_me=0`、`ajax=1`
+- `/include/auth_action.php` 的轻量接口可能返回 `IP has been online, please logout.`，不能把它当切号主链路
 - 最后写回 `app_state`、选中账号、日志和事件
 
 ### 刷新状态
@@ -90,6 +92,7 @@ description: 梳理或修改 MUC-student 的校园网认证、轻量 portal 切�
 - 必须先有有效本机 IP
 - 必须先有 `current_online_account_id`
 - 实际 portal 下线由 `LegacyPortalAuthClient::logout_current_ip` 完成
+- 本机下线只用于用户主动下号，不用于切号前置步骤
 
 ## 硬规则
 
@@ -102,6 +105,7 @@ description: 梳理或修改 MUC-student 的校园网认证、轻量 portal 切�
 
 - 只改 `LegacyPortalAuthClient`，忘了 `PortalSnapshotService` 的并发探测和串行回退。
 - 只改 response 解析，忘了 `already_online` 和预下线分支。
+- 把切号做成“先下线再登录”。这是错的，登录页本身支持覆盖登录。
 - 只改后端，不看前端是否依赖 `AppSnapshotDto` 字段。
 - 在 infrastructure 层写选择账号逻辑，代码会发臭。
 - 又把 OCR 或验证码登录链路加回来，直接判定越界。

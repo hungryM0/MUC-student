@@ -66,7 +66,7 @@ impl SessionService {
         let mut current_online_account = None;
         if let Some(local_ip) = local_ip {
             let current_online = self
-                .detect_current_online_account_fast(&store.accounts, local_ip)
+                .detect_current_online_account(&store.accounts, local_ip)
                 .await;
             if let Some(current) = current_online {
                 {
@@ -112,9 +112,7 @@ impl SessionService {
                     target.account.display_name()
                 );
             } else {
-                login_result.success = false;
-                login_result.message =
-                    "当前 IP 已在线，但无法确认是不是目标账号，请先本机下线后再登录".to_string();
+                login_result = self.auth_client.login_target_account(&target).await?;
             }
         }
 
@@ -157,6 +155,29 @@ impl SessionService {
         Ok(())
     }
 
+    async fn detect_current_online_account(
+        &self,
+        accounts: &[PortalAccount],
+        local_ip: &str,
+    ) -> Option<PortalAccount> {
+        if let Some(account) = self
+            .detect_current_online_account_fast(accounts, local_ip)
+            .await
+        {
+            return Some(account);
+        }
+
+        let success_info = self.portal_status_client.fetch_success_info().await.ok()?;
+        if success_info.ip.trim() != local_ip.trim() {
+            return None;
+        }
+
+        accounts
+            .iter()
+            .find(|account| username_matches(&account.username, &success_info.username))
+            .cloned()
+    }
+
     async fn detect_current_online_account_fast(
         &self,
         accounts: &[PortalAccount],
@@ -166,6 +187,7 @@ impl SessionService {
         if online_info.ip.trim() != local_ip.trim() {
             return None;
         }
+
         accounts
             .iter()
             .find(|account| username_matches(&account.username, &online_info.username))
