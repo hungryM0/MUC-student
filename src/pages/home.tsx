@@ -45,6 +45,9 @@ import { cn } from "@/lib/utils";
 import appIconUrl from "../../src-tauri/icons/icon.svg?url";
 
 function getTrafficProgressColor(percent: number, isOnline: boolean = true) {
+  if (percent >= 100) {
+    return isOnline ? "bg-red-700" : "bg-red-700/60";
+  }
   if (percent < 70) {
     return isOnline ? "bg-emerald-500" : "bg-emerald-500/60";
   }
@@ -58,6 +61,7 @@ function getTrafficProgressColor(percent: number, isOnline: boolean = true) {
 }
 
 function getTrafficProgressTextColor(percent: number) {
+  if (percent >= 100) return "text-red-700";
   if (percent < 70) return "text-emerald-500";
   if (percent < 80) return "text-yellow-500";
   if (percent < 90) return "text-orange-500";
@@ -99,7 +103,9 @@ export default function HomePage() {
   );
   const [savingAccount, setSavingAccount] = useState(false);
   const [deletingAccountId, setDeletingAccountId] = useState("");
-  const [accountToDelete, setAccountToDelete] = useState<AccountDto | null>(null);
+  const [accountToDelete, setAccountToDelete] = useState<AccountDto | null>(
+    null,
+  );
   const [accountForm, setAccountForm] = useState<AccountFormState | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -390,7 +396,9 @@ export default function HomePage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => runSnapshotAction("refresh", refreshDashboard)}
+                        onClick={() =>
+                          runSnapshotAction("refresh", refreshDashboard)
+                        }
                         disabled={isBusy}
                         className="h-8 gap-1.5"
                       >
@@ -446,7 +454,7 @@ export default function HomePage() {
                     <CardTitle className="flex items-center justify-between text-base font-semibold">
                       <div className="flex items-center gap-2">
                         <CircleGauge className="text-emerald-500 h-4.5 w-4.5" />
-                        状态概览
+                        号池概览
                       </div>
                     </CardTitle>
                   </CardHeader>
@@ -454,12 +462,24 @@ export default function HomePage() {
                     {/* 流量池部分 */}
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-muted-foreground">流量池已用</span>
-                        <span className={cn("text-sm font-bold", getTrafficProgressTextColor(safeProgress))}>{safeProgress}%</span>
+                        <span className="text-sm font-medium text-muted-foreground">
+                          流量池已用
+                        </span>
+                        <span
+                          className={cn(
+                            "text-sm font-bold",
+                            getTrafficProgressTextColor(safeProgress),
+                          )}
+                        >
+                          {safeProgress}%
+                        </span>
                       </div>
                       <div className="bg-muted h-2 rounded-full overflow-hidden">
                         <div
-                          className={cn("h-full rounded-full transition-[width] duration-500", getTrafficProgressColor(safeProgress, true))}
+                          className={cn(
+                            "h-full rounded-full transition-[width] duration-500",
+                            getTrafficProgressColor(safeProgress, true),
+                          )}
                           style={{ width: `${safeProgress}%` }}
                         />
                       </div>
@@ -471,7 +491,8 @@ export default function HomePage() {
                           {snapshot?.poolQuota.productBalanceText ?? "-"}
                         </div>
                         <div className="text-muted-foreground text-[10px] bg-muted/40 px-2 py-1.5 rounded border border-border/20 mt-1 whitespace-pre-wrap leading-relaxed">
-                          {snapshot?.poolQuota.includedPackageText || "套餐信息为空"}
+                          {snapshot?.poolQuota.includedPackageText ||
+                            "套餐信息为空"}
                         </div>
                       </div>
                     </div>
@@ -481,26 +502,35 @@ export default function HomePage() {
                     {/* 在线状态部分 */}
                     <div className="space-y-3.5">
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-muted-foreground text-xs">当前在线</span>
+                        <span className="text-muted-foreground text-xs">
+                          当前在线
+                        </span>
                         <span className="max-w-[70%] truncate text-xs font-medium">
                           {snapshot?.currentOnlineAccountId
                             ? snapshot?.accounts.find(
                                 (account) =>
-                                  account.id === snapshot.currentOnlineAccountId,
+                                  account.id ===
+                                  snapshot.currentOnlineAccountId,
                               )?.remarkName || "未知账号"
                             : "无在线设备"}
                         </span>
                       </div>
 
                       <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground text-xs">最近登录</span>
+                        <span className="text-muted-foreground text-xs">
+                          最近登录
+                        </span>
                         <span className="text-xs font-mono text-muted-foreground">
-                          {formatLocalLoginTime(snapshot?.loginState.lastLoginTime)}
+                          {formatLocalLoginTime(
+                            snapshot?.loginState.lastLoginTime,
+                          )}
                         </span>
                       </div>
 
                       <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground text-xs">已配置账号</span>
+                        <span className="text-muted-foreground text-xs">
+                          已配置账号
+                        </span>
                         <span className="text-xs font-medium">
                           {snapshot?.accounts.length || 0} 个拼车账号
                         </span>
@@ -514,7 +544,9 @@ export default function HomePage() {
                           variant="ghost"
                           size="sm"
                           disabled={isBusy}
-                          onClick={() => runSnapshotAction("logout", logoutLocalDevice)}
+                          onClick={() =>
+                            runSnapshotAction("logout", logoutLocalDevice)
+                          }
                           className="w-full h-8 gap-1.5 text-xs text-muted-foreground hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30 transition-all border border-border/30"
                         >
                           <Power className="h-3 w-3" />
@@ -536,7 +568,10 @@ export default function HomePage() {
         onClose={() => setAccountForm(null)}
         onSave={handleSaveAccount}
       />
-      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsDialog
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+      />
       <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
       <DeleteConfirmDialog
         account={accountToDelete}
@@ -578,7 +613,10 @@ function formatSnapshotSyncText(snapshot: AccountDto["snapshot"]) {
   if (!snapshot) {
     return "未查询";
   }
-  if (snapshot.statusText === "查询中..." || snapshot.statusText === "查询失败") {
+  if (
+    snapshot.statusText === "查询中..." ||
+    snapshot.statusText === "查询失败"
+  ) {
     return snapshot.statusText;
   }
 
@@ -657,7 +695,12 @@ function AccountRow({
       </div>
       <div className="flex flex-col items-end justify-between gap-3">
         <div className="w-full text-right">
-          <div className={cn("font-semibold", getTrafficProgressTextColor(Math.min(100, Math.max(0, progress))))}>
+          <div
+            className={cn(
+              "font-semibold",
+              getTrafficProgressTextColor(Math.min(100, Math.max(0, progress))),
+            )}
+          >
             {Math.min(100, Math.max(0, progress))}%
           </div>
           <div className="text-muted-foreground mt-1 truncate text-xs">
@@ -672,7 +715,8 @@ function AccountRow({
             onClick={onLogin}
             className={cn(
               "h-8 w-full transition-all duration-300 relative overflow-hidden",
-              (loggingIn || selecting) && "bg-emerald-600 hover:bg-emerald-600 text-white"
+              (loggingIn || selecting) &&
+                "bg-emerald-600 hover:bg-emerald-600 text-white",
             )}
           >
             <span className="flex items-center justify-center gap-1.5 transition-all duration-300">
@@ -717,13 +761,16 @@ function AccountRow({
             "h-1.5 w-full rounded-full overflow-hidden",
             accountState === "online"
               ? "bg-emerald-500/8 dark:bg-zinc-950/30"
-              : "bg-muted"
+              : "bg-muted",
           )}
         >
           <div
             className={cn(
               "h-full rounded-full transition-[width] duration-500 ease-out",
-              getTrafficProgressColor(Math.min(100, Math.max(0, progress)), accountState === "online")
+              getTrafficProgressColor(
+                Math.min(100, Math.max(0, progress)),
+                accountState === "online",
+              ),
             )}
             style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
           />
@@ -733,11 +780,7 @@ function AccountRow({
   );
 }
 
-function AccountStateBadge({
-  state,
-}: {
-  state: "online" | "idle";
-}) {
+function AccountStateBadge({ state }: { state: "online" | "idle" }) {
   const isOnline = state === "online";
   return (
     <span
@@ -798,7 +841,10 @@ function AccountDialog({
             <Input
               value={localForm.remarkName}
               onChange={(event) => {
-                const updated = { ...localForm, remarkName: event.target.value };
+                const updated = {
+                  ...localForm,
+                  remarkName: event.target.value,
+                };
                 setLocalForm(updated);
                 onChange(updated);
               }}
@@ -871,14 +917,28 @@ function DeleteConfirmDialog({
         </DialogHeader>
 
         <div className="py-2 text-sm text-muted-foreground">
-          确定要删除账号“<span className="font-semibold text-foreground">{account.remarkName}</span>”吗？
+          确定要删除账号“
+          <span className="font-semibold text-foreground">
+            {account.remarkName}
+          </span>
+          ”吗？
         </div>
 
         <DialogFooter>
-          <Button variant="outline" size="sm" onClick={onClose} disabled={deleting}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onClose}
+            disabled={deleting}
+          >
             取消
           </Button>
-          <Button variant="destructive" size="sm" onClick={onConfirm} disabled={deleting}>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={onConfirm}
+            disabled={deleting}
+          >
             {deleting ? "删除中" : "确认删除"}
           </Button>
         </DialogFooter>

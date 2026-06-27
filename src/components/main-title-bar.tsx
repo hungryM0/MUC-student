@@ -8,7 +8,10 @@ interface MainTitleBarProps {
   onOpenAbout?: () => void;
 }
 
-export function MainTitleBar({ onOpenSettings, onOpenAbout }: MainTitleBarProps) {
+export function MainTitleBar({
+  onOpenSettings,
+  onOpenAbout,
+}: MainTitleBarProps) {
   const { theme, setTheme } = useTheme();
 
   const handleToggleTheme = () => {
