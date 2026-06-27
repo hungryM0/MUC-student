@@ -222,7 +222,11 @@ export default function HomePage() {
             accountForm.password,
           );
       setSnapshot(nextSnapshot);
-      setAccountForm(null);
+      if (nextSnapshot.loginState.message) {
+        setErrorText(nextSnapshot.loginState.message);
+      } else {
+        setAccountForm(null);
+      }
     } catch (error) {
       setErrorText(readErrorMessage(error));
     } finally {

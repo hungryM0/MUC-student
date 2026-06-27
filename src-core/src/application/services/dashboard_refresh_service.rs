@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use chrono::Local;
+use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
 use crate::application::dto::AppSnapshotDto;
@@ -73,7 +74,9 @@ impl DashboardRefreshService {
         }
         self.emit_state()?;
 
-        let success_info = self.portal_status_client.fetch_success_info().await.ok();
+        let success_result = self.portal_status_client.fetch_success_info().await;
+        let fetch_succeeded = success_result.is_ok();
+        let success_info = success_result.ok();
         let success_account = success_info.as_ref().and_then(|info| {
             local_ip
                 .filter(|ip| info.ip.trim() == ip.trim())
@@ -84,10 +87,14 @@ impl DashboardRefreshService {
                         .find(|account| username_matches(&account.username, &info.username))
                 })
         });
-        let current_online_id = success_account
-            .as_ref()
-            .map(|account| account.id.clone())
-            .unwrap_or_else(|| store.current_online_account_id.clone());
+        let current_online_id = if fetch_succeeded {
+            success_account
+                .as_ref()
+                .map(|account| account.id.clone())
+                .unwrap_or_default()
+        } else {
+            store.current_online_account_id.clone()
+        };
         if let (Some(account), Some(info)) = (success_account.as_ref(), success_info.as_ref()) {
             let snapshot = match self
                 .panel_client
@@ -146,6 +153,9 @@ impl DashboardRefreshService {
         current_online_id: Option<&str>,
         local_ip: Option<&str>,
     ) -> Vec<(String, AccountTrafficSnapshot)> {
+        let semaphore = Arc::new(Semaphore::new(
+            AccountTrafficService::DEFAULT_PANEL_QUERY_CONCURRENCY,
+        ));
         let mut join_set = JoinSet::new();
         let current_online_id = current_online_id.map(str::to_string);
         let local_ip = local_ip.map(str::to_string);
@@ -158,7 +168,9 @@ impl DashboardRefreshService {
             }
             let panel_client = self.panel_client.clone();
             let local_ip = local_ip.clone();
+            let sem = semaphore.clone();
             join_set.spawn(async move {
+                let _permit = sem.acquire_owned().await.ok()?;
                 let html = match panel_client
                     .fetch_cached_session_html(&account.id, "/home")
                     .await
