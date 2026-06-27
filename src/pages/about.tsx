@@ -7,6 +7,7 @@ import { WindowFrame } from "@/components/window-frame";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { cancelDestroyWindow, destroyWindow } from "@/lib/window";
 import { APP_DISPLAY_VERSION } from "@/lib/app-version";
+import appIconUrl from "../../src-tauri/icons/icon.svg?url";
 
 export default function AboutPage() {
   useEffect(() => {
@@ -45,7 +46,7 @@ export default function AboutPage() {
       <div className="w-full max-w-xs space-y-6">
         <div className="space-y-3 text-center">
           <img
-            src="/icons/32x32.png"
+            src={appIconUrl}
             alt=""
             className="mx-auto h-14 w-14 rounded-xl"
           />

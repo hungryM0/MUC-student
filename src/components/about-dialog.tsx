@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { APP_DISPLAY_VERSION } from "@/lib/app-version";
+import appIconUrl from "../../src-tauri/icons/icon.svg?url";
 
 interface AboutDialogProps {
   open: boolean;
@@ -32,13 +33,11 @@ export function AboutDialog({ open, onClose }: AboutDialogProps) {
         <div className="space-y-5 py-2">
           <div className="space-y-2 text-center">
             <img
-              src="/icons/32x32.png"
+              src={appIconUrl}
               alt=""
               className="mx-auto h-12 w-12 rounded-xl"
             />
-            <h3 className="text-lg font-bold tracking-tight">
-              MUC-student
-            </h3>
+            <h3 className="text-lg font-bold tracking-tight">MUC-student</h3>
             <p className="text-muted-foreground text-[10px]">
               MUC 校园网多账号管理工具
             </p>
