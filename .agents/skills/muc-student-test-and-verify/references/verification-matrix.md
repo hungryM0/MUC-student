@@ -24,6 +24,7 @@
 - `cargo fmt --check`
 - `cargo check`
 - `cargo test`
+- 用户问覆盖率或刚补高风险回归测试时，加 `cargo coverage-summary`
 
 ## Tauri 打包、托盘、自启、Windows 行为
 
