@@ -570,7 +570,7 @@ function AccountRow({
   return (
     <div
       className={cn(
-        "grid min-h-20 grid-cols-[1fr_148px] gap-4 rounded-lg border p-4 text-left transition-all duration-300 ease-out",
+        "grid min-h-20 grid-cols-[1fr_148px] gap-x-4 gap-y-3 rounded-lg border p-4 text-left transition-all duration-300 ease-out",
         accountState === "online"
           ? "border-emerald-500/40 bg-emerald-500/10 shadow-[0_0_12px_rgba(16,185,129,0.15)] ring-1 ring-emerald-500/20 account-card-online"
           : "border-border hover:bg-muted/50 hover:border-muted-foreground/20 hover:shadow-xs",
@@ -643,6 +643,25 @@ function AccountRow({
               className={cn("h-3.5 w-3.5", deleting && "animate-pulse")}
             />
           </Button>
+        </div>
+      </div>
+      {/* 进度条 */}
+      <div className="col-span-2 mt-1">
+        <div
+          className={cn(
+            "h-1.5 w-full rounded-full overflow-hidden",
+            accountState === "online"
+              ? "bg-white dark:bg-zinc-950/30"
+              : "bg-muted"
+          )}
+        >
+          <div
+            className={cn(
+              "h-full rounded-full transition-[width] duration-500 ease-out",
+              accountState === "online" ? "bg-emerald-500" : "bg-emerald-500/60"
+            )}
+            style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
+          />
         </div>
       </div>
     </div>
