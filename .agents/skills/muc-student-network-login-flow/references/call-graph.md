@@ -1,6 +1,6 @@
 # 调用链索引
 
-## 登录
+## 登录和切号
 
 - `Backend::login_selected_account`
 - `Backend::login_selected_account_inner`
@@ -14,12 +14,11 @@
 
 - `Backend::run_refresh`
 - `Backend::refresh_inner`
+- `DashboardRefreshService`
 - `LegacyPortalStatusClient::fetch_success_info`
-- `PortalSnapshotService::fetch_balances_with_probe`
-- `PortalSnapshotService::probe_balances_parallel`
-- `PortalSnapshotService::fetch_balances_serial`
-- `AccountTrafficService::fetch_balances`
-- `AccountTrafficService::to_snapshot_map`
+- `SelfServicePanelClient::fetch_sso_html`
+- `AccountTrafficService::snapshot_from_panel_home`
+- `portal_snapshot_service`
 - `build_status_card_order`
 - `save_cached_traffic_snapshots`
 - `Backend::try_auto_switch`
@@ -28,4 +27,11 @@
 
 - `Backend::logout_local_device_inner`
 - `LegacyPortalAuthClient::logout_current_ip`
-- `LegacyPortalAuthClient::logout_with_success_page`
+
+## 解析器
+
+- `legacy_portal_online_info_parser`
+- `legacy_portal_success_page_parser`
+- `panel_home_parser`
+- `online_device_parser`
+- `portal_page_parser`
