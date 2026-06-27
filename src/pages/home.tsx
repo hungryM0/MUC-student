@@ -74,6 +74,22 @@ export default function HomePage() {
   const [snapshot, setSnapshot] = useState<AppSnapshotDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorText, setErrorText] = useState("");
+  const [displayErrorText, setDisplayErrorText] = useState("");
+  const [showError, setShowError] = useState(false);
+
+  useEffect(() => {
+    if (errorText) {
+      setDisplayErrorText(errorText);
+      setShowError(true);
+    } else {
+      setShowError(false);
+      const timer = setTimeout(() => {
+        setDisplayErrorText("");
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [errorText]);
+
   const [selectingId, setSelectingId] = useState("");
   const [loginAccountId, setLoginAccountId] = useState("");
   const [runningAction, setRunningAction] = useState<RunningAction | null>(
@@ -267,11 +283,15 @@ export default function HomePage() {
     }
 
     const account = accountToDelete;
+    setAccountToDelete(null);
     setDeletingAccountId(account.id);
     setErrorText("");
+
+    // Wait for the exit animation to complete (300ms)
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
     try {
       setSnapshot(await deleteAccount(account.id));
-      setAccountToDelete(null);
     } catch (error) {
       setErrorText(readErrorMessage(error));
     } finally {
@@ -307,12 +327,21 @@ export default function HomePage() {
               </span>
             </header>
 
-            {errorText && (
-              <div className="border-destructive/30 bg-destructive/10 text-destructive rounded-lg border px-4 py-3 text-sm flex items-center gap-2">
-                <span className="h-1.5 w-1.5 rounded-full bg-destructive" />
-                {errorText}
-              </div>
-            )}
+            <div
+              className={cn(
+                "transition-all duration-300 ease-out overflow-hidden",
+                showError
+                  ? "max-h-20 opacity-100 mb-6 scale-100"
+                  : "max-h-0 opacity-0 mb-0 scale-95 pointer-events-none",
+              )}
+            >
+              {displayErrorText && (
+                <div className="border-destructive/30 bg-destructive/10 text-destructive rounded-lg border px-4 py-3 text-sm flex items-center gap-2">
+                  <span className="h-1.5 w-1.5 rounded-full bg-destructive" />
+                  {displayErrorText}
+                </div>
+              )}
+            </div>
 
             <div className="flex flex-col gap-6 md:flex-row">
               {/* 左侧：账号池 */}
@@ -586,10 +615,11 @@ function AccountRow({
   return (
     <div
       className={cn(
-        "grid min-h-20 grid-cols-[1fr_148px] gap-x-4 gap-y-3 rounded-lg border p-4 text-left transition-all duration-300 ease-out",
+        "grid min-h-20 grid-cols-[1fr_148px] gap-x-4 gap-y-3 rounded-lg border p-4 text-left transition-all duration-300 ease-out animate-slide-in-up",
         accountState === "online"
           ? "border-emerald-500/40 bg-emerald-500/10 shadow-[0_0_12px_rgba(16,185,129,0.15)] ring-1 ring-emerald-500/20 account-card-online"
           : "border-border hover:bg-muted/50 hover:border-muted-foreground/20 hover:shadow-xs",
+        deleting && "animate-slide-out-right",
       )}
     >
       <div className="min-w-0 space-y-2">
