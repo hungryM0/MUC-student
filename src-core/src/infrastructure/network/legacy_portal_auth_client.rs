@@ -302,6 +302,10 @@ fn is_ip_already_online_response(response_text: &str) -> bool {
     response_text.contains(LegacyPortalAuthClient::RESPONSE_IP_ALREADY_ONLINE)
 }
 
+pub fn is_portal_arrearage_response(response_text: &str) -> bool {
+    response_text.contains("E2616") || response_text.contains("Arrearage users")
+}
+
 fn parse_success_logout_form(html: &str) -> SuccessLogoutForm {
     SuccessLogoutForm {
         action: extract_input_value(html, "action"),
@@ -340,10 +344,11 @@ fn decode_basic_html_entities(value: &str) -> String {
         .replace("&#39;", "'")
 }
 
-
 #[cfg(test)]
 mod tests {
-    use super::{is_ip_already_online_response, normalize_portal_response_text};
+    use super::{
+        is_ip_already_online_response, is_portal_arrearage_response, normalize_portal_response_text,
+    };
 
     #[test]
     fn normalize_portal_response_strips_bom() {
@@ -355,7 +360,14 @@ mod tests {
 
     #[test]
     fn already_online_detection_accepts_bom_wrapped_text() {
-        let response = normalize_portal_response_text(" \u{feff}IP has been online, please logout. ");
+        let response =
+            normalize_portal_response_text(" \u{feff}IP has been online, please logout. ");
         assert!(is_ip_already_online_response(&response));
+    }
+
+    #[test]
+    fn arrearage_detection_accepts_portal_error_code() {
+        let response = normalize_portal_response_text("E2616: Arrearage users.(已欠费)");
+        assert!(is_portal_arrearage_response(&response));
     }
 }

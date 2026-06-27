@@ -6,8 +6,10 @@ use crate::application::error::{AppError, AppResult};
 use crate::application::runtime::SharedRuntimeState;
 use crate::application::services::portal_snapshot_service::username_matches;
 use crate::application::services::snapshot_mapper::restore_cached_snapshots;
-use crate::domain::models::{LoginResult, PortalAccount};
-use crate::infrastructure::network::legacy_portal_auth_client::LegacyPortalAuthClient;
+use crate::domain::models::{CachedTrafficSnapshot, LoginResult, PortalAccount};
+use crate::infrastructure::network::legacy_portal_auth_client::{
+    is_portal_arrearage_response, LegacyPortalAuthClient,
+};
 use crate::infrastructure::network::legacy_portal_status_client::LegacyPortalStatusClient;
 use crate::infrastructure::network::network_status_service::NetworkStatusService;
 use crate::infrastructure::persistence::account_repository::{
@@ -127,6 +129,9 @@ impl SessionService {
         };
         app_state.last_login_message = login_result.message.clone();
         self.app_state_repo.save_state(&app_state)?;
+        if !login_result.success && is_portal_arrearage_response(&login_result.response_text) {
+            self.persist_arrearage_snapshot(&target, login_result.checked_at)?;
+        }
         if login_result.success {
             self.confirm_and_persist_online_account(&target, local_ip)
                 .await?;
@@ -163,6 +168,42 @@ impl SessionService {
             });
         }
         self.auth_client.login_target_account(target).await
+    }
+
+    fn persist_arrearage_snapshot(
+        &self,
+        target: &AccountWithPassword,
+        checked_at: chrono::DateTime<Local>,
+    ) -> AppResult<()> {
+        let mut store = self.account_repo.load_store()?;
+        let previous = store
+            .cached_traffic_snapshots
+            .get(&target.account.id)
+            .cloned()
+            .unwrap_or_default();
+        store.cached_traffic_snapshots.insert(
+            target.account.id.clone(),
+            CachedTrafficSnapshot {
+                used_traffic_text: "70.00GB".to_string(),
+                product_balance_text: "70.00GB".to_string(),
+                included_package_text: "含70.00GB套餐流量".to_string(),
+                online_device_count_text: if previous.online_device_count_text.trim().is_empty() {
+                    "-".to_string()
+                } else {
+                    previous.online_device_count_text
+                },
+                package_text: if previous.package_text.trim().is_empty() {
+                    "-".to_string()
+                } else {
+                    previous.package_text
+                },
+                status_text: "已耗尽".to_string(),
+                detail_text: "Portal 返回欠费，按流量 100% 耗尽处理".to_string(),
+                queried_at: Some(checked_at),
+                progress_percent: Some(100.0),
+            },
+        );
+        self.account_repo.save_store(&store)
     }
 
     pub async fn logout_local_device_inner(&self) -> AppResult<()> {

@@ -12,6 +12,7 @@ import {
   Plus,
   RefreshCw,
   Trash2,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,6 +42,7 @@ import {
   updateAccount,
 } from "@/lib/muc";
 import { cn } from "@/lib/utils";
+import appIconUrl from "../../src-tauri/icons/icon.svg?url";
 
 function getTrafficProgressColor(percent: number, isOnline: boolean = true) {
   if (percent < 70) {
@@ -309,13 +311,46 @@ export default function HomePage() {
       }
       contentClassName="flex flex-1 overflow-hidden"
     >
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden relative">
+        {/* 浮动 Infobar 弹窗 */}
+        <div
+          className={cn(
+            "absolute left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-xl transition-all duration-300 ease-out",
+            showError
+              ? "top-4 opacity-100 scale-100 pointer-events-auto"
+              : "-top-20 opacity-0 scale-95 pointer-events-none",
+          )}
+        >
+          {displayErrorText && (
+            <div className="border-red-500/30 dark:border-red-500/40 bg-card/95 backdrop-blur-md text-red-600 dark:text-red-400 shadow-xl rounded-xl border px-4 py-3.5 text-sm flex items-start justify-between gap-3">
+              <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                <span className="h-2 w-2 shrink-0 rounded-full bg-red-500 animate-pulse mt-1.5" />
+                <span className="break-words whitespace-pre-wrap select-text font-medium text-left flex-1">
+                  {displayErrorText}
+                </span>
+              </div>
+              <button
+                onClick={() => setErrorText("")}
+                className="text-red-600/70 dark:text-red-400/70 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-500/10 dark:hover:bg-red-500/20 rounded-lg p-1.5 transition-colors shrink-0 mt-0.5"
+                aria-label="关闭错误提示"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+        </div>
+
         <main className="min-w-0 flex-1 overflow-y-auto p-6">
           <div className="mx-auto flex w-full max-w-5xl xl:max-w-7xl 2xl:max-w-[1440px] flex-col gap-6">
             {/* 顶栏 Header */}
             <header className="flex items-center justify-between border-b border-border/40 pb-4">
               <div className="flex items-center gap-4">
-                <h1 className="text-xl font-bold tracking-tight text-foreground">
+                <h1 className="flex items-center gap-2.5 text-xl font-bold tracking-tight text-foreground">
+                  <img
+                    src={appIconUrl}
+                    alt=""
+                    className="h-7 w-7 shrink-0 rounded-md"
+                  />
                   MUC 校园网拼车
                 </h1>
                 <div className="bg-border/60 h-4 w-px hidden sm:block" />
@@ -326,22 +361,6 @@ export default function HomePage() {
                   : "IP 未识别"}
               </span>
             </header>
-
-            <div
-              className={cn(
-                "transition-all duration-300 ease-out overflow-hidden",
-                showError
-                  ? "max-h-20 opacity-100 mb-6 scale-100"
-                  : "max-h-0 opacity-0 mb-0 scale-95 pointer-events-none",
-              )}
-            >
-              {displayErrorText && (
-                <div className="border-destructive/30 bg-destructive/10 text-destructive rounded-lg border px-4 py-3 text-sm flex items-center gap-2">
-                  <span className="h-1.5 w-1.5 rounded-full bg-destructive" />
-                  {displayErrorText}
-                </div>
-              )}
-            </div>
 
             <div className="flex flex-col gap-6 md:flex-row">
               {/* 左侧：账号池 */}
@@ -499,7 +518,7 @@ export default function HomePage() {
                           className="w-full h-8 gap-1.5 text-xs text-muted-foreground hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30 transition-all border border-border/30"
                         >
                           <Power className="h-3 w-3" />
-                          断开本机连接
+                          断开校园网
                         </Button>
                       </div>
                     )}
