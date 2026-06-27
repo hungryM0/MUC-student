@@ -7,13 +7,12 @@ use crate::application::dto::AppSnapshotDto;
 use crate::application::error::{AppError, AppResult};
 use crate::application::platform::{AppEventSink, RuntimePathProvider, StartupController};
 use crate::application::runtime::{AppRuntimeState, SharedRuntimeState};
-use crate::application::services::account_traffic_service::AccountTrafficService;
 use crate::application::services::dashboard_refresh_service::{
     DashboardRefreshDependencies, DashboardRefreshService,
 };
 use crate::application::services::session_service::SessionService;
 use crate::application::services::snapshot_mapper::{build_app_snapshot, restore_cached_snapshots};
-use crate::domain::models::{NetworkStatus, PortalAccount};
+use crate::domain::models::NetworkStatus;
 use crate::domain::policies::traffic_math::build_auto_switch_candidate;
 use crate::infrastructure::network::{
     http_transport::HttpTransport, legacy_portal_auth_client::LegacyPortalAuthClient,
@@ -25,7 +24,7 @@ use crate::infrastructure::persistence::account_repository::AccountRepository;
 use crate::infrastructure::persistence::app_state_repository::AppStateRepository;
 use crate::infrastructure::persistence::database::AppDatabase;
 use crate::infrastructure::persistence::panel_session_repository::PanelSessionRepository;
-use crate::infrastructure::persistence::runtime_paths::{resolve_default_paths, RuntimePaths};
+use crate::infrastructure::persistence::runtime_paths::{RuntimePaths, resolve_default_paths};
 use crate::infrastructure::security::credential_vault::{CredentialVault, WindowsCredentialVault};
 use crate::infrastructure::settings::AppSettings;
 
@@ -34,7 +33,6 @@ pub struct AppCore {
     state: SharedRuntimeState,
     account_repo: AccountRepository,
     app_state_repo: AppStateRepository,
-    account_traffic_service: AccountTrafficService,
     session_service: SessionService,
     dashboard_refresh_service: DashboardRefreshService,
     network_task_lock: Arc<Mutex<()>>,
@@ -81,7 +79,6 @@ impl AppCore {
             LegacyPortalStatusClient::new(settings.clone(), legacy_portal_transport);
         let panel_client =
             SelfServicePanelClient::new(settings.clone(), panel_transport, panel_session_repo);
-        let traffic_service = AccountTrafficService::new(panel_client.clone());
         let network_status_service = Arc::new(NetworkStatusService::new(settings));
         let snapshots = restore_cached_snapshots(&account_store.cached_traffic_snapshots);
         let runtime = SharedRuntimeState::new(AppRuntimeState {
@@ -117,7 +114,6 @@ impl AppCore {
             state: runtime,
             account_repo,
             app_state_repo,
-            account_traffic_service: traffic_service,
             session_service,
             dashboard_refresh_service,
             network_task_lock: Arc::new(Mutex::new(())),
@@ -169,16 +165,7 @@ impl AppCore {
             .add_account(&remark_name, &username, &password)?;
         self.app_state_repo.mark_account_used(&account.id)?;
         self.refresh_runtime_from_disk()?;
-        let validation_warning = self
-            .validate_saved_account_credentials(&account.id)
-            .await
-            .err()
-            .map(|error| error.to_string());
-        let mut snapshot = self.emit_state()?;
-        if let Some(message) = validation_warning {
-            snapshot.login_state.message = message;
-        }
-        Ok(snapshot)
+        self.emit_state()
     }
 
     pub async fn update_account(
@@ -197,20 +184,7 @@ impl AppCore {
         )?;
         self.app_state_repo.mark_account_used(&account.id)?;
         self.refresh_runtime_from_disk()?;
-        let validation_warning =
-            if self.should_validate_updated_account(&account, password.as_deref())? {
-                self.validate_saved_account_credentials(&account.id)
-                    .await
-                    .err()
-                    .map(|error| error.to_string())
-            } else {
-                None
-            };
-        let mut snapshot = self.emit_state()?;
-        if let Some(message) = validation_warning {
-            snapshot.login_state.message = message;
-        }
-        Ok(snapshot)
+        self.emit_state()
     }
     pub async fn delete_account(&self, account_id: String) -> AppResult<AppSnapshotDto> {
         self.account_repo.delete_account(&account_id)?;
@@ -266,7 +240,7 @@ impl AppCore {
         }
         self.emit_task_finished("login")?;
         result?;
-        self.emit_state()
+        self.run_refresh_inner(true).await
     }
 
     pub async fn logout_local_device(&self) -> AppResult<AppSnapshotDto> {
@@ -411,43 +385,6 @@ impl AppCore {
             ));
         }
         Ok(())
-    }
-
-    async fn validate_saved_account_credentials(&self, account_id: &str) -> AppResult<()> {
-        let store = self.account_repo.load_store()?;
-        let account = self
-            .account_repo
-            .get_account_by_id(&store, account_id)
-            .ok_or_else(|| AppError::NotFound("刚保存的账号找不到了".to_string()))?;
-        let account = self.account_repo.load_account_with_password(&account)?;
-        self.account_traffic_service
-            .fetch_balance(&account, None)
-            .await
-            .map(|_| ())
-            .map_err(|error| {
-                AppError::Validation(format!(
-                    "账号已保存，但校验失败：{}。你仍然可以稍后手动登录或刷新再看。",
-                    error
-                ))
-            })
-    }
-
-    fn should_validate_updated_account(
-        &self,
-        account: &PortalAccount,
-        password: Option<&str>,
-    ) -> AppResult<bool> {
-        if matches!(password, Some(value) if !value.trim().is_empty()) {
-            return Ok(true);
-        }
-        let state = self.state.read();
-        let previous = state
-            .account_store
-            .accounts
-            .iter()
-            .find(|item| item.id == account.id)
-            .ok_or_else(|| AppError::NotFound("找不到要编辑的账号".to_string()))?;
-        Ok(previous.username != account.username)
     }
 
     fn build_snapshot(&self) -> AppResult<AppSnapshotDto> {

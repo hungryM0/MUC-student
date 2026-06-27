@@ -327,12 +327,15 @@ export default function HomePage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={loadSnapshot}
+                        onClick={() => runSnapshotAction("refresh", refreshDashboard)}
                         disabled={isBusy}
                         className="h-8 gap-1.5"
                       >
                         <RefreshCw
-                          className={cn("h-3.5 w-3.5", loading && "animate-spin")}
+                          className={cn(
+                            "h-3.5 w-3.5",
+                            runningAction === "refresh" && "animate-spin",
+                          )}
                         />
                         同步数据
                       </Button>
