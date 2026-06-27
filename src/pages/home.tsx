@@ -61,6 +61,7 @@ export default function HomePage() {
   );
   const [savingAccount, setSavingAccount] = useState(false);
   const [deletingAccountId, setDeletingAccountId] = useState("");
+  const [accountToDelete, setAccountToDelete] = useState<AccountDto | null>(null);
   const [accountForm, setAccountForm] = useState<AccountFormState | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -237,20 +238,24 @@ export default function HomePage() {
     }
   }
 
-  async function handleDeleteAccount(account: AccountDto) {
+  function requestDeleteAccount(account: AccountDto) {
     if (isBusy || deletingAccountId) {
       return;
     }
+    setAccountToDelete(account);
+  }
 
-    const confirmed = window.confirm(`删除账号“${account.remarkName}”？`);
-    if (!confirmed) {
+  async function confirmDeleteAccount() {
+    if (!accountToDelete || deletingAccountId) {
       return;
     }
 
+    const account = accountToDelete;
     setDeletingAccountId(account.id);
     setErrorText("");
     try {
       setSnapshot(await deleteAccount(account.id));
+      setAccountToDelete(null);
     } catch (error) {
       setErrorText(readErrorMessage(error));
     } finally {
@@ -348,7 +353,7 @@ export default function HomePage() {
                               disabled={isBusy}
                               deleting={deletingAccountId === account.id}
                               onEdit={() => openEditAccountForm(account)}
-                              onDelete={() => handleDeleteAccount(account)}
+                              onDelete={() => requestDeleteAccount(account)}
                               onLogin={() => handleLoginAccount(account)}
                             />
                           ))
@@ -469,6 +474,12 @@ export default function HomePage() {
       />
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
+      <DeleteConfirmDialog
+        account={accountToDelete}
+        deleting={!!deletingAccountId}
+        onClose={() => setAccountToDelete(null)}
+        onConfirm={confirmDeleteAccount}
+      />
     </WindowFrame>
   );
 }
@@ -744,6 +755,47 @@ function AccountDialog({
           </Button>
           <Button onClick={onSave} disabled={saving || !canSave}>
             {saving ? "保存中" : "保存"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface DeleteConfirmDialogProps {
+  account: AccountDto | null;
+  deleting: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}
+
+function DeleteConfirmDialog({
+  account,
+  deleting,
+  onClose,
+  onConfirm,
+}: DeleteConfirmDialogProps) {
+  if (!account) {
+    return null;
+  }
+
+  return (
+    <Dialog open={!!account} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-xs">
+        <DialogHeader>
+          <DialogTitle>删除确认</DialogTitle>
+        </DialogHeader>
+
+        <div className="py-2 text-sm text-muted-foreground">
+          确定要删除账号“<span className="font-semibold text-foreground">{account.remarkName}</span>”吗？
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={onClose} disabled={deleting}>
+            取消
+          </Button>
+          <Button variant="destructive" size="sm" onClick={onConfirm} disabled={deleting}>
+            {deleting ? "删除中" : "确认删除"}
           </Button>
         </DialogFooter>
       </DialogContent>
