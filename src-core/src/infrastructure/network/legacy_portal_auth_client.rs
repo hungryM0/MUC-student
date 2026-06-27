@@ -56,8 +56,8 @@ impl LegacyPortalAuthClient {
     pub async fn verify_login(&self, account: &AccountWithPassword) -> AppResult<LoginResult> {
         let response = self.login_with_portal_page(account).await?;
 
-        let response_text = response.text.trim().to_string();
-        let already_online = response_text == Self::RESPONSE_IP_ALREADY_ONLINE;
+        let response_text = normalize_portal_response_text(&response.text);
+        let already_online = is_ip_already_online_response(&response_text);
         let success = is_portal_login_success(&response_text);
         let message = if already_online {
             "当前 IP 已在线，无法确认是否为目标账号".to_string()
@@ -93,13 +93,20 @@ impl LegacyPortalAuthClient {
         target_account: &AccountWithPassword,
     ) -> AppResult<LoginResult> {
         let response = self.login_with_portal_page(target_account).await?;
-        let response_text = response.text.trim().to_string();
+        let response_text = normalize_portal_response_text(&response.text);
         let success = is_portal_login_success(&response_text);
+        let already_online = is_ip_already_online_response(&response_text);
 
         Ok(LoginResult {
             success,
             message: if success {
                 format!("Portal 登录成功：{}", target_account.account.display_name())
+            } else if already_online {
+                format!(
+                    "Portal 覆盖登录未生效：当前 IP 仍在线，目标账号={}，服务端返回={}",
+                    target_account.account.display_name(),
+                    response_text
+                )
             } else {
                 format!(
                     "Portal 登录失败：{}",
@@ -117,7 +124,7 @@ impl LegacyPortalAuthClient {
             },
             response_text,
             checked_at: Local::now(),
-            already_online: false,
+            already_online,
         })
     }
 
@@ -252,6 +259,14 @@ fn is_portal_login_success(response_text: &str) -> bool {
         || response_text.contains("Portal not response")
 }
 
+fn normalize_portal_response_text(raw: &str) -> String {
+    raw.trim().trim_matches('\u{feff}').trim().to_string()
+}
+
+fn is_ip_already_online_response(response_text: &str) -> bool {
+    response_text.contains(LegacyPortalAuthClient::RESPONSE_IP_ALREADY_ONLINE)
+}
+
 fn parse_success_logout_form(html: &str) -> SuccessLogoutForm {
     SuccessLogoutForm {
         action: extract_input_value(html, "action"),
@@ -288,4 +303,24 @@ fn decode_basic_html_entities(value: &str) -> String {
         .replace("&gt;", ">")
         .replace("&quot;", "\"")
         .replace("&#39;", "'")
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::{is_ip_already_online_response, normalize_portal_response_text};
+
+    #[test]
+    fn normalize_portal_response_strips_bom() {
+        assert_eq!(
+            normalize_portal_response_text("\u{feff}IP has been online, please logout.\n"),
+            "IP has been online, please logout."
+        );
+    }
+
+    #[test]
+    fn already_online_detection_accepts_bom_wrapped_text() {
+        let response = normalize_portal_response_text(" \u{feff}IP has been online, please logout. ");
+        assert!(is_ip_already_online_response(&response));
+    }
 }

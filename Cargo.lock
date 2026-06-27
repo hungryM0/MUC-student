@@ -3150,6 +3150,8 @@ name = "muc-student-tauri"
 version = "0.1.0"
 dependencies = [
  "dirs",
+ "keyring",
+ "keyring-core",
  "muc-student-core",
  "serde",
  "serde_json",
@@ -3158,6 +3160,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
+ "tokio",
  "windows 0.62.2",
 ]
 
