@@ -92,7 +92,7 @@ impl AppDatabase {
                 minimize_to_tray_on_close,
                 launch_on_startup,
                 auto_switch_account_on_traffic_exhausted
-            ) VALUES (1, 0, 0, 0);
+            ) VALUES (1, 1, 0, 0);
 
             INSERT OR IGNORE INTO selection_state (
                 id,

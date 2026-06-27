@@ -232,4 +232,18 @@ mod tests {
         assert!(preferences.minimize_to_tray_on_close);
         assert!(preferences.auto_switch_account_on_traffic_exhausted);
     }
+
+    #[test]
+    fn defaults_to_minimize_to_tray_on_close_for_new_database() {
+        let root = tempdir().expect("create temp dir");
+        let paths = RuntimePaths::from_cwd_for_tests(root.path()).expect("create paths");
+        let db = AppDatabase::open(&paths).expect("open db");
+        let repo = AppStateRepository::new(db);
+
+        let preferences = repo.load_preferences().expect("load preferences");
+
+        assert!(preferences.minimize_to_tray_on_close);
+        assert!(!preferences.launch_on_startup);
+        assert!(!preferences.auto_switch_account_on_traffic_exhausted);
+    }
 }
