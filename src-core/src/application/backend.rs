@@ -21,9 +21,7 @@ use crate::infrastructure::network::{
     network_status_service::NetworkStatusService,
     self_service_panel_client::SelfServicePanelClient,
 };
-use crate::infrastructure::persistence::account_repository::{
-    AccountRepository, AccountWithPassword,
-};
+use crate::infrastructure::persistence::account_repository::AccountRepository;
 use crate::infrastructure::persistence::app_state_repository::AppStateRepository;
 use crate::infrastructure::persistence::migration::MigrationService;
 use crate::infrastructure::persistence::panel_session_repository::PanelSessionRepository;
@@ -172,14 +170,22 @@ impl AppCore {
         username: String,
         password: String,
     ) -> AppResult<AppSnapshotDto> {
-        self.validate_account_credentials(&remark_name, &username, &password)
-            .await?;
+        self.validate_account_input(&remark_name, &username, &password)?;
         let account = self
             .account_repo
             .add_account(&remark_name, &username, &password)?;
         self.app_state_repo.mark_account_used(&account.id)?;
         self.refresh_runtime_from_disk()?;
-        self.emit_state()
+        let validation_warning = self
+            .validate_saved_account_credentials(&account.id)
+            .await
+            .err()
+            .map(|error| error.to_string());
+        let mut snapshot = self.emit_state()?;
+        if let Some(message) = validation_warning {
+            snapshot.login_state.message = message;
+        }
+        Ok(snapshot)
     }
 
     pub async fn update_account(
@@ -189,6 +195,7 @@ impl AppCore {
         username: String,
         password: Option<String>,
     ) -> AppResult<AppSnapshotDto> {
+        self.validate_account_update_input(&remark_name, &username, password.as_deref())?;
         let account = self.account_repo.update_account(
             &account_id,
             &remark_name,
@@ -197,9 +204,21 @@ impl AppCore {
         )?;
         self.app_state_repo.mark_account_used(&account.id)?;
         self.refresh_runtime_from_disk()?;
-        self.emit_state()
+        let validation_warning =
+            if self.should_validate_updated_account(&account, password.as_deref())? {
+                self.validate_saved_account_credentials(&account.id)
+                    .await
+                    .err()
+                    .map(|error| error.to_string())
+            } else {
+                None
+            };
+        let mut snapshot = self.emit_state()?;
+        if let Some(message) = validation_warning {
+            snapshot.login_state.message = message;
+        }
+        Ok(snapshot)
     }
-
     pub async fn delete_account(&self, account_id: String) -> AppResult<AppSnapshotDto> {
         self.account_repo.delete_account(&account_id)?;
         let store = self.account_repo.load_store()?;
@@ -363,7 +382,7 @@ impl AppCore {
         Ok(())
     }
 
-    async fn validate_account_credentials(
+    fn validate_account_input(
         &self,
         remark_name: &str,
         username: &str,
@@ -378,18 +397,64 @@ impl AppCore {
         if password.trim().is_empty() {
             return Err(AppError::Validation("密码不能为空".to_string()));
         }
-        let account = AccountWithPassword {
-            account: PortalAccount {
-                id: "pending-validation".to_string(),
-                remark_name: remark_name.trim().to_string(),
-                username: username.trim().to_string(),
-            },
-            password: password.trim().to_string(),
-        };
+        Ok(())
+    }
+
+    fn validate_account_update_input(
+        &self,
+        remark_name: &str,
+        username: &str,
+        password: Option<&str>,
+    ) -> AppResult<()> {
+        if remark_name.trim().is_empty() {
+            return Err(AppError::Validation("备注名不能为空".to_string()));
+        }
+        if username.trim().is_empty() {
+            return Err(AppError::Validation("账号不能为空".to_string()));
+        }
+        if matches!(password, Some(value) if value.trim().is_empty()) {
+            return Err(AppError::Validation(
+                "密码为空就留空，别传一串空格".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    async fn validate_saved_account_credentials(&self, account_id: &str) -> AppResult<()> {
+        let store = self.account_repo.load_store()?;
+        let account = self
+            .account_repo
+            .get_account_by_id(&store, account_id)
+            .ok_or_else(|| AppError::NotFound("刚保存的账号找不到了".to_string()))?;
+        let account = self.account_repo.load_account_with_password(&account)?;
         self.account_traffic_service
             .fetch_balance(&account, None)
             .await
             .map(|_| ())
+            .map_err(|error| {
+                AppError::Validation(format!(
+                    "账号已保存，但校验失败：{}。你仍然可以稍后手动登录或刷新再看。",
+                    error
+                ))
+            })
+    }
+
+    fn should_validate_updated_account(
+        &self,
+        account: &PortalAccount,
+        password: Option<&str>,
+    ) -> AppResult<bool> {
+        if matches!(password, Some(value) if !value.trim().is_empty()) {
+            return Ok(true);
+        }
+        let state = self.state.read();
+        let previous = state
+            .account_store
+            .accounts
+            .iter()
+            .find(|item| item.id == account.id)
+            .ok_or_else(|| AppError::NotFound("找不到要编辑的账号".to_string()))?;
+        Ok(previous.username != account.username)
     }
 
     fn build_snapshot(&self) -> AppResult<AppSnapshotDto> {

@@ -401,4 +401,67 @@ mod tests {
         assert!(paths.legacy_accounts_path().exists());
         assert!(paths.legacy_app_state_path().exists());
     }
+    #[test]
+    fn migrates_legacy_plaintext_passwords_into_vault() {
+        let app_data = tempdir().expect("create app_data dir");
+        let legacy_root = tempdir().expect("create legacy dir");
+        let paths = RuntimePaths::new(
+            app_data.path().to_path_buf(),
+            app_data.path().to_path_buf(),
+            legacy_root.path().to_path_buf(),
+        )
+        .expect("build runtime paths");
+        let vault: Arc<dyn CredentialVault> = Arc::new(MemoryCredentialVault::default());
+        let account_repo = AccountRepository::new(paths.clone(), vault.clone());
+        let app_state_repo = AppStateRepository::new(paths.clone());
+
+        write_json_atomic(
+            &paths.legacy_accounts_path(),
+            &serde_json::json!({
+                "selected_account_id": "acc-1",
+                "accounts": [
+                    {
+                        "id": "acc-1",
+                        "remark_name": "主号",
+                        "username": "20260001",
+                        "password": "secret-1"
+                    },
+                    {
+                        "id": "acc-2",
+                        "remark_name": "副号",
+                        "username": "20260002",
+                        "password": "secret-2"
+                    }
+                ]
+            }),
+        )
+        .expect("write legacy accounts");
+
+        let migration = MigrationService::new(
+            paths.clone(),
+            vault,
+            account_repo.clone(),
+            app_state_repo,
+        );
+
+        migration.migrate_if_needed().expect("run migration");
+
+        let store = account_repo.load_store().expect("load imported store");
+        assert_eq!(store.accounts.len(), 2);
+        assert_eq!(
+            account_repo
+                .load_account_with_password(&store.accounts[0])
+                .expect("load first imported credential")
+                .password,
+            "secret-1"
+        );
+        assert_eq!(
+            account_repo
+                .load_account_with_password(&store.accounts[1])
+                .expect("load second imported credential")
+                .password,
+            "secret-2"
+        );
+    }
 }
+
