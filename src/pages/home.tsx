@@ -499,6 +499,40 @@ function formatLocalLoginTime(value?: string | null) {
   return `${getPart("year")}-${getPart("month")}-${getPart("day")} ${getPart("hour")}:${getPart("minute")}:${getPart("second")}`;
 }
 
+function formatSnapshotSyncText(snapshot: AccountDto["snapshot"]) {
+  if (!snapshot) {
+    return "未查询";
+  }
+  if (snapshot.statusText === "查询中..." || snapshot.statusText === "查询失败") {
+    return snapshot.statusText;
+  }
+
+  const queriedAt = new Date(snapshot.queriedAt);
+  if (Number.isNaN(queriedAt.getTime())) {
+    return snapshot.statusText || "未查询";
+  }
+
+  const elapsedSeconds = Math.max(
+    0,
+    Math.floor((Date.now() - queriedAt.getTime()) / 1000),
+  );
+  if (elapsedSeconds < 60) {
+    return "刚刚同步";
+  }
+
+  const elapsedMinutes = Math.floor(elapsedSeconds / 60);
+  if (elapsedMinutes < 60) {
+    return `${elapsedMinutes} 分钟前同步`;
+  }
+
+  const elapsedHours = Math.floor(elapsedMinutes / 60);
+  if (elapsedHours < 24) {
+    return `${elapsedHours} 小时前同步`;
+  }
+
+  return `${Math.floor(elapsedHours / 24)} 天前同步`;
+}
+
 function AccountRow({
   account,
   selecting,
@@ -542,7 +576,7 @@ function AccountRow({
         <div className="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 text-xs">
           <span>{snapshot?.usedTrafficText ?? "-"}</span>
           <span>{snapshot?.onlineDeviceCountText ?? "0"} 设备</span>
-          <span>{snapshot?.statusText ?? "未查询"}</span>
+          <span>{formatSnapshotSyncText(snapshot)}</span>
         </div>
       </div>
       <div className="flex flex-col items-end justify-between gap-3">

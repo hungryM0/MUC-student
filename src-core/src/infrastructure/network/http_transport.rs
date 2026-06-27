@@ -3,6 +3,7 @@ use std::net::IpAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use reqwest::cookie::{CookieStore, Jar};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, COOKIE};
 use reqwest::redirect::Policy;
 use url::Url;
@@ -32,6 +33,7 @@ pub struct HttpRequestSpec {
     pub body: String,
     pub cookies: HashMap<String, String>,
     pub max_redirects: usize,
+    pub preserve_redirect_cookies: bool,
 }
 
 impl HttpRequestSpec {
@@ -43,6 +45,7 @@ impl HttpRequestSpec {
             body: String::new(),
             cookies: HashMap::new(),
             max_redirects: 5,
+            preserve_redirect_cookies: false,
         }
     }
 
@@ -71,6 +74,11 @@ impl HttpRequestSpec {
 
     pub fn max_redirects(mut self, max_redirects: usize) -> Self {
         self.max_redirects = max_redirects;
+        self
+    }
+
+    pub fn preserve_redirect_cookies(mut self) -> Self {
+        self.preserve_redirect_cookies = true;
         self
     }
 }
@@ -121,14 +129,31 @@ impl HttpTransport {
         spec: &HttpRequestSpec,
         use_source_ip: bool,
     ) -> AppResult<HttpResponseData> {
-        let client = self.client_for(use_source_ip, spec.max_redirects)?;
         let parsed_url = Url::parse(&spec.url)
             .map_err(|err| AppError::Network(format!("无效 URL：{}，{err}", spec.url)))?;
+        let cookie_jar = if spec.preserve_redirect_cookies {
+            let jar = Arc::new(Jar::default());
+            for (name, value) in &spec.cookies {
+                jar.add_cookie_str(&format!("{name}={value}"), &parsed_url);
+            }
+            Some(jar)
+        } else {
+            None
+        };
+        let client = if let Some(cookie_jar) = cookie_jar.as_ref() {
+            build_client(
+                if use_source_ip { self.source_ip } else { None },
+                spec.max_redirects,
+                Some(cookie_jar.clone()),
+            )?
+        } else {
+            self.client_for(use_source_ip, spec.max_redirects)?
+        };
         let method = spec
             .method
             .parse::<reqwest::Method>()
             .map_err(|err| AppError::Network(format!("无效 HTTP 方法：{}，{err}", spec.method)))?;
-        let mut request = client.request(method, parsed_url);
+        let mut request = client.request(method, parsed_url.clone());
 
         let mut header_map = HeaderMap::new();
         for (key, value) in &spec.headers {
@@ -174,7 +199,10 @@ impl HttpTransport {
             )));
         }
 
-        let mut cookie_map = spec.cookies.clone();
+        let mut cookie_map = cookie_jar
+            .as_ref()
+            .map(|jar| extract_cookie_map(jar.as_ref(), &parsed_url, &spec.cookies))
+            .unwrap_or_else(|| spec.cookies.clone());
         for value in headers.get_all("set-cookie").iter() {
             if let Ok(raw) = value.to_str() {
                 if let Some((name, rest)) = raw.split_once('=') {
@@ -207,23 +235,52 @@ impl HttpTransport {
             return Ok(client.clone());
         }
         let source_ip = if use_source_ip { self.source_ip } else { None };
-        let client = build_client(source_ip, max_redirects)?;
+        let client = build_client(source_ip, max_redirects, None)?;
         clients.insert(key, client.clone());
         Ok(client)
     }
 }
 
-fn build_client(source_ip: Option<IpAddr>, max_redirects: usize) -> AppResult<reqwest::Client> {
+fn build_client(
+    source_ip: Option<IpAddr>,
+    max_redirects: usize,
+    cookie_jar: Option<Arc<Jar>>,
+) -> AppResult<reqwest::Client> {
     let mut builder = reqwest::Client::builder()
         .timeout(Duration::from_secs(12))
         .redirect(Policy::limited(max_redirects))
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0");
+
+    if let Some(cookie_jar) = cookie_jar {
+        builder = builder.cookie_provider(cookie_jar);
+    }
 
     if let Some(ip) = source_ip {
         builder = builder.local_address(ip);
     }
 
     Ok(builder.build()?)
+}
+
+fn extract_cookie_map(
+    cookie_jar: &Jar,
+    url: &Url,
+    fallback: &HashMap<String, String>,
+) -> HashMap<String, String> {
+    let mut cookie_map = fallback.clone();
+    let Some(cookie_header) = cookie_jar.cookies(url) else {
+        return cookie_map;
+    };
+    let Ok(cookie_text) = cookie_header.to_str() else {
+        return cookie_map;
+    };
+    for part in cookie_text.split(';') {
+        let Some((name, value)) = part.trim().split_once('=') else {
+            continue;
+        };
+        cookie_map.insert(name.trim().to_string(), value.trim().to_string());
+    }
+    cookie_map
 }
 
 pub fn build_form_headers(referer_url: &str) -> HashMap<String, String> {
@@ -239,4 +296,97 @@ pub fn build_form_headers(referer_url: &str) -> HashMap<String, String> {
         ("Origin".to_string(), origin),
         ("Referer".to_string(), referer_url.to_string()),
     ])
+}
+
+#[cfg(test)]
+mod tests {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    use super::{HttpRequestSpec, HttpTransport};
+    use crate::infrastructure::settings::AppSettings;
+
+    #[tokio::test]
+    async fn keeps_set_cookie_across_redirects() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/sso"))
+            .respond_with(
+                ResponseTemplate::new(302)
+                    .insert_header("set-cookie", "PHPSESSID_8800=abc; path=/; HttpOnly")
+                    .insert_header("location", "/home"),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/home"))
+            .respond_with(|request: &wiremock::Request| {
+                let cookie = request
+                    .headers
+                    .get("cookie")
+                    .and_then(|value| value.to_str().ok())
+                    .unwrap_or_default();
+                if cookie.contains("PHPSESSID_8800=abc") {
+                    ResponseTemplate::new(200).set_body_string("home")
+                } else {
+                    ResponseTemplate::new(200).set_body_string("login")
+                }
+            })
+            .mount(&server)
+            .await;
+
+        let transport = HttpTransport::new(AppSettings::default()).expect("create transport");
+        let response = transport
+            .request(HttpRequestSpec::get(format!("{}/sso", server.uri())).max_redirects(5))
+            .await
+            .expect("request sso");
+
+        assert_eq!(response.text, "login");
+    }
+
+    #[tokio::test]
+    async fn keeps_set_cookie_across_redirects_when_enabled() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/sso"))
+            .respond_with(
+                ResponseTemplate::new(302)
+                    .insert_header("set-cookie", "PHPSESSID_8800=abc; path=/; HttpOnly")
+                    .insert_header("location", "/home"),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/home"))
+            .respond_with(|request: &wiremock::Request| {
+                let cookie = request
+                    .headers
+                    .get("cookie")
+                    .and_then(|value| value.to_str().ok())
+                    .unwrap_or_default();
+                if cookie.contains("PHPSESSID_8800=abc") {
+                    ResponseTemplate::new(200).set_body_string("home")
+                } else {
+                    ResponseTemplate::new(200).set_body_string("login")
+                }
+            })
+            .mount(&server)
+            .await;
+
+        let transport = HttpTransport::new(AppSettings::default()).expect("create transport");
+        let response = transport
+            .request(
+                HttpRequestSpec::get(format!("{}/sso", server.uri()))
+                    .max_redirects(5)
+                    .preserve_redirect_cookies(),
+            )
+            .await
+            .expect("request sso");
+
+        assert_eq!(response.text, "home");
+        assert_eq!(
+            response.cookies.get("PHPSESSID_8800").map(String::as_str),
+            Some("abc")
+        );
+    }
 }

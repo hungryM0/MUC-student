@@ -65,7 +65,8 @@ impl SelfServicePanelClient {
             .request(
                 HttpRequestSpec::get(join_url(&target_url, target_path))
                     .cookies(saved_cookies)
-                    .max_redirects(5),
+                    .max_redirects(5)
+                    .preserve_redirect_cookies(),
             )
             .await?;
         if is_login_page(&response.text) {
@@ -117,7 +118,11 @@ impl SelfServicePanelClient {
         let sso_url = build_sso_url(&self.traffic_entry_url(), username);
         let response = self
             .transport
-            .request(HttpRequestSpec::get(sso_url).max_redirects(5))
+            .request(
+                HttpRequestSpec::get(sso_url)
+                    .max_redirects(5)
+                    .preserve_redirect_cookies(),
+            )
             .await?;
         if is_login_page(&response.text) {
             return Ok(None);
@@ -131,7 +136,8 @@ impl SelfServicePanelClient {
             .request(
                 HttpRequestSpec::get(join_url(&response.final_url, target_path))
                     .cookies(response.cookies.clone())
-                    .max_redirects(5),
+                    .max_redirects(5)
+                    .preserve_redirect_cookies(),
             )
             .await?;
         if is_login_page(&retry_response.text) {
@@ -161,7 +167,8 @@ impl SelfServicePanelClient {
             .request(
                 HttpRequestSpec::get(join_url(&response.final_url, target_path))
                     .cookies(response.cookies.clone())
-                    .max_redirects(5),
+                    .max_redirects(5)
+                    .preserve_redirect_cookies(),
             )
             .await?;
         if is_login_page(&response.text) {

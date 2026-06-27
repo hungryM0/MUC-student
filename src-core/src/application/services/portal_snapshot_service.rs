@@ -32,15 +32,18 @@ pub fn build_single_success_snapshot(
         included_package_text: cached_current
             .map(|item| item.included_package_text.clone())
             .unwrap_or_default(),
-        online_device_count_text: "1".to_string(),
+        online_device_count_text: cached_current
+            .map(|item| item.online_device_count_text.clone())
+            .filter(|text| !text.trim().is_empty())
+            .unwrap_or_else(|| "-".to_string()),
         package_text: cached_current
             .map(|item| item.package_text.clone())
             .filter(|text| !text.trim().is_empty())
             .unwrap_or_else(|| "-".to_string()),
-        status_text: "已同步".to_string(),
+        status_text: "成功页同步".to_string(),
         detail_text: format!("计费方式：{}", info.billing_policy),
         queried_at: Local::now(),
-        online_devices: matched_local_ip_device.clone().into_iter().collect(),
+        online_devices: Vec::new(),
         matched_local_ip_device,
         progress_percent: build_progress_percent(&used_traffic_text, &product_balance_text),
     }
@@ -89,5 +92,33 @@ mod tests {
         assert_eq!(snapshot.used_traffic_text, "21.71GB");
         assert_eq!(snapshot.product_balance_text, "70.00GB");
         assert_eq!(snapshot.progress_percent, Some(31.0));
+    }
+
+    #[test]
+    fn success_page_fallback_does_not_fake_online_device_count() {
+        let account = PortalAccount {
+            id: "acc-1".to_string(),
+            remark_name: "当前账号".to_string(),
+            username: "25011777".to_string(),
+        };
+        let info = LegacyPortalSuccessInfo {
+            ip: "10.0.0.1".to_string(),
+            username: "25011777".to_string(),
+            used_traffic: "22,230.78M".to_string(),
+            billing_policy: "免费70GB".to_string(),
+        };
+
+        let snapshot = build_single_success_snapshot(&account, &info, None);
+
+        assert_eq!(snapshot.online_device_count_text, "-");
+        assert_eq!(snapshot.status_text, "成功页同步");
+        assert!(snapshot.online_devices.is_empty());
+        assert_eq!(
+            snapshot
+                .matched_local_ip_device
+                .as_ref()
+                .map(|device| device.ip.as_str()),
+            Some("10.0.0.1")
+        );
     }
 }
