@@ -1,4 +1,4 @@
-import { Github, Info } from "lucide-react";
+import { GitFork, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -55,7 +55,7 @@ export function AboutDialog({ open, onClose }: AboutDialogProps) {
             className="w-full h-8.5 text-xs gap-1.5"
             variant="outline"
           >
-            <Github className="h-3.5 w-3.5" />
+            <GitFork className="h-3.5 w-3.5" />
             GitHub 仓库
           </Button>
         </div>

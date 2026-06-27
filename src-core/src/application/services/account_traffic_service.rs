@@ -1,8 +1,8 @@
 use chrono::Local;
 
 use crate::application::error::AppResult;
-use crate::domain::models::PortalAccount;
 use crate::domain::models::traffic::AccountTrafficSnapshot;
+use crate::domain::models::PortalAccount;
 use crate::domain::policies::traffic_math::{build_progress_percent, format_traffic_text_as_gb};
 use crate::infrastructure::parsers::panel_home_parser::{
     build_product_balance_texts, parse_panel_home,

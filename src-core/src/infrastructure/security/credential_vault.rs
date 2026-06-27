@@ -1,7 +1,7 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, Once};
+use std::sync::{Arc, Mutex};
 
-use keyring_core::Entry;
+use keyring::Entry;
 
 use crate::application::error::{AppError, AppResult};
 
@@ -16,13 +16,6 @@ pub struct WindowsCredentialVault;
 
 impl WindowsCredentialVault {
     pub fn initialize() -> AppResult<Self> {
-        static INIT: Once = Once::new();
-        let mut result = Ok(());
-        INIT.call_once(|| {
-            result = keyring::use_native_store(false)
-                .map_err(|err| AppError::System(format!("初始化 Windows 凭据库失败：{err}")));
-        });
-        result?;
         Ok(Self)
     }
 

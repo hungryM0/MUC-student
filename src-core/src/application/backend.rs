@@ -24,7 +24,7 @@ use crate::infrastructure::persistence::account_repository::AccountRepository;
 use crate::infrastructure::persistence::app_state_repository::AppStateRepository;
 use crate::infrastructure::persistence::database::AppDatabase;
 use crate::infrastructure::persistence::panel_session_repository::PanelSessionRepository;
-use crate::infrastructure::persistence::runtime_paths::{RuntimePaths, resolve_default_paths};
+use crate::infrastructure::persistence::runtime_paths::{resolve_default_paths, RuntimePaths};
 use crate::infrastructure::security::credential_vault::{CredentialVault, WindowsCredentialVault};
 use crate::infrastructure::settings::AppSettings;
 
