@@ -532,7 +532,7 @@ export default function HomePage() {
                           已配置账号
                         </span>
                         <span className="text-xs font-medium">
-                          {snapshot?.accounts.length || 0} 个拼车账号
+                          {snapshot?.accounts.length || 0}
                         </span>
                       </div>
                     </div>
@@ -615,7 +615,8 @@ function formatSnapshotSyncText(snapshot: AccountDto["snapshot"]) {
   }
   if (
     snapshot.statusText === "查询中..." ||
-    snapshot.statusText === "查询失败"
+    snapshot.statusText === "查询失败" ||
+    snapshot.statusText === "同步失败"
   ) {
     return snapshot.statusText;
   }

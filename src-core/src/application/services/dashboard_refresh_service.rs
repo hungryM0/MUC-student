@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use chrono::Local;
@@ -15,8 +16,8 @@ use crate::application::services::portal_snapshot_service::{
 use crate::application::services::snapshot_mapper::{
     build_app_snapshot, restore_cached_snapshots, to_cached_snapshots,
 };
-use crate::domain::models::AccountStore;
 use crate::domain::models::traffic::AccountTrafficSnapshot;
+use crate::domain::models::AccountStore;
 use crate::domain::policies::traffic_math::build_status_card_order;
 use crate::infrastructure::network::legacy_portal_status_client::LegacyPortalStatusClient;
 use crate::infrastructure::network::network_status_service::NetworkStatusService;
@@ -77,12 +78,14 @@ impl DashboardRefreshService {
 
         let online_probe = self.check_local_online(local_ip).await;
         let mut current_online_id = String::new();
+        let mut refreshed_account_ids = HashSet::new();
         if !online_probe.is_offline() {
             for (account_id, snapshot) in self.refresh_cached_panel_sessions(&store, local_ip).await
             {
                 if current_online_id.is_empty() && snapshot.matched_local_ip_device.is_some() {
                     current_online_id = account_id.clone();
                 }
+                refreshed_account_ids.insert(account_id.clone());
                 snapshot_map.insert(account_id, snapshot);
             }
         }
@@ -117,11 +120,20 @@ impl DashboardRefreshService {
                             store.cached_traffic_snapshots.get(&account.id),
                         ),
                     };
+                    refreshed_account_ids.insert(account.id.clone());
                     snapshot_map.insert(account.id.clone(), snapshot);
                 }
             }
         } else if current_online_id.is_empty() && online_probe.is_unknown() {
             current_online_id = store.current_online_account_id.clone();
+        }
+        if !online_probe.is_offline() {
+            mark_unrefreshed_non_current_accounts_failed(
+                &store,
+                &mut snapshot_map,
+                &refreshed_account_ids,
+                &current_online_id,
+            );
         }
         let order = build_status_card_order(
             &store,
@@ -230,6 +242,23 @@ impl DashboardRefreshService {
     }
 }
 
+fn mark_unrefreshed_non_current_accounts_failed(
+    store: &AccountStore,
+    snapshot_map: &mut std::collections::BTreeMap<String, AccountTrafficSnapshot>,
+    refreshed_account_ids: &HashSet<String>,
+    current_online_id: &str,
+) {
+    for account in &store.accounts {
+        if account.id == current_online_id || refreshed_account_ids.contains(&account.id) {
+            continue;
+        }
+        if let Some(snapshot) = snapshot_map.get_mut(&account.id) {
+            snapshot.status_text = "同步失败".to_string();
+            snapshot.detail_text = "本次没有拿到自助面板数据，显示上次同步结果".to_string();
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum LocalOnlineProbe {
     Online(LegacyPortalOnlineInfo),
@@ -255,5 +284,66 @@ impl LocalOnlineProbe {
             Self::Online(info) => Some(info),
             Self::Offline | Self::Unknown => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::{BTreeMap, HashSet};
+
+    use chrono::{Local, TimeZone};
+
+    use super::mark_unrefreshed_non_current_accounts_failed;
+    use crate::domain::models::traffic::AccountTrafficSnapshot;
+    use crate::domain::models::{AccountStore, PortalAccount};
+
+    #[test]
+    fn marks_unrefreshed_non_current_cached_snapshot_failed_without_touching_time() {
+        let old_time = Local.with_ymd_and_hms(2026, 1, 2, 3, 4, 5).unwrap();
+        let current_account = PortalAccount {
+            id: "current".to_string(),
+            remark_name: "当前".to_string(),
+            username: "20260001".to_string(),
+        };
+        let stale_account = PortalAccount {
+            id: "stale".to_string(),
+            remark_name: "失效".to_string(),
+            username: "20260002".to_string(),
+        };
+        let store = AccountStore {
+            accounts: vec![current_account, stale_account.clone()],
+            current_online_account_id: "current".to_string(),
+            ..Default::default()
+        };
+        let mut snapshot_map = BTreeMap::new();
+        snapshot_map.insert(
+            stale_account.id.clone(),
+            AccountTrafficSnapshot {
+                account_id: stale_account.id.clone(),
+                used_traffic_text: "10.00GB".to_string(),
+                product_balance_text: "70.00GB".to_string(),
+                included_package_text: "70GB".to_string(),
+                online_device_count_text: "1".to_string(),
+                package_text: "校园网".to_string(),
+                status_text: "已同步".to_string(),
+                detail_text: "计费策略：免费70GB".to_string(),
+                queried_at: old_time,
+                online_devices: Vec::new(),
+                matched_local_ip_device: None,
+                progress_percent: Some(14.3),
+            },
+        );
+
+        mark_unrefreshed_non_current_accounts_failed(
+            &store,
+            &mut snapshot_map,
+            &HashSet::from(["current".to_string()]),
+            "current",
+        );
+
+        let snapshot = snapshot_map.get("stale").expect("stale snapshot");
+        assert_eq!(snapshot.status_text, "同步失败");
+        assert_eq!(snapshot.queried_at, old_time);
+        assert_eq!(snapshot.used_traffic_text, "10.00GB");
     }
 }
