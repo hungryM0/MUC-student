@@ -346,9 +346,8 @@ export default function HomePage() {
           )}
         </div>
 
-        <main className="min-w-0 flex-1 overflow-y-auto p-6">
-          <div className="mx-auto flex w-full max-w-5xl xl:max-w-7xl 2xl:max-w-[1440px] flex-col gap-6">
-            {/* 顶栏 Header */}
+        <div className="shrink-0 px-6 pt-6">
+          <div className="mx-auto w-full max-w-5xl xl:max-w-7xl 2xl:max-w-[1440px]">
             <header className="flex items-center justify-between border-b border-border/40 pb-4">
               <div className="flex items-center gap-4">
                 <h1 className="flex items-center gap-2.5 text-xl font-bold tracking-tight text-foreground">
@@ -367,7 +366,11 @@ export default function HomePage() {
                   : "IP 未识别"}
               </span>
             </header>
+          </div>
+        </div>
 
+        <main className="min-w-0 flex-1 overflow-y-auto p-6">
+          <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 xl:max-w-7xl 2xl:max-w-[1440px]">
             <div className="flex flex-col gap-6 md:flex-row">
               {/* 左侧：账号池 */}
               <div className="flex-1 min-w-0">
