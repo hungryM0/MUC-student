@@ -5,12 +5,12 @@ use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
 use crate::application::dto::AppSnapshotDto;
-use crate::application::error::AppResult;
+use crate::application::error::{AppError, AppResult};
 use crate::application::platform::AppEventSink;
 use crate::application::runtime::SharedRuntimeState;
 use crate::application::services::account_traffic_service::AccountTrafficService;
 use crate::application::services::portal_snapshot_service::{
-    build_single_success_snapshot, username_matches,
+    build_single_success_snapshot_with_online_info, username_matches,
 };
 use crate::application::services::snapshot_mapper::{
     build_app_snapshot, restore_cached_snapshots, to_cached_snapshots,
@@ -21,6 +21,7 @@ use crate::domain::policies::traffic_math::build_status_card_order;
 use crate::infrastructure::network::legacy_portal_status_client::LegacyPortalStatusClient;
 use crate::infrastructure::network::network_status_service::NetworkStatusService;
 use crate::infrastructure::network::self_service_panel_client::SelfServicePanelClient;
+use crate::infrastructure::parsers::legacy_portal_online_info_parser::LegacyPortalOnlineInfo;
 use crate::infrastructure::persistence::account_repository::AccountRepository;
 use crate::infrastructure::persistence::app_state_repository::AppStateRepository;
 
@@ -74,19 +75,22 @@ impl DashboardRefreshService {
         }
         self.emit_state()?;
 
+        let online_probe = self.check_local_online(local_ip).await;
         let mut current_online_id = String::new();
-        for (account_id, snapshot) in self.refresh_cached_panel_sessions(&store, local_ip).await {
-            if current_online_id.is_empty() && snapshot.matched_local_ip_device.is_some() {
-                current_online_id = account_id.clone();
+        if !online_probe.is_offline() {
+            for (account_id, snapshot) in self.refresh_cached_panel_sessions(&store, local_ip).await
+            {
+                if current_online_id.is_empty() && snapshot.matched_local_ip_device.is_some() {
+                    current_online_id = account_id.clone();
+                }
+                snapshot_map.insert(account_id, snapshot);
             }
-            snapshot_map.insert(account_id, snapshot);
         }
 
-        if current_online_id.is_empty() {
-            let success_result = self.portal_status_client.fetch_success_info().await;
-            match success_result {
-                Ok(info) => {
-                    let success_account = local_ip
+        if current_online_id.is_empty() && online_probe.is_online() {
+            if let Ok(info) = self.portal_status_client.fetch_success_info().await {
+                let success_account =
+                    local_ip
                         .filter(|ip| info.ip.trim() == ip.trim())
                         .and_then(|_| {
                             store
@@ -94,31 +98,30 @@ impl DashboardRefreshService {
                                 .iter()
                                 .find(|account| username_matches(&account.username, &info.username))
                         });
-                    if let Some(account) = success_account {
-                        current_online_id = account.id.clone();
-                        let snapshot = match self
-                            .panel_client
-                            .fetch_sso_html(&account.id, &info.username, "/home")
-                            .await
-                            .and_then(|html| {
-                                AccountTrafficService::snapshot_from_panel_home(
-                                    account, &html, local_ip,
-                                )
-                            }) {
-                            Ok(snapshot) => snapshot,
-                            Err(_) => build_single_success_snapshot(
-                                account,
-                                &info,
-                                store.cached_traffic_snapshots.get(&account.id),
-                            ),
-                        };
-                        snapshot_map.insert(account.id.clone(), snapshot);
-                    }
-                }
-                Err(_) => {
-                    current_online_id = store.current_online_account_id.clone();
+                if let Some(account) = success_account {
+                    current_online_id = account.id.clone();
+                    let snapshot = match self
+                        .panel_client
+                        .fetch_sso_html(&account.id, &info.username, "/home")
+                        .await
+                        .and_then(|html| {
+                            AccountTrafficService::snapshot_from_panel_home(
+                                account, &html, local_ip,
+                            )
+                        }) {
+                        Ok(snapshot) => snapshot,
+                        Err(_) => build_single_success_snapshot_with_online_info(
+                            account,
+                            &info,
+                            online_probe.online_info(),
+                            store.cached_traffic_snapshots.get(&account.id),
+                        ),
+                    };
+                    snapshot_map.insert(account.id.clone(), snapshot);
                 }
             }
+        } else if current_online_id.is_empty() && online_probe.is_unknown() {
+            current_online_id = store.current_online_account_id.clone();
         }
         let order = build_status_card_order(
             &store,
@@ -187,6 +190,17 @@ impl DashboardRefreshService {
         snapshots
     }
 
+    async fn check_local_online(&self, local_ip: Option<&str>) -> LocalOnlineProbe {
+        let Some(local_ip) = local_ip else {
+            return LocalOnlineProbe::Unknown;
+        };
+        match self.portal_status_client.fetch_online_info().await {
+            Ok(info) if info.ip.trim() == local_ip.trim() => LocalOnlineProbe::Online(info),
+            Ok(_) | Err(AppError::NotFound(_)) => LocalOnlineProbe::Offline,
+            Err(_) => LocalOnlineProbe::Unknown,
+        }
+    }
+
     fn refresh_runtime_from_disk(&self) -> AppResult<()> {
         let account_store = self.account_repo.load_store()?;
         let app_state = self.app_state_repo.load_state()?;
@@ -213,5 +227,33 @@ impl DashboardRefreshService {
         let snapshot = build_app_snapshot(&state);
         self.event_sink.state_updated(&snapshot)?;
         Ok(snapshot)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum LocalOnlineProbe {
+    Online(LegacyPortalOnlineInfo),
+    Offline,
+    Unknown,
+}
+
+impl LocalOnlineProbe {
+    fn is_online(&self) -> bool {
+        matches!(self, Self::Online(_))
+    }
+
+    fn is_offline(&self) -> bool {
+        matches!(self, Self::Offline)
+    }
+
+    fn is_unknown(&self) -> bool {
+        matches!(self, Self::Unknown)
+    }
+
+    fn online_info(&self) -> Option<&LegacyPortalOnlineInfo> {
+        match self {
+            Self::Online(info) => Some(info),
+            Self::Offline | Self::Unknown => None,
+        }
     }
 }

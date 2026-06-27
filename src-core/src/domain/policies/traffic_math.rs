@@ -249,6 +249,11 @@ pub fn format_traffic_text_as_gb(text: &str) -> String {
         .unwrap_or_else(|| text.trim().replace(',', ""))
 }
 
+pub fn format_traffic_bytes_as_gb(text: &str) -> Option<String> {
+    let bytes = text.trim().replace(',', "").parse::<f64>().ok()?;
+    Some(format_gigabytes(bytes / 1024.0 / 1024.0))
+}
+
 pub fn extract_included_package_gb(text: &str) -> Option<f64> {
     let normalized = text.replace(' ', "");
     let re = regex::Regex::new(r"含([0-9]+(?:\.[0-9]+)?)GB套餐流量").ok()?;
@@ -298,6 +303,14 @@ mod tests {
             "21.71GB".to_string()
         );
         assert_eq!(build_progress_percent("22,230.78M", "70GB"), Some(31.0));
+    }
+
+    #[test]
+    fn formats_traffic_bytes_as_gb() {
+        assert_eq!(
+            format_traffic_bytes_as_gb("41675360258"),
+            Some("38.81GB".to_string())
+        );
     }
 
     #[test]

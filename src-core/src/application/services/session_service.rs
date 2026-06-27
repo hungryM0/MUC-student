@@ -112,7 +112,9 @@ impl SessionService {
                     target.account.display_name()
                 );
             } else {
-                login_result = self.auth_client.login_target_account(&target).await?;
+                login_result = self
+                    .switch_already_online_to_target(&store.accounts, &target, local_ip)
+                    .await?;
             }
         }
 
@@ -132,6 +134,35 @@ impl SessionService {
         }
         self.refresh_runtime_from_disk()?;
         Ok(())
+    }
+
+    async fn switch_already_online_to_target(
+        &self,
+        accounts: &[PortalAccount],
+        target: &AccountWithPassword,
+        local_ip: Option<&str>,
+    ) -> AppResult<LoginResult> {
+        let Some(local_ip) = local_ip else {
+            return self.auth_client.login_target_account(target).await;
+        };
+        let Some(current) = self.detect_current_online_account(accounts, local_ip).await else {
+            return self.auth_client.login_target_account(target).await;
+        };
+        if current.id == target.account.id {
+            return Ok(LoginResult {
+                success: true,
+                message: format!(
+                    "当前 IP 已在线（{}），无需重复登录",
+                    target.account.display_name()
+                ),
+                login_url: String::new(),
+                hidden_fields: Default::default(),
+                response_text: String::new(),
+                checked_at: Local::now(),
+                already_online: false,
+            });
+        }
+        self.auth_client.login_target_account(target).await
     }
 
     pub async fn logout_local_device_inner(&self) -> AppResult<()> {
@@ -160,13 +191,6 @@ impl SessionService {
         accounts: &[PortalAccount],
         local_ip: &str,
     ) -> Option<PortalAccount> {
-        if let Some(account) = self
-            .detect_current_online_account_fast(accounts, local_ip)
-            .await
-        {
-            return Some(account);
-        }
-
         let success_info = self.portal_status_client.fetch_success_info().await.ok()?;
         if success_info.ip.trim() != local_ip.trim() {
             return None;
@@ -175,22 +199,6 @@ impl SessionService {
         accounts
             .iter()
             .find(|account| username_matches(&account.username, &success_info.username))
-            .cloned()
-    }
-
-    async fn detect_current_online_account_fast(
-        &self,
-        accounts: &[PortalAccount],
-        local_ip: &str,
-    ) -> Option<PortalAccount> {
-        let online_info = self.portal_status_client.fetch_online_info().await.ok()?;
-        if online_info.ip.trim() != local_ip.trim() {
-            return None;
-        }
-
-        accounts
-            .iter()
-            .find(|account| username_matches(&account.username, &online_info.username))
             .cloned()
     }
 

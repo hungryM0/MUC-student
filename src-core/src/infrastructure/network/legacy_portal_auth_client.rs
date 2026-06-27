@@ -32,6 +32,7 @@ struct SuccessLogoutForm {
 
 impl LegacyPortalAuthClient {
     const RESPONSE_IP_ALREADY_ONLINE: &'static str = "IP has been online, please logout.";
+    const LOGIN_TARGET_MAX_RETRIES: usize = 2;
 
     pub fn new(settings: AppSettings, transport: HttpTransport) -> Self {
         Self {
@@ -92,40 +93,36 @@ impl LegacyPortalAuthClient {
         &self,
         target_account: &AccountWithPassword,
     ) -> AppResult<LoginResult> {
-        let response = self.login_with_portal_page(target_account).await?;
-        let response_text = normalize_portal_response_text(&response.text);
-        let success = is_portal_login_success(&response_text);
-        let already_online = is_ip_already_online_response(&response_text);
+        let mut last_result = None;
+        let mut last_error = None;
+        for _ in 0..=Self::LOGIN_TARGET_MAX_RETRIES {
+            let response = match self.login_with_portal_page(target_account).await {
+                Ok(response) => response,
+                Err(err) => {
+                    last_error = Some(err);
+                    continue;
+                }
+            };
+            let response_text = normalize_portal_response_text(&response.text);
+            let success = is_portal_login_success(&response_text);
+            let already_online = is_ip_already_online_response(&response_text);
+            let result = build_login_target_result(
+                target_account,
+                &self.settings.portal_url,
+                response_text,
+                success,
+                already_online,
+            );
+            if result.success {
+                return Ok(result);
+            }
+            last_result = Some(result);
+        }
 
-        Ok(LoginResult {
-            success,
-            message: if success {
-                format!("Portal 登录成功：{}", target_account.account.display_name())
-            } else if already_online {
-                format!(
-                    "Portal 覆盖登录未生效：当前 IP 仍在线，目标账号={}，服务端返回={}",
-                    target_account.account.display_name(),
-                    response_text
-                )
-            } else {
-                format!(
-                    "Portal 登录失败：{}",
-                    if response_text.is_empty() {
-                        "服务器未返回内容"
-                    } else {
-                        &response_text
-                    }
-                )
-            },
-            login_url: self.settings.portal_url.clone(),
-            hidden_fields: PortalHiddenFields {
-                ac_id: "1".to_string(),
-                ..Default::default()
-            },
-            response_text,
-            checked_at: Local::now(),
-            already_online,
-        })
+        if let Some(result) = last_result {
+            return Ok(result);
+        }
+        Err(last_error.expect("login attempts should produce an error or a result"))
     }
 
     pub async fn logout_current_ip(&self, account: &AccountWithPassword) -> AppResult<String> {
@@ -257,6 +254,44 @@ fn is_portal_login_success(response_text: &str) -> bool {
     response_text.starts_with("login_ok,")
         || response_text.contains("Authentication success")
         || response_text.contains("Portal not response")
+}
+
+fn build_login_target_result(
+    target_account: &AccountWithPassword,
+    login_url: &str,
+    response_text: String,
+    success: bool,
+    already_online: bool,
+) -> LoginResult {
+    LoginResult {
+        success,
+        message: if success {
+            format!("Portal 登录成功：{}", target_account.account.display_name())
+        } else if already_online {
+            format!(
+                "Portal 覆盖登录未生效：当前 IP 仍在线，目标账号={}，服务端返回={}",
+                target_account.account.display_name(),
+                response_text
+            )
+        } else {
+            format!(
+                "Portal 登录失败：{}",
+                if response_text.is_empty() {
+                    "服务器未返回内容"
+                } else {
+                    &response_text
+                }
+            )
+        },
+        login_url: login_url.to_string(),
+        hidden_fields: PortalHiddenFields {
+            ac_id: "1".to_string(),
+            ..Default::default()
+        },
+        response_text,
+        checked_at: Local::now(),
+        already_online,
+    }
 }
 
 fn normalize_portal_response_text(raw: &str) -> String {
