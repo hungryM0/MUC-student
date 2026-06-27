@@ -142,16 +142,6 @@ impl AccountRepository {
         })
     }
 
-    pub fn load_accounts_with_passwords(
-        &self,
-        accounts: &[PortalAccount],
-    ) -> AppResult<Vec<AccountWithPassword>> {
-        accounts
-            .iter()
-            .map(|account| self.load_account_with_password(account))
-            .collect()
-    }
-
     pub fn add_account(
         &self,
         remark_name: &str,
