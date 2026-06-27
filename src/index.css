@@ -137,3 +137,90 @@
 button {
   user-select: none;
 }
+
+/* ==========================================
+   Smooth Animations
+   ========================================== */
+
+/* Radix Dialog 弹出与遮罩动画 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -48%) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes scaleOut {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -48%) scale(0.96);
+  }
+}
+
+/* 匹配 radix dialog classes 并用 CSS 关键帧提供极致缓动 */
+[data-slot="dialog-overlay"][data-state="open"] {
+  animation: fadeIn 200ms cubic-bezier(0.215, 0.61, 0.355, 1) forwards;
+}
+
+[data-slot="dialog-overlay"][data-state="closed"] {
+  animation: fadeOut 150ms cubic-bezier(0.215, 0.61, 0.355, 1) forwards;
+}
+
+[data-slot="dialog-content"][data-state="open"] {
+  animation: scaleIn 250ms cubic-bezier(0.215, 0.61, 0.355, 1) forwards;
+}
+
+[data-slot="dialog-content"][data-state="closed"] {
+  animation: scaleOut 180ms cubic-bezier(0.215, 0.61, 0.355, 1) forwards;
+}
+
+/* 在线卡片的温和呼吸灯（呼吸投影）效果 */
+@keyframes onlinePulse {
+  0% {
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.1);
+    border-color: rgba(16, 185, 129, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(16, 185, 129, 0.22);
+    border-color: rgba(16, 185, 129, 0.45);
+  }
+  100% {
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.1);
+    border-color: rgba(16, 185, 129, 0.3);
+  }
+}
+
+.account-card-online {
+  animation: onlinePulse 3.5s infinite ease-in-out;
+}
+
+
+
+
+

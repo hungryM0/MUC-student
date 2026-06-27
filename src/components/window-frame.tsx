@@ -1,6 +1,7 @@
 import { ThemeProvider } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
-import { type ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 type WindowFrameProps = {
   titleBar: ReactNode;
@@ -15,11 +16,23 @@ export function WindowFrame({
   className,
   contentClassName,
 }: WindowFrameProps) {
+  const [isMain, setIsMain] = useState(true);
+
+  useEffect(() => {
+    try {
+      const label = getCurrentWebviewWindow().label;
+      setIsMain(label === "main");
+    } catch {
+      setIsMain(true);
+    }
+  }, []);
+
   return (
     <ThemeProvider defaultTheme="system" storageKey="tauri-ui-theme">
       <div
         className={cn(
-          "bg-background flex h-screen w-screen flex-col overflow-hidden",
+          "bg-background text-foreground flex h-screen w-screen flex-col overflow-hidden",
+          !isMain && "rounded-xl border border-border/80 shadow-2xl",
           className,
         )}
       >
@@ -29,3 +42,4 @@ export function WindowFrame({
     </ThemeProvider>
   );
 }
+

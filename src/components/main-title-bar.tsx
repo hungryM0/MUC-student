@@ -20,7 +20,7 @@ export function MainTitleBar() {
       maximizable: false,
       minimizable: false,
       decorations: false,
-      transparent: false,
+      transparent: true,
       shadow: true,
       alwaysOnTop: true,
       parent: "main",
@@ -37,7 +37,7 @@ export function MainTitleBar() {
       maximizable: true,
       minimizable: false,
       decorations: false,
-      transparent: false,
+      transparent: true,
       shadow: true,
       parent: "main",
     });

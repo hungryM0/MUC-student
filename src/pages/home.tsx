@@ -582,10 +582,10 @@ function AccountRow({
   return (
     <div
       className={cn(
-        "grid min-h-20 grid-cols-[1fr_148px] gap-4 rounded-lg border p-4 text-left transition-colors",
+        "grid min-h-20 grid-cols-[1fr_148px] gap-4 rounded-lg border p-4 text-left transition-all duration-300 ease-out",
         accountState === "online"
-          ? "border-emerald-500/40 bg-emerald-500/10"
-          : "border-border hover:bg-muted/50",
+          ? "border-emerald-500/40 bg-emerald-500/10 shadow-[0_0_12px_rgba(16,185,129,0.15)] ring-1 ring-emerald-500/20 account-card-online"
+          : "border-border hover:bg-muted/50 hover:border-muted-foreground/20 hover:shadow-xs",
       )}
     >
       <div className="min-w-0 space-y-2">
@@ -617,15 +617,19 @@ function AccountRow({
             size="sm"
             disabled={disabled}
             onClick={onLogin}
-            className="h-8 w-full"
+            className={cn(
+              "h-8 w-full transition-all duration-300 relative overflow-hidden",
+              (loggingIn || selecting) && "bg-emerald-600 hover:bg-emerald-600 text-white"
+            )}
           >
-            <LogIn
-              className={cn(
-                "h-3.5 w-3.5",
-                (loggingIn || selecting) && "animate-pulse",
+            <span className="flex items-center justify-center gap-1.5 transition-all duration-300">
+              {loggingIn || selecting ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <LogIn className="h-3.5 w-3.5" />
               )}
-            />
-            {loggingIn || selecting ? "登录中" : "登录"}
+              {loggingIn || selecting ? "登录中" : "登录"}
+            </span>
           </Button>
           <Button
             type="button"
@@ -634,7 +638,7 @@ function AccountRow({
             disabled={disabled}
             onClick={onEdit}
             aria-label="编辑账号"
-            className="h-8 w-8"
+            className="h-8 w-8 transition-transform duration-200 hover:scale-105 active:scale-95"
           >
             <Pencil className="h-3.5 w-3.5" />
           </Button>
@@ -645,7 +649,7 @@ function AccountRow({
             disabled={disabled}
             onClick={onDelete}
             aria-label="删除账号"
-            className="h-8 w-8"
+            className="h-8 w-8 transition-transform duration-200 hover:scale-105 active:scale-95 hover:text-destructive"
           >
             <Trash2
               className={cn("h-3.5 w-3.5", deleting && "animate-pulse")}
@@ -662,14 +666,18 @@ function AccountStateBadge({
 }: {
   state: "online" | "idle";
 }) {
-  if (state === "idle") {
-    return null;
-  }
-
+  const isOnline = state === "online";
   return (
-    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-600">
-      <CheckCircle2 className="h-3 w-3" />
-      在线
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-600 transition-all duration-300 transform origin-left",
+        isOnline
+          ? "opacity-100 scale-100 max-w-[100px] translate-x-0"
+          : "opacity-0 scale-90 max-w-0 translate-x-[-10px] pointer-events-none overflow-hidden",
+      )}
+    >
+      <CheckCircle2 className="h-3 w-3 shrink-0" />
+      <span className="shrink-0">在线</span>
     </span>
   );
 }
@@ -687,18 +695,26 @@ function AccountDialog({
   onClose: () => void;
   onSave: () => void;
 }) {
-  if (!form) {
+  const [localForm, setLocalForm] = useState<AccountFormState | null>(null);
+
+  useEffect(() => {
+    if (form) {
+      setLocalForm(form);
+    }
+  }, [form]);
+
+  if (!localForm) {
     return null;
   }
 
-  const isEditing = !!form.accountId;
+  const isEditing = !!localForm.accountId;
   const canSave =
-    form.remarkName.trim() &&
-    form.username.trim() &&
-    (isEditing || form.password.trim());
+    !!localForm.remarkName.trim() &&
+    !!localForm.username.trim() &&
+    (isEditing || !!localForm.password.trim());
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={!!form} onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{isEditing ? "编辑账号" : "添加账号"}</DialogTitle>
@@ -708,10 +724,12 @@ function AccountDialog({
           <label className="grid gap-1.5 text-sm">
             <span className="font-medium">备注名</span>
             <Input
-              value={form.remarkName}
-              onChange={(event) =>
-                onChange({ ...form, remarkName: event.target.value })
-              }
+              value={localForm.remarkName}
+              onChange={(event) => {
+                const updated = { ...localForm, remarkName: event.target.value };
+                setLocalForm(updated);
+                onChange(updated);
+              }}
               autoFocus
             />
           </label>
@@ -719,10 +737,12 @@ function AccountDialog({
           <label className="grid gap-1.5 text-sm">
             <span className="font-medium">账号</span>
             <Input
-              value={form.username}
-              onChange={(event) =>
-                onChange({ ...form, username: event.target.value })
-              }
+              value={localForm.username}
+              onChange={(event) => {
+                const updated = { ...localForm, username: event.target.value };
+                setLocalForm(updated);
+                onChange(updated);
+              }}
             />
           </label>
 
@@ -730,11 +750,13 @@ function AccountDialog({
             <span className="font-medium">密码</span>
             <Input
               type="password"
-              value={form.password}
+              value={localForm.password}
               placeholder={isEditing ? "留空则不修改" : ""}
-              onChange={(event) =>
-                onChange({ ...form, password: event.target.value })
-              }
+              onChange={(event) => {
+                const updated = { ...localForm, password: event.target.value };
+                setLocalForm(updated);
+                onChange(updated);
+              }}
             />
           </label>
         </div>
