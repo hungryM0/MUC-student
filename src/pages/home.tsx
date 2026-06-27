@@ -279,17 +279,11 @@ export default function HomePage() {
                 </h1>
                 <div className="bg-border/60 h-4 w-px hidden sm:block" />
               </div>
-              <div className="flex items-center gap-3">
-                <StatusPill
-                  tone={snapshot?.network.isOnline ? "green" : "amber"}
-                  label={snapshot?.network.statusText || "IP 未识别"}
-                />
-                <span className="text-muted-foreground font-mono text-xs hidden sm:inline">
-                  {snapshot?.network.ip && snapshot.network.ip !== "unknown"
-                    ? snapshot.network.ip
-                    : "IP 未识别"}
-                </span>
-              </div>
+              <span className="text-muted-foreground hidden font-mono text-xs sm:inline">
+                {snapshot?.network.ip && snapshot.network.ip !== "unknown"
+                  ? snapshot.network.ip
+                  : "IP 未识别"}
+              </span>
             </header>
 
             {errorText && (
@@ -385,21 +379,6 @@ export default function HomePage() {
                         <CircleGauge className="text-emerald-500 h-4.5 w-4.5" />
                         状态概览
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled={isBusy || !snapshot?.accounts.length}
-                        onClick={() => runSnapshotAction("refresh", refreshDashboard)}
-                        className="h-8 w-8 hover:bg-muted"
-                        title="从网关刷新流量"
-                      >
-                        <RefreshCw
-                          className={cn(
-                            "h-3.5 w-3.5 text-muted-foreground",
-                            runningAction === "refresh" && "animate-spin",
-                          )}
-                        />
-                      </Button>
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="pt-4 space-y-5">
@@ -434,24 +413,14 @@ export default function HomePage() {
                     <div className="space-y-3.5">
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-muted-foreground text-xs">当前在线</span>
-                        <div className="flex items-center gap-1.5 max-w-[70%]">
-                          {snapshot?.currentOnlineAccountId ? (
-                            <>
-                              <span className="relative flex h-2 w-2 shrink-0">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                              </span>
-                              <span className="truncate text-xs font-semibold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                                {snapshot?.accounts.find(
-                                  (account) =>
-                                    account.id === snapshot.currentOnlineAccountId,
-                                )?.remarkName || "未知账号"}
-                              </span>
-                            </>
-                          ) : (
-                            <span className="text-xs font-medium text-muted-foreground">无在线设备</span>
-                          )}
-                        </div>
+                        <span className="max-w-[70%] truncate text-xs font-medium">
+                          {snapshot?.currentOnlineAccountId
+                            ? snapshot?.accounts.find(
+                                (account) =>
+                                  account.id === snapshot.currentOnlineAccountId,
+                              )?.remarkName || "未知账号"
+                            : "无在线设备"}
+                        </span>
                       </div>
 
                       <div className="flex items-center justify-between">
@@ -503,30 +472,6 @@ export default function HomePage() {
     </WindowFrame>
   );
 }
-
-function StatusPill({
-  label,
-  tone,
-}: {
-  label: string;
-  tone: "green" | "amber";
-}) {
-  return (
-    <div
-      className={cn(
-        "inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-xs",
-        tone === "green"
-          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600"
-          : "border-amber-500/30 bg-amber-500/10 text-amber-600",
-      )}
-    >
-      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
-      <span className="truncate">{label}</span>
-    </div>
-  );
-}
-
-
 
 function formatLocalLoginTime(value?: string | null) {
   if (!value) {
