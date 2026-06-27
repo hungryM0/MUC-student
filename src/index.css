@@ -164,22 +164,22 @@ button {
 @keyframes scaleIn {
   from {
     opacity: 0;
-    transform: translate(-50%, -48%) scale(0.96);
+    transform: translateY(-0.5rem) scale(0.96);
   }
   to {
     opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
+    transform: translateY(0) scale(1);
   }
 }
 
 @keyframes scaleOut {
   from {
     opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
+    transform: translateY(0) scale(1);
   }
   to {
     opacity: 0;
-    transform: translate(-50%, -48%) scale(0.96);
+    transform: translateY(-0.5rem) scale(0.96);
   }
 }
 
@@ -219,8 +219,3 @@ button {
 .account-card-online {
   animation: onlinePulse 3.5s infinite ease-in-out;
 }
-
-
-
-
-

@@ -12,7 +12,6 @@ import {
   Plus,
   RefreshCw,
   Trash2,
-  Wifi,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,6 +25,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { WindowFrame } from "@/components/window-frame";
 import { MainTitleBar } from "@/components/main-title-bar";
+import { SettingsDialog } from "@/components/settings-dialog";
+import { AboutDialog } from "@/components/about-dialog";
 import {
   type AccountDto,
   type AppSnapshotDto,
@@ -61,6 +62,8 @@ export default function HomePage() {
   const [savingAccount, setSavingAccount] = useState(false);
   const [deletingAccountId, setDeletingAccountId] = useState("");
   const [accountForm, setAccountForm] = useState<AccountFormState | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
 
   useEffect(() => {
     const initTrayMenu = async () => {
@@ -257,144 +260,37 @@ export default function HomePage() {
 
   return (
     <WindowFrame
-      titleBar={<MainTitleBar />}
-      contentClassName="flex flex-1 overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.12),transparent_35%),linear-gradient(135deg,rgba(16,185,129,0.06),transparent_45%)]"
+      titleBar={
+        <MainTitleBar
+          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenAbout={() => setAboutOpen(true)}
+        />
+      }
+      contentClassName="flex flex-1 overflow-hidden"
     >
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <main className="min-w-0 flex-1 overflow-y-auto p-6">
-          <div className="mx-auto flex max-w-4xl flex-col gap-6">
+          <div className="mx-auto flex max-w-5xl flex-col gap-6">
             {/* 顶栏 Header */}
-            <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-border/40 pb-5">
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <div className="space-y-1">
-                  <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-emerald-500 to-sky-500 bg-clip-text text-transparent">
-                    MUC 校园网拼车
-                  </h1>
-                  <p className="text-muted-foreground text-xs">
-                    多账号管理与智能状态同步
-                  </p>
-                </div>
-                <div className="bg-border/60 hidden h-8 w-px sm:block" />
-                <div className="flex items-center gap-3">
-                  <StatusPill
-                    tone={snapshot?.network.isOnline ? "green" : "amber"}
-                    label={snapshot?.network.statusText || "IP 未识别"}
-                  />
-                  <span className="text-muted-foreground font-mono text-xs">
-                    {snapshot?.network.ip && snapshot.network.ip !== "unknown"
-                      ? snapshot.network.ip
-                      : "IP 未识别"}
-                  </span>
-                </div>
+            <header className="flex items-center justify-between border-b border-border/40 pb-4">
+              <div className="flex items-center gap-4">
+                <h1 className="text-xl font-bold tracking-tight text-foreground">
+                  MUC 校园网拼车
+                </h1>
+                <div className="bg-border/60 h-4 w-px hidden sm:block" />
               </div>
-
-              {/* 全局动作 */}
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={isBusy || !snapshot?.accounts.length}
-                  onClick={() => runSnapshotAction("refresh", refreshDashboard)}
-                  className="h-9 gap-2 shadow-sm"
-                >
-                  <RefreshCw
-                    className={cn(
-                      "h-4 w-4",
-                      runningAction === "refresh" && "animate-spin",
-                    )}
-                  />
-                  刷新流量
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={isBusy || !canLogoutLocalDevice}
-                  onClick={() => runSnapshotAction("logout", logoutLocalDevice)}
-                  className="h-9 gap-2 shadow-sm text-destructive hover:bg-destructive/10 hover:text-destructive"
-                >
-                  <Power
-                    className={cn(
-                      "h-4 w-4",
-                      runningAction === "logout" && "animate-pulse",
-                    )}
-                  />
-                  本机下线
-                </Button>
+              <div className="flex items-center gap-3">
+                <StatusPill
+                  tone={snapshot?.network.isOnline ? "green" : "amber"}
+                  label={snapshot?.network.statusText || "IP 未识别"}
+                />
+                <span className="text-muted-foreground font-mono text-xs hidden sm:inline">
+                  {snapshot?.network.ip && snapshot.network.ip !== "unknown"
+                    ? snapshot.network.ip
+                    : "IP 未识别"}
+                </span>
               </div>
             </header>
-
-            {/* 核心指标卡片区 */}
-            <section className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-              {/* 流量池卡片 */}
-              <Card className="border-border/70 bg-background/90 rounded-xl shadow-sm backdrop-blur-sm">
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-base font-medium">
-                    <CircleGauge className="text-emerald-500 h-4 w-4" />
-                    流量池
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-end justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="truncate text-3xl font-bold tracking-tight">
-                        {snapshot?.poolQuota.usedTrafficText ?? "-"}
-                      </div>
-                      <div className="text-muted-foreground mt-1 truncate text-xs">
-                        {snapshot?.poolQuota.productBalanceText ?? "-"}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-2xl font-bold text-emerald-500">
-                        {safeProgress}%
-                      </div>
-                      <div className="text-muted-foreground text-xs">已用</div>
-                    </div>
-                  </div>
-                  <div className="bg-muted h-2 rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-[width] duration-500"
-                      style={{ width: `${safeProgress}%` }}
-                    />
-                  </div>
-                  <div className="text-muted-foreground truncate text-xs bg-muted/30 px-2.5 py-1.5 rounded-md border border-border/30">
-                    {snapshot?.poolQuota.includedPackageText || "套餐信息为空"}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* 当前状态卡片 */}
-              <Card className="border-border/70 bg-background/90 rounded-xl shadow-sm backdrop-blur-sm">
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-base font-medium">
-                    <Wifi className="text-sky-500 h-4 w-4" />
-                    当前状态
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="flex flex-col justify-between h-[134px]">
-                  <div className="space-y-3.5">
-                    <Metric
-                      label="在线账号"
-                      value={
-                        snapshot?.accounts.find(
-                          (account) =>
-                            account.id === snapshot.currentOnlineAccountId,
-                        )?.remarkName || "无在线设备"
-                      }
-                      isOnline={!!snapshot?.currentOnlineAccountId}
-                    />
-                    <Metric
-                      label="最近登录"
-                      value={formatLocalLoginTime(
-                        snapshot?.loginState.lastLoginTime,
-                      )}
-                    />
-                  </div>
-                  <div className="text-muted-foreground text-xs border-t border-border/40 pt-3">
-                    配置了 {snapshot?.accounts.length || 0} 个拼车账号
-                  </div>
-                </CardContent>
-              </Card>
-            </section>
 
             {errorText && (
               <div className="border-destructive/30 bg-destructive/10 text-destructive rounded-lg border px-4 py-3 text-sm flex items-center gap-2">
@@ -403,76 +299,192 @@ export default function HomePage() {
               </div>
             )}
 
-            {/* 账号池卡片 */}
-            <Card className="border-border/70 bg-background/90 flex min-h-0 flex-col rounded-xl shadow-sm backdrop-blur-sm overflow-hidden">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b border-border/40">
-                <div className="space-y-1">
-                  <CardTitle className="flex items-center gap-2 text-lg font-semibold">
-                    <Activity className="text-amber-500 h-5 w-5" />
-                    账号池
-                  </CardTitle>
-                  <p className="text-muted-foreground text-xs">
-                    管理和切换校园网计费账号
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={openAddAccountForm}
-                    disabled={isBusy}
-                    className="h-8 gap-1.5"
-                  >
-                    <Plus className="h-4 w-4" />
-                    添加账号
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={loadSnapshot}
-                    disabled={isBusy}
-                    className="h-8 gap-1.5"
-                  >
-                    <RefreshCw
-                      className={cn("h-3.5 w-3.5", loading && "animate-spin")}
-                    />
-                    同步数据
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="p-6">
-                <div className="max-h-[calc(100vh-390px)] min-h-[220px] overflow-y-auto pr-1">
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    {snapshot?.accounts.length ? (
-                      snapshot.accounts.map((account) => (
-                        <AccountRow
-                          key={account.id}
-                          account={account}
-                          selecting={selectingId === account.id}
-                          loggingIn={loginAccountId === account.id}
-                          disabled={isBusy}
-                          deleting={deletingAccountId === account.id}
-                          onEdit={() => openEditAccountForm(account)}
-                          onDelete={() => handleDeleteAccount(account)}
-                          onLogin={() => handleLoginAccount(account)}
+            <div className="flex flex-col gap-6 md:flex-row">
+              {/* 左侧：账号池 */}
+              <div className="flex-1 min-w-0">
+                <Card className="border-border/70 bg-background/90 flex flex-col rounded-xl shadow-sm backdrop-blur-sm overflow-hidden h-full">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b border-border/40">
+                    <div className="space-y-1">
+                      <CardTitle className="flex items-center gap-2 text-lg font-semibold">
+                        <Activity className="text-amber-500 h-5 w-5" />
+                        账号池
+                      </CardTitle>
+                      <p className="text-muted-foreground text-xs">
+                        管理和切换校园网计费账号
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={openAddAccountForm}
+                        disabled={isBusy}
+                        className="h-8 gap-1.5"
+                      >
+                        <Plus className="h-4 w-4" />
+                        添加账号
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={loadSnapshot}
+                        disabled={isBusy}
+                        className="h-8 gap-1.5"
+                      >
+                        <RefreshCw
+                          className={cn("h-3.5 w-3.5", loading && "animate-spin")}
                         />
-                      ))
-                    ) : (
-                      <div className="col-span-2 text-muted-foreground flex h-40 flex-col items-center justify-center rounded-xl border border-dashed border-border/80 bg-muted/10 text-sm gap-2">
-                        {loading ? (
-                          <>
-                            <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground/60" />
-                            <span>正在读取账号列表...</span>
-                          </>
+                        同步数据
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    <div className="max-h-[calc(100vh-240px)] min-h-[300px] overflow-y-auto pr-1">
+                      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                        {snapshot?.accounts.length ? (
+                          snapshot.accounts.map((account) => (
+                            <AccountRow
+                              key={account.id}
+                              account={account}
+                              selecting={selectingId === account.id}
+                              loggingIn={loginAccountId === account.id}
+                              disabled={isBusy}
+                              deleting={deletingAccountId === account.id}
+                              onEdit={() => openEditAccountForm(account)}
+                              onDelete={() => handleDeleteAccount(account)}
+                              onLogin={() => handleLoginAccount(account)}
+                            />
+                          ))
                         ) : (
-                          <span>暂无账号，请点击上方“添加账号”</span>
+                          <div className="col-span-full text-muted-foreground flex h-48 flex-col items-center justify-center rounded-xl border border-dashed border-border/80 bg-muted/10 text-sm gap-2">
+                            {loading ? (
+                              <>
+                                <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground/60" />
+                                <span>正在读取账号列表...</span>
+                              </>
+                            ) : (
+                              <span>暂无账号，请点击上方“添加账号”</span>
+                            )}
+                          </div>
                         )}
                       </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* 右侧：状态与流量概览 */}
+              <div className="w-full md:w-80 shrink-0 flex flex-col gap-6">
+                <Card className="border-border/70 bg-background/90 rounded-xl shadow-sm backdrop-blur-sm">
+                  <CardHeader className="pb-3 border-b border-border/40">
+                    <CardTitle className="flex items-center justify-between text-base font-semibold">
+                      <div className="flex items-center gap-2">
+                        <CircleGauge className="text-emerald-500 h-4.5 w-4.5" />
+                        状态概览
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled={isBusy || !snapshot?.accounts.length}
+                        onClick={() => runSnapshotAction("refresh", refreshDashboard)}
+                        className="h-8 w-8 hover:bg-muted"
+                        title="从网关刷新流量"
+                      >
+                        <RefreshCw
+                          className={cn(
+                            "h-3.5 w-3.5 text-muted-foreground",
+                            runningAction === "refresh" && "animate-spin",
+                          )}
+                        />
+                      </Button>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-4 space-y-5">
+                    {/* 流量池部分 */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-muted-foreground">流量池已用</span>
+                        <span className="text-sm font-bold text-emerald-500">{safeProgress}%</span>
+                      </div>
+                      <div className="bg-muted h-2 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-emerald-500 transition-[width] duration-500"
+                          style={{ width: `${safeProgress}%` }}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1 mt-2">
+                        <div className="text-xl font-bold tracking-tight">
+                          {snapshot?.poolQuota.usedTrafficText ?? "-"}
+                        </div>
+                        <div className="text-muted-foreground text-xs truncate">
+                          {snapshot?.poolQuota.productBalanceText ?? "-"}
+                        </div>
+                        <div className="text-muted-foreground text-[10px] bg-muted/40 px-2 py-1.5 rounded border border-border/20 mt-1 whitespace-pre-wrap leading-relaxed">
+                          {snapshot?.poolQuota.includedPackageText || "套餐信息为空"}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-border/40 my-3" />
+
+                    {/* 在线状态部分 */}
+                    <div className="space-y-3.5">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-muted-foreground text-xs">当前在线</span>
+                        <div className="flex items-center gap-1.5 max-w-[70%]">
+                          {snapshot?.currentOnlineAccountId ? (
+                            <>
+                              <span className="relative flex h-2 w-2 shrink-0">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                              </span>
+                              <span className="truncate text-xs font-semibold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                                {snapshot?.accounts.find(
+                                  (account) =>
+                                    account.id === snapshot.currentOnlineAccountId,
+                                )?.remarkName || "未知账号"}
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-xs font-medium text-muted-foreground">无在线设备</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground text-xs">最近登录</span>
+                        <span className="text-xs font-mono text-muted-foreground">
+                          {formatLocalLoginTime(snapshot?.loginState.lastLoginTime)}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground text-xs">已配置账号</span>
+                        <span className="text-xs font-medium">
+                          {snapshot?.accounts.length || 0} 个拼车账号
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* 极其安静的本机下线操作 */}
+                    {canLogoutLocalDevice && (
+                      <div className="pt-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={isBusy}
+                          onClick={() => runSnapshotAction("logout", logoutLocalDevice)}
+                          className="w-full h-8 gap-1.5 text-xs text-muted-foreground hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30 transition-all border border-border/30"
+                        >
+                          <Power className="h-3 w-3" />
+                          断开本机连接
+                        </Button>
+                      </div>
                     )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
           </div>
         </main>
       </div>
@@ -483,6 +495,8 @@ export default function HomePage() {
         onClose={() => setAccountForm(null)}
         onSave={handleSaveAccount}
       />
+      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
     </WindowFrame>
   );
 }
@@ -509,30 +523,7 @@ function StatusPill({
   );
 }
 
-function Metric({
-  label,
-  value,
-  isOnline = false,
-}: {
-  label: string;
-  value: string;
-  isOnline?: boolean;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-muted-foreground text-sm">{label}</span>
-      <div className="flex items-center gap-1.5 truncate">
-        {isOnline && (
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-          </span>
-        )}
-        <span className="truncate text-sm font-medium">{value}</span>
-      </div>
-    </div>
-  );
-}
+
 
 function formatLocalLoginTime(value?: string | null) {
   if (!value) {

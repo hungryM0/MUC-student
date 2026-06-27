@@ -3,7 +3,12 @@ import { useTheme } from "@/components/theme-provider";
 import { createWindow } from "@/lib/window";
 import { TitleBar } from "@/components/title-bar";
 
-export function MainTitleBar() {
+interface MainTitleBarProps {
+  onOpenSettings?: () => void;
+  onOpenAbout?: () => void;
+}
+
+export function MainTitleBar({ onOpenSettings, onOpenAbout }: MainTitleBarProps) {
   const { theme, setTheme } = useTheme();
 
   const handleToggleTheme = () => {
@@ -11,36 +16,44 @@ export function MainTitleBar() {
   };
 
   const handleOpenAbout = async () => {
-    await createWindow("about", {
-      title: "关于",
-      url: "/about",
-      width: 500,
-      height: 400,
-      resizable: false,
-      maximizable: false,
-      minimizable: false,
-      decorations: false,
-      transparent: true,
-      shadow: true,
-      alwaysOnTop: true,
-      parent: "main",
-    });
+    if (onOpenAbout) {
+      onOpenAbout();
+    } else {
+      await createWindow("about", {
+        title: "关于",
+        url: "/about",
+        width: 500,
+        height: 400,
+        resizable: false,
+        maximizable: false,
+        minimizable: false,
+        decorations: false,
+        transparent: true,
+        shadow: true,
+        alwaysOnTop: true,
+        parent: "main",
+      });
+    }
   };
 
   const handleOpenSettings = async () => {
-    await createWindow("settings", {
-      title: "设置",
-      url: "/settings",
-      width: 600,
-      height: 500,
-      resizable: true,
-      maximizable: true,
-      minimizable: false,
-      decorations: false,
-      transparent: true,
-      shadow: true,
-      parent: "main",
-    });
+    if (onOpenSettings) {
+      onOpenSettings();
+    } else {
+      await createWindow("settings", {
+        title: "设置",
+        url: "/settings",
+        width: 600,
+        height: 500,
+        resizable: true,
+        maximizable: true,
+        minimizable: false,
+        decorations: false,
+        transparent: true,
+        shadow: true,
+        parent: "main",
+      });
+    }
   };
 
   return (

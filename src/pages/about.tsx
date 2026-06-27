@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { getVersion } from "@tauri-apps/api/app";
+import { useEffect } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { Github } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -7,21 +6,9 @@ import { TitleBar } from "@/components/title-bar";
 import { WindowFrame } from "@/components/window-frame";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { cancelDestroyWindow, destroyWindow } from "@/lib/window";
-import packageJson from "../../package.json";
-
-const techVersions = {
-  tauri: packageJson.dependencies["@tauri-apps/api"].replace(/^\^/, "v"),
-  react: packageJson.dependencies.react.replace(/^\^/, "v"),
-  typescript: packageJson.devDependencies.typescript.replace(/^~/, "v"),
-};
+import { APP_DISPLAY_VERSION } from "@/lib/app-version";
 
 export default function AboutPage() {
-  const [appVersion, setAppVersion] = useState("");
-
-  useEffect(() => {
-    void getVersion().then(setAppVersion);
-  }, []);
-
   useEffect(() => {
     const appWindow = getCurrentWebviewWindow();
 
@@ -56,26 +43,19 @@ export default function AboutPage() {
       contentClassName="flex flex-1 items-center justify-center overflow-hidden"
     >
       <div className="w-full max-w-xs space-y-6">
-        <div className="text-center">
+        <div className="space-y-3 text-center">
+          <img
+            src="/icons/32x32.png"
+            alt=""
+            className="mx-auto h-14 w-14 rounded-xl"
+          />
           <h2 className="text-2xl font-bold">MUC-student</h2>
         </div>
 
         <div className="space-y-2 text-sm">
           <div className="flex justify-between">
             <span className="text-muted-foreground">版本</span>
-            <span className="font-medium">{appVersion}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Tauri</span>
-            <span className="font-medium">{techVersions.tauri}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">React</span>
-            <span className="font-medium">{techVersions.react}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">TypeScript</span>
-            <span className="font-medium">{techVersions.typescript}</span>
+            <span className="font-medium">{APP_DISPLAY_VERSION}</span>
           </div>
         </div>
 
