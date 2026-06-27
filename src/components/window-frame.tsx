@@ -32,7 +32,7 @@ export function WindowFrame({
       <div
         className={cn(
           "bg-background text-foreground flex h-screen w-screen flex-col overflow-hidden",
-          !isMain && "rounded-xl border border-border/80 shadow-2xl",
+          isMain ? "border border-border/70" : "rounded-xl border border-border/80 shadow-2xl",
           className,
         )}
       >

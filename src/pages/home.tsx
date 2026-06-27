@@ -301,7 +301,7 @@ export default function HomePage() {
             <div className="flex flex-col gap-6 md:flex-row">
               {/* 左侧：账号池 */}
               <div className="flex-1 min-w-0">
-                <Card className="border-border/70 bg-background/90 flex flex-col rounded-xl shadow-sm backdrop-blur-sm overflow-hidden h-full">
+                <Card className="border-border bg-background/95 flex flex-col rounded-xl backdrop-blur-sm overflow-hidden h-full">
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b border-border/40">
                     <div className="space-y-1">
                       <CardTitle className="flex items-center gap-2 text-lg font-semibold">
@@ -377,7 +377,7 @@ export default function HomePage() {
 
               {/* 右侧：状态与流量概览 */}
               <div className="w-full md:w-80 shrink-0 flex flex-col gap-6">
-                <Card className="border-border/70 bg-background/90 rounded-xl shadow-sm backdrop-blur-sm">
+                <Card className="border-border bg-background/95 rounded-xl backdrop-blur-sm">
                   <CardHeader className="pb-3 border-b border-border/40">
                     <CardTitle className="flex items-center justify-between text-base font-semibold">
                       <div className="flex items-center gap-2">
