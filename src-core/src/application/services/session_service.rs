@@ -11,7 +11,7 @@ use crate::infrastructure::network::legacy_portal_auth_client::{
     is_portal_arrearage_response, LegacyPortalAuthClient,
 };
 use crate::infrastructure::network::legacy_portal_status_client::LegacyPortalStatusClient;
-use crate::infrastructure::network::network_status_service::NetworkStatusService;
+use crate::infrastructure::network::network_status_service::NetworkStatusDetector;
 use crate::infrastructure::persistence::account_repository::{
     AccountRepository, AccountWithPassword,
 };
@@ -24,7 +24,7 @@ pub struct SessionService {
     app_state_repo: AppStateRepository,
     auth_client: LegacyPortalAuthClient,
     portal_status_client: LegacyPortalStatusClient,
-    network_status_service: Arc<NetworkStatusService>,
+    network_status_service: Arc<dyn NetworkStatusDetector>,
 }
 
 impl SessionService {
@@ -34,7 +34,7 @@ impl SessionService {
         app_state_repo: AppStateRepository,
         auth_client: LegacyPortalAuthClient,
         portal_status_client: LegacyPortalStatusClient,
-        network_status_service: Arc<NetworkStatusService>,
+        network_status_service: Arc<dyn NetworkStatusDetector>,
     ) -> Self {
         Self {
             state,

@@ -20,7 +20,7 @@ use crate::domain::models::traffic::AccountTrafficSnapshot;
 use crate::domain::models::AccountStore;
 use crate::domain::policies::traffic_math::build_status_card_order;
 use crate::infrastructure::network::legacy_portal_status_client::LegacyPortalStatusClient;
-use crate::infrastructure::network::network_status_service::NetworkStatusService;
+use crate::infrastructure::network::network_status_service::NetworkStatusDetector;
 use crate::infrastructure::network::self_service_panel_client::SelfServicePanelClient;
 use crate::infrastructure::parsers::legacy_portal_online_info_parser::LegacyPortalOnlineInfo;
 use crate::infrastructure::persistence::account_repository::AccountRepository;
@@ -33,7 +33,7 @@ pub struct DashboardRefreshService {
     app_state_repo: AppStateRepository,
     portal_status_client: LegacyPortalStatusClient,
     panel_client: SelfServicePanelClient,
-    network_status_service: Arc<NetworkStatusService>,
+    network_status_service: Arc<dyn NetworkStatusDetector>,
     event_sink: Arc<dyn AppEventSink>,
 }
 
@@ -43,7 +43,7 @@ pub struct DashboardRefreshDependencies {
     pub app_state_repo: AppStateRepository,
     pub portal_status_client: LegacyPortalStatusClient,
     pub panel_client: SelfServicePanelClient,
-    pub network_status_service: Arc<NetworkStatusService>,
+    pub network_status_service: Arc<dyn NetworkStatusDetector>,
     pub event_sink: Arc<dyn AppEventSink>,
 }
 

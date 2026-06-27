@@ -65,3 +65,52 @@ pub fn join_url(base_url: &str, path: &str) -> String {
         .map(|url| url.to_string())
         .unwrap_or_else(|_| path.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        extract_meta_content, is_traffic_home_page, is_yii_login_page, join_url,
+        parse_hidden_fields,
+    };
+
+    #[test]
+    fn detects_login_and_traffic_home_pages() {
+        assert!(is_yii_login_page(
+            r#"<input name="LoginForm[username]"><input name="LoginForm[password]"><input name="LoginForm[verifyCode]">"#,
+        ));
+        assert!(is_traffic_home_page(
+            "<table><th>产品名称</th><th>已用流量</th><th>产品余额</th></table>",
+        ));
+        assert!(!is_traffic_home_page("<html>登录</html>"));
+    }
+
+    #[test]
+    fn parses_hidden_fields_and_falls_back_to_ac_id_query() {
+        let fields = parse_hidden_fields(
+            r#"
+            <input name="user_ip" value="10.151.119.57">
+            <input name="nas_ip" value="10.0.0.1">
+            <input name="user_mac" value="aa:bb:cc:dd:ee:ff">
+            "#,
+            "http://rz.muc.edu.cn/srun_portal_pc.php?ac_id=1&",
+        );
+
+        assert_eq!(fields.ac_id, "1");
+        assert_eq!(fields.user_ip, "10.151.119.57");
+        assert_eq!(fields.nas_ip, "10.0.0.1");
+        assert_eq!(fields.user_mac, "aa:bb:cc:dd:ee:ff");
+    }
+
+    #[test]
+    fn extracts_meta_content_and_joins_urls() {
+        let html = r#"<meta name="csrf-param" content="_csrf"><meta name="csrf-token" content=" token-1 ">"#;
+
+        assert_eq!(extract_meta_content(html, "csrf-param"), "_csrf");
+        assert_eq!(extract_meta_content(html, "csrf-token"), "token-1");
+        assert_eq!(
+            join_url("http://192.168.2.231:8800/home", "/site/sso"),
+            "http://192.168.2.231:8800/site/sso"
+        );
+        assert_eq!(join_url("not a url", "/site/sso"), "/site/sso");
+    }
+}

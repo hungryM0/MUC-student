@@ -5,6 +5,10 @@ use chrono::Local;
 use crate::domain::models::NetworkStatus;
 use crate::infrastructure::settings::AppSettings;
 
+pub trait NetworkStatusDetector: Send + Sync {
+    fn detect_network_status(&self) -> NetworkStatus;
+}
+
 pub struct NetworkStatusService {
     settings: AppSettings,
 }
@@ -12,21 +16,6 @@ pub struct NetworkStatusService {
 impl NetworkStatusService {
     pub fn new(settings: AppSettings) -> Self {
         Self { settings }
-    }
-
-    pub fn detect_network_status(&self) -> NetworkStatus {
-        let ip = self.fetch_private_ipv4();
-        let is_online = ip != "unknown" && !ip.is_empty();
-        NetworkStatus {
-            is_online,
-            status_text: if is_online {
-                "IP 已识别".to_string()
-            } else {
-                "IP 未识别".to_string()
-            },
-            ip,
-            checked_at: Local::now(),
-        }
     }
 
     fn fetch_private_ipv4(&self) -> String {
@@ -53,5 +42,22 @@ impl NetworkStatusService {
             .parse::<IpAddr>()
             .map(|addr| matches!(addr, IpAddr::V4(v4) if v4.is_private()))
             .unwrap_or(false)
+    }
+}
+
+impl NetworkStatusDetector for NetworkStatusService {
+    fn detect_network_status(&self) -> NetworkStatus {
+        let ip = self.fetch_private_ipv4();
+        let is_online = ip != "unknown" && !ip.is_empty();
+        NetworkStatus {
+            is_online,
+            status_text: if is_online {
+                "IP 已识别".to_string()
+            } else {
+                "IP 未识别".to_string()
+            },
+            ip,
+            checked_at: Local::now(),
+        }
     }
 }

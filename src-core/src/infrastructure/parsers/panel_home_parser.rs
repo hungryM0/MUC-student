@@ -165,3 +165,89 @@ fn non_empty(value: &str, fallback: &str) -> String {
         trimmed.to_string()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        build_product_balance_texts, extract_csrf_meta, match_local_ip_device, parse_home_table,
+        parse_panel_home,
+    };
+    use crate::domain::models::traffic::OnlineDeviceRecord;
+
+    #[test]
+    fn parses_home_table_and_combines_package_traffic() {
+        let html = r#"
+        <table>
+          <tr>
+            <th>产品名称</th><th>计费策略</th><th>已用流量</th><th>产品余额</th>
+          </tr>
+          <tr>
+            <td>校园网</td><td>免费70GB + 套餐</td><td>12.50GB</td><td>57.50GB</td>
+          </tr>
+        </table>
+        <div>可用流量：10GB</div>
+        <div>可用流量：512MB</div>
+        "#;
+
+        let (package_name, billing_policy, used_traffic, product_balance) =
+            parse_home_table(html).expect("parse table");
+        let (total, included) = build_product_balance_texts(html);
+
+        assert_eq!(package_name, "校园网");
+        assert_eq!(billing_policy, "免费70GB + 套餐");
+        assert_eq!(used_traffic, "12.50GB");
+        assert_eq!(product_balance, "57.50GB");
+        assert_eq!(total, "80.50GB");
+        assert_eq!(included, "含10.50GB套餐流量");
+    }
+
+    #[test]
+    fn parses_panel_home_with_matching_local_device() {
+        let snapshot = parse_panel_home(
+            r#"
+            <meta name="csrf-param" content="_csrf">
+            <meta name="csrf-token" content="token-1">
+            <table>
+              <tr><th>产品名称</th><th>计费策略</th><th>已用流量</th><th>产品余额</th></tr>
+              <tr><td>校园网</td><td>免费70GB</td><td>1.00GB</td><td>69.00GB</td></tr>
+            </table>
+            <tr data-key="device-a">
+              <td data-col-seq="1">10.151.119.57</td>
+              <td><a href="/home/delete?id=device-a">下线</a></td>
+            </tr>
+            "#,
+            Some("10.151.119.57"),
+        )
+        .expect("parse panel home");
+
+        assert_eq!(snapshot.package_name, "校园网");
+        assert_eq!(snapshot.billing_policy, "免费70GB");
+        assert_eq!(snapshot.used_traffic, "1.00GB");
+        assert_eq!(snapshot.product_balance, "70.00GB");
+        assert_eq!(snapshot.online_devices.len(), 1);
+        assert_eq!(
+            snapshot
+                .matched_local_ip_device
+                .as_ref()
+                .map(|item| item.device_id.as_str()),
+            Some("device-a")
+        );
+    }
+
+    #[test]
+    fn extracts_csrf_meta_and_ignores_unknown_local_ip() {
+        let html = r#"<meta name="csrf-param" content="_csrf"><meta name="csrf-token" content=" token-1 ">"#;
+        let devices = vec![OnlineDeviceRecord {
+            ip: "10.151.119.57".to_string(),
+            device_id: "device-a".to_string(),
+            logout_path: "/home/delete?id=device-a".to_string(),
+        }];
+
+        assert_eq!(
+            extract_csrf_meta(html),
+            ("_csrf".to_string(), "token-1".to_string())
+        );
+        assert!(match_local_ip_device(&devices, "unknown").is_none());
+        assert!(match_local_ip_device(&devices, "").is_none());
+    }
+}

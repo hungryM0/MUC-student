@@ -74,3 +74,53 @@ pub fn normalize_logout_path(raw_href: &str) -> String {
         format!("/{}", raw_href.trim_start_matches('/'))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{normalize_logout_path, parse_online_devices};
+
+    #[test]
+    fn parses_only_rows_with_delete_link() {
+        let records = parse_online_devices(
+            r#"
+            <table>
+              <tr data-key="dev-1">
+                <td data-col-seq="0">设备</td>
+                <td data-col-seq="1"><span>10.151.119.57</span></td>
+                <td><a href="/home/delete?id=dev-1">下线</a></td>
+              </tr>
+              <tr data-key="dev-2">
+                <td data-col-seq="1">10.151.119.58</td>
+                <td><a href="/home/view?id=dev-2">查看</a></td>
+              </tr>
+              <tr data-key="">
+                <td data-col-seq="1">10.151.119.59</td>
+                <td><a href="/home/delete?id=dev-3">下线</a></td>
+              </tr>
+            </table>
+            "#,
+        );
+
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].device_id, "dev-1");
+        assert_eq!(records[0].ip, "10.151.119.57");
+        assert_eq!(records[0].logout_path, "/home/delete?id=dev-1");
+    }
+
+    #[test]
+    fn normalizes_absolute_and_relative_logout_paths() {
+        assert_eq!(
+            normalize_logout_path("http://panel.example/home/delete?id=1&x=2"),
+            "/home/delete?id=1&x=2"
+        );
+        assert_eq!(
+            normalize_logout_path("home/delete?id=1"),
+            "/home/delete?id=1"
+        );
+        assert_eq!(
+            normalize_logout_path("/home/delete?id=1"),
+            "/home/delete?id=1"
+        );
+        assert_eq!(normalize_logout_path(""), "");
+    }
+}
