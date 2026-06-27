@@ -246,11 +246,7 @@ export default function HomePage() {
             accountForm.password,
           );
       setSnapshot(nextSnapshot);
-      if (nextSnapshot.loginState.message) {
-        setErrorText(nextSnapshot.loginState.message);
-      } else {
-        setAccountForm(null);
-      }
+      setAccountForm(null);
     } catch (error) {
       setErrorText(readErrorMessage(error));
     } finally {
