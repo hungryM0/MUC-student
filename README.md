@@ -5,6 +5,7 @@
 ![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)
 ![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)
+![SQLite](https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white)
 
 > [!NOTE]
 >

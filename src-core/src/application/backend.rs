@@ -23,7 +23,7 @@ use crate::infrastructure::network::{
 };
 use crate::infrastructure::persistence::account_repository::AccountRepository;
 use crate::infrastructure::persistence::app_state_repository::AppStateRepository;
-use crate::infrastructure::persistence::migration::MigrationService;
+use crate::infrastructure::persistence::database::AppDatabase;
 use crate::infrastructure::persistence::panel_session_repository::PanelSessionRepository;
 use crate::infrastructure::persistence::runtime_paths::{resolve_default_paths, RuntimePaths};
 use crate::infrastructure::security::credential_vault::{CredentialVault, WindowsCredentialVault};
@@ -53,7 +53,6 @@ impl AppCore {
         let paths = RuntimePaths::new(
             path_provider.app_data_dir()?,
             path_provider.resource_base_dir()?,
-            path_provider.legacy_root()?,
         )?;
         Self::build_with_paths(paths, startup_controller, event_sink)
     }
@@ -65,20 +64,14 @@ impl AppCore {
     ) -> AppResult<Self> {
         let settings = AppSettings::default();
         let vault: Arc<dyn CredentialVault> = Arc::new(WindowsCredentialVault::initialize()?);
-        let account_repo = AccountRepository::new(paths.clone(), vault.clone());
-        let app_state_repo = AppStateRepository::new(paths.clone());
-        let migration = MigrationService::new(
-            paths.clone(),
-            vault.clone(),
-            account_repo.clone(),
-            app_state_repo.clone(),
-        );
-        let _migrated = migration.migrate_if_needed()?;
+        let db = AppDatabase::open(&paths)?;
+        let account_repo = AccountRepository::new(db.clone(), vault.clone());
+        let app_state_repo = AppStateRepository::new(db.clone());
         let account_store = account_repo.ensure_store()?;
         let app_state = app_state_repo.load_state()?;
         let mut preferences = app_state_repo.load_preferences()?;
         preferences.launch_on_startup = startup_controller.is_enabled()?;
-        let panel_session_repo = PanelSessionRepository::new(paths.clone());
+        let panel_session_repo = PanelSessionRepository::new(db.clone());
 
         let auth_transport = HttpTransport::new(settings.clone())?;
         let legacy_portal_transport = HttpTransport::new(settings.clone())?;

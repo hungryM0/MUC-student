@@ -1,82 +1,128 @@
 use chrono::{DateTime, Local};
-use serde::{Deserialize, Serialize};
+use rusqlite::params;
 
 use crate::application::error::AppResult;
 use crate::domain::models::{AppState, UserPreferences};
-use crate::infrastructure::persistence::file_write::{read_json, write_json_atomic};
-use crate::infrastructure::persistence::runtime_paths::RuntimePaths;
-
-#[derive(Debug, Deserialize, Serialize, Default)]
-#[serde(rename_all = "camelCase")]
-struct AppStateFile {
-    last_login_time: Option<DateTime<Local>>,
-    last_quota_refresh_time: Option<DateTime<Local>>,
-    last_login_result: String,
-    last_login_message: String,
-    recent_account_ids: Vec<String>,
-    minimize_to_tray_on_close: bool,
-    launch_on_startup: bool,
-    auto_switch_account_on_traffic_exhausted: bool,
-    migration_version: u32,
-}
+use crate::infrastructure::persistence::database::AppDatabase;
 
 #[derive(Clone)]
 pub struct AppStateRepository {
-    paths: RuntimePaths,
+    db: AppDatabase,
 }
 
 impl AppStateRepository {
-    pub fn new(paths: RuntimePaths) -> Self {
-        Self { paths }
+    pub fn new(db: AppDatabase) -> Self {
+        Self { db }
     }
 
     pub fn load_state(&self) -> AppResult<AppState> {
-        let file = self.load_file()?;
+        let conn = self.db.lock()?;
+        let (last_login_time, last_quota_refresh_time, last_login_result, last_login_message) =
+            conn.query_row(
+                r#"
+                SELECT
+                    last_login_time,
+                    last_quota_refresh_time,
+                    last_login_result,
+                    last_login_message
+                FROM app_state
+                WHERE id = 1
+                "#,
+                [],
+                |row| {
+                    Ok((
+                        parse_datetime(row.get::<_, Option<String>>(0)?)?,
+                        parse_datetime(row.get::<_, Option<String>>(1)?)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                    ))
+                },
+            )?;
         Ok(AppState {
-            last_login_time: file.last_login_time,
-            last_quota_refresh_time: file.last_quota_refresh_time,
-            last_login_result: if file.last_login_result.trim().is_empty() {
+            last_login_time,
+            last_quota_refresh_time,
+            last_login_result: if last_login_result.trim().is_empty() {
                 "未执行".to_string()
             } else {
-                file.last_login_result
+                last_login_result
             },
-            last_login_message: if file.last_login_message.trim().is_empty() {
+            last_login_message: if last_login_message.trim().is_empty() {
                 "-".to_string()
             } else {
-                file.last_login_message
+                last_login_message
             },
-            recent_account_ids: normalize_recent_account_ids(file.recent_account_ids),
-            migration_version: file.migration_version,
+            recent_account_ids: normalize_recent_account_ids(load_recent_account_ids(&conn)?),
         })
     }
 
     pub fn load_preferences(&self) -> AppResult<UserPreferences> {
-        let file = self.load_file()?;
-        Ok(UserPreferences {
-            minimize_to_tray_on_close: file.minimize_to_tray_on_close,
-            launch_on_startup: file.launch_on_startup,
-            auto_switch_account_on_traffic_exhausted: file.auto_switch_account_on_traffic_exhausted,
-        })
+        let conn = self.db.lock()?;
+        let preferences = conn.query_row(
+            r#"
+            SELECT
+                minimize_to_tray_on_close,
+                launch_on_startup,
+                auto_switch_account_on_traffic_exhausted
+            FROM preferences
+            WHERE id = 1
+            "#,
+            [],
+            |row| {
+                Ok(UserPreferences {
+                    minimize_to_tray_on_close: row.get::<_, bool>(0)?,
+                    launch_on_startup: row.get::<_, bool>(1)?,
+                    auto_switch_account_on_traffic_exhausted: row.get::<_, bool>(2)?,
+                })
+            },
+        )?;
+        Ok(preferences)
     }
 
     pub fn save_state(&self, state: &AppState) -> AppResult<()> {
-        let mut file = self.load_file()?;
-        file.last_login_time = state.last_login_time;
-        file.last_quota_refresh_time = state.last_quota_refresh_time;
-        file.last_login_result = state.last_login_result.clone();
-        file.last_login_message = state.last_login_message.clone();
-        file.recent_account_ids = normalize_recent_account_ids(state.recent_account_ids.clone());
-        file.migration_version = state.migration_version;
-        self.save_file(&file)
+        let mut conn = self.db.lock()?;
+        let tx = conn.transaction()?;
+        tx.execute(
+            r#"
+            UPDATE app_state
+            SET
+                last_login_time = ?1,
+                last_quota_refresh_time = ?2,
+                last_login_result = ?3,
+                last_login_message = ?4
+            WHERE id = 1
+            "#,
+            params![
+                state.last_login_time.map(|value| value.to_rfc3339()),
+                state
+                    .last_quota_refresh_time
+                    .map(|value| value.to_rfc3339()),
+                state.last_login_result,
+                state.last_login_message,
+            ],
+        )?;
+        save_recent_account_ids_tx(&tx, &state.recent_account_ids)?;
+        tx.commit()?;
+        Ok(())
     }
 
     pub fn save_preferences(&self, preferences: &UserPreferences) -> AppResult<()> {
-        let mut file = self.load_file()?;
-        file.minimize_to_tray_on_close = preferences.minimize_to_tray_on_close;
-        file.launch_on_startup = preferences.launch_on_startup;
-        file.auto_switch_account_on_traffic_exhausted =
-            preferences.auto_switch_account_on_traffic_exhausted;
-        self.save_file(&file)
+        let conn = self.db.lock()?;
+        conn.execute(
+            r#"
+            UPDATE preferences
+            SET
+                minimize_to_tray_on_close = ?1,
+                launch_on_startup = ?2,
+                auto_switch_account_on_traffic_exhausted = ?3
+            WHERE id = 1
+            "#,
+            params![
+                preferences.minimize_to_tray_on_close,
+                preferences.launch_on_startup,
+                preferences.auto_switch_account_on_traffic_exhausted,
+            ],
+        )?;
+        Ok(())
     }
 
     pub fn mark_account_used(&self, account_id: &str) -> AppResult<Vec<String>> {
@@ -103,14 +149,41 @@ impl AppStateRepository {
         self.save_state(&state)?;
         Ok(state.recent_account_ids)
     }
+}
 
-    fn load_file(&self) -> AppResult<AppStateFile> {
-        read_json(&self.paths.app_state_path())
-    }
+fn parse_datetime(input: Option<String>) -> rusqlite::Result<Option<DateTime<Local>>> {
+    input
+        .as_deref()
+        .map(DateTime::parse_from_rfc3339)
+        .transpose()
+        .map(|value| value.map(|dt| dt.with_timezone(&Local)))
+        .map_err(|err| {
+            rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(err))
+        })
+}
 
-    fn save_file(&self, file: &AppStateFile) -> AppResult<()> {
-        write_json_atomic(&self.paths.app_state_path(), file)
+fn load_recent_account_ids(conn: &rusqlite::Connection) -> AppResult<Vec<String>> {
+    let mut stmt =
+        conn.prepare("SELECT account_id FROM recent_accounts ORDER BY sort_order, rowid")?;
+    let rows = stmt.query_map([], |row| row.get(0))?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+fn save_recent_account_ids_tx(
+    tx: &rusqlite::Transaction<'_>,
+    account_ids: &[String],
+) -> AppResult<()> {
+    tx.execute("DELETE FROM recent_accounts", [])?;
+    for (index, account_id) in normalize_recent_account_ids(account_ids.to_vec())
+        .iter()
+        .enumerate()
+    {
+        tx.execute(
+            "INSERT INTO recent_accounts (account_id, sort_order) VALUES (?1, ?2)",
+            params![account_id, index as i64],
+        )?;
     }
+    Ok(())
 }
 
 fn normalize_recent_account_ids(raw: Vec<String>) -> Vec<String> {
@@ -126,4 +199,37 @@ fn normalize_recent_account_ids(raw: Vec<String>) -> Vec<String> {
         }
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::tempdir;
+
+    use super::AppStateRepository;
+    use crate::infrastructure::persistence::database::AppDatabase;
+    use crate::infrastructure::persistence::runtime_paths::RuntimePaths;
+
+    #[test]
+    fn stores_preferences_and_recent_accounts_in_sqlite() {
+        let root = tempdir().expect("create temp dir");
+        let paths = RuntimePaths::from_cwd_for_tests(root.path()).expect("create paths");
+        let db = AppDatabase::open(&paths).expect("open db");
+        let repo = AppStateRepository::new(db);
+
+        let mut preferences = repo.load_preferences().expect("load preferences");
+        preferences.minimize_to_tray_on_close = true;
+        preferences.auto_switch_account_on_traffic_exhausted = true;
+        repo.save_preferences(&preferences)
+            .expect("save preferences");
+
+        repo.mark_account_used("acc-1").expect("mark first");
+        repo.mark_account_used("acc-2").expect("mark second");
+        repo.mark_account_used("acc-1").expect("mark first again");
+
+        let state = repo.load_state().expect("load state");
+        let preferences = repo.load_preferences().expect("reload preferences");
+        assert_eq!(state.recent_account_ids, vec!["acc-1", "acc-2"]);
+        assert!(preferences.minimize_to_tray_on_close);
+        assert!(preferences.auto_switch_account_on_traffic_exhausted);
+    }
 }

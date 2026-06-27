@@ -1,68 +1,59 @@
-use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
+use std::collections::{BTreeMap, HashMap};
 
-use serde::{Deserialize, Serialize};
+use rusqlite::params;
 
 use crate::application::error::AppResult;
-use crate::infrastructure::persistence::file_write::{read_json, write_json_atomic};
-use crate::infrastructure::persistence::runtime_paths::RuntimePaths;
+use crate::infrastructure::persistence::database::AppDatabase;
 
 #[derive(Clone)]
 pub struct PanelSessionRepository {
-    paths: RuntimePaths,
-    file_lock: Arc<Mutex<()>>,
-}
-
-#[derive(Debug, Default, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct PanelSessionFile {
-    sessions: BTreeMap<String, BTreeMap<String, String>>,
+    db: AppDatabase,
 }
 
 impl PanelSessionRepository {
-    pub fn new(paths: RuntimePaths) -> Self {
-        Self {
-            paths,
-            file_lock: Arc::new(Mutex::new(())),
-        }
+    pub fn new(db: AppDatabase) -> Self {
+        Self { db }
     }
 
     pub fn load_session(&self, account_id: &str) -> AppResult<BTreeMap<String, String>> {
-        let _guard = self.file_lock.lock().map_err(|_| {
-            crate::application::error::AppError::Internal(
-                "panel session file lock poisoned".to_string(),
-            )
+        let clean_id = account_id.trim();
+        if clean_id.is_empty() {
+            return Ok(BTreeMap::new());
+        }
+        let conn = self.db.lock()?;
+        let mut stmt = conn
+            .prepare("SELECT name, value FROM panel_cookies WHERE account_id = ?1 ORDER BY name")?;
+        let rows = stmt.query_map(params![clean_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })?;
-        let file = self.load_file()?;
-        Ok(file
-            .sessions
-            .get(account_id.trim())
-            .cloned()
-            .unwrap_or_default())
+        rows.collect::<Result<BTreeMap<_, _>, _>>()
+            .map_err(Into::into)
     }
 
     pub fn save_session(
         &self,
         account_id: &str,
-        cookies: &std::collections::HashMap<String, String>,
+        cookies: &HashMap<String, String>,
     ) -> AppResult<()> {
         let clean_id = account_id.trim();
         if clean_id.is_empty() {
             return Ok(());
         }
         let filtered = normalize_cookies(cookies);
-        let _guard = self.file_lock.lock().map_err(|_| {
-            crate::application::error::AppError::Internal(
-                "panel session file lock poisoned".to_string(),
-            )
-        })?;
-        let mut file = self.load_file()?;
-        if filtered.is_empty() {
-            file.sessions.remove(clean_id);
-        } else {
-            file.sessions.insert(clean_id.to_string(), filtered);
+        let mut conn = self.db.lock()?;
+        let tx = conn.transaction()?;
+        tx.execute(
+            "DELETE FROM panel_cookies WHERE account_id = ?1",
+            params![clean_id],
+        )?;
+        for (name, value) in filtered {
+            tx.execute(
+                "INSERT INTO panel_cookies (account_id, name, value) VALUES (?1, ?2, ?3)",
+                params![clean_id, name, value],
+            )?;
         }
-        self.save_file(&file)
+        tx.commit()?;
+        Ok(())
     }
 
     pub fn clear_session(&self, account_id: &str) -> AppResult<()> {
@@ -70,28 +61,16 @@ impl PanelSessionRepository {
         if clean_id.is_empty() {
             return Ok(());
         }
-        let _guard = self.file_lock.lock().map_err(|_| {
-            crate::application::error::AppError::Internal(
-                "panel session file lock poisoned".to_string(),
-            )
-        })?;
-        let mut file = self.load_file()?;
-        file.sessions.remove(clean_id);
-        self.save_file(&file)
-    }
-
-    fn load_file(&self) -> AppResult<PanelSessionFile> {
-        read_json(&self.paths.panel_sessions_path())
-    }
-
-    fn save_file(&self, file: &PanelSessionFile) -> AppResult<()> {
-        write_json_atomic(&self.paths.panel_sessions_path(), file)
+        let conn = self.db.lock()?;
+        conn.execute(
+            "DELETE FROM panel_cookies WHERE account_id = ?1",
+            params![clean_id],
+        )?;
+        Ok(())
     }
 }
 
-fn normalize_cookies(
-    cookies: &std::collections::HashMap<String, String>,
-) -> BTreeMap<String, String> {
+fn normalize_cookies(cookies: &HashMap<String, String>) -> BTreeMap<String, String> {
     cookies
         .iter()
         .filter_map(|(name, value)| {
@@ -104,4 +83,49 @@ fn normalize_cookies(
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use tempfile::tempdir;
+
+    use super::PanelSessionRepository;
+    use crate::infrastructure::persistence::database::AppDatabase;
+    use crate::infrastructure::persistence::runtime_paths::RuntimePaths;
+
+    #[test]
+    fn stores_and_clears_panel_cookies() {
+        let root = tempdir().expect("create temp dir");
+        let paths = RuntimePaths::from_cwd_for_tests(root.path()).expect("create paths");
+        let db = AppDatabase::open(&paths).expect("open db");
+        let repo = PanelSessionRepository::new(db.clone());
+        {
+            let conn = db.lock().expect("lock db");
+            conn.execute(
+                "INSERT INTO accounts (id, remark_name, username, sort_order) VALUES ('acc-1', '主号', '20260001', 0)",
+                [],
+            )
+            .expect("insert account");
+        }
+
+        let mut cookies = HashMap::new();
+        cookies.insert("PHPSESSID_8800".to_string(), "abc".to_string());
+        cookies.insert(" empty ".to_string(), " ".to_string());
+        repo.save_session("acc-1", &cookies).expect("save session");
+
+        let session = repo.load_session("acc-1").expect("load session");
+        assert_eq!(
+            session.get("PHPSESSID_8800").map(String::as_str),
+            Some("abc")
+        );
+        assert!(!session.contains_key("empty"));
+
+        repo.clear_session("acc-1").expect("clear session");
+        assert!(repo
+            .load_session("acc-1")
+            .expect("reload session")
+            .is_empty());
+    }
 }

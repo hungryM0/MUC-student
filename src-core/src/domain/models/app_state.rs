@@ -9,7 +9,6 @@ pub struct AppState {
     pub last_login_result: String,
     pub last_login_message: String,
     pub recent_account_ids: Vec<String>,
-    pub migration_version: u32,
 }
 
 impl Default for AppState {
@@ -20,7 +19,6 @@ impl Default for AppState {
             last_login_result: "未执行".to_string(),
             last_login_message: "-".to_string(),
             recent_account_ids: Vec::new(),
-            migration_version: 0,
         }
     }
 }

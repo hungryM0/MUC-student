@@ -19,10 +19,6 @@ impl RuntimePathProvider for TauriRuntimePathProvider {
             .and_then(|path| path.parent().map(PathBuf::from))
             .ok_or_else(|| AppError::Storage("无法定位程序资源目录".to_string()))
     }
-
-    fn legacy_root(&self) -> AppResult<PathBuf> {
-        env::current_dir().map_err(Into::into)
-    }
 }
 
 #[derive(Clone)]

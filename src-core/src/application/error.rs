@@ -61,8 +61,8 @@ impl From<std::io::Error> for AppError {
     }
 }
 
-impl From<serde_json::Error> for AppError {
-    fn from(value: serde_json::Error) -> Self {
+impl From<rusqlite::Error> for AppError {
+    fn from(value: rusqlite::Error) -> Self {
         Self::Storage(value.to_string())
     }
 }

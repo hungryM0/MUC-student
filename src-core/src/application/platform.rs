@@ -6,7 +6,6 @@ use crate::application::error::AppResult;
 pub trait RuntimePathProvider: Send + Sync {
     fn app_data_dir(&self) -> AppResult<PathBuf>;
     fn resource_base_dir(&self) -> AppResult<PathBuf>;
-    fn legacy_root(&self) -> AppResult<PathBuf>;
 }
 
 pub trait StartupController: Send + Sync {

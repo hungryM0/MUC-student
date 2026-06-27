@@ -1,18 +1,18 @@
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 
-use serde::{Deserialize, Serialize};
+use chrono::{DateTime, Local};
+use rusqlite::params;
 use uuid::Uuid;
 
 use crate::application::error::{AppError, AppResult};
 use crate::domain::models::{AccountStore, CachedTrafficSnapshot, PortalAccount};
-use crate::infrastructure::persistence::file_write::{read_json, write_json_atomic};
-use crate::infrastructure::persistence::runtime_paths::RuntimePaths;
+use crate::infrastructure::persistence::database::AppDatabase;
 use crate::infrastructure::security::credential_vault::CredentialVault;
 
 #[derive(Clone)]
 pub struct AccountRepository {
-    paths: RuntimePaths,
+    db: AppDatabase,
     vault: Arc<dyn CredentialVault>,
 }
 
@@ -22,23 +22,9 @@ pub struct AccountWithPassword {
     pub password: String,
 }
 
-#[derive(Debug, Deserialize, Serialize, Default)]
-#[serde(rename_all = "camelCase")]
-struct AccountStoreFile {
-    selected_account_id: String,
-    current_online_account_id: String,
-    status_card_order_snapshot: Vec<String>,
-    accounts: Vec<PortalAccount>,
-    cached_traffic_snapshots: BTreeMap<String, CachedTrafficSnapshot>,
-}
-
 impl AccountRepository {
-    pub fn new(paths: RuntimePaths, vault: Arc<dyn CredentialVault>) -> Self {
-        Self { paths, vault }
-    }
-
-    pub fn paths(&self) -> &RuntimePaths {
-        &self.paths
+    pub fn new(db: AppDatabase, vault: Arc<dyn CredentialVault>) -> Self {
+        Self { db, vault }
     }
 
     pub fn vault(&self) -> &Arc<dyn CredentialVault> {
@@ -46,27 +32,82 @@ impl AccountRepository {
     }
 
     pub fn load_store(&self) -> AppResult<AccountStore> {
-        let path = self.paths.accounts_path();
-        let file: AccountStoreFile = read_json(&path)?;
-        Ok(self.normalize_store(AccountStore {
-            selected_account_id: file.selected_account_id,
-            accounts: file.accounts,
-            current_online_account_id: file.current_online_account_id,
-            status_card_order_snapshot: file.status_card_order_snapshot,
-            cached_traffic_snapshots: file.cached_traffic_snapshots,
-        }))
+        let conn = self.db.lock()?;
+        let accounts = load_accounts(&conn)?;
+        let valid_ids: HashSet<String> =
+            accounts.iter().map(|account| account.id.clone()).collect();
+        let (mut selected_account_id, mut current_online_account_id) = conn.query_row(
+            "SELECT selected_account_id, current_online_account_id FROM selection_state WHERE id = 1",
+            [],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )?;
+        if !selected_account_id.is_empty() && !valid_ids.contains(&selected_account_id) {
+            selected_account_id.clear();
+        }
+        if selected_account_id.is_empty() {
+            selected_account_id = accounts
+                .first()
+                .map(|account| account.id.clone())
+                .unwrap_or_default();
+        }
+        if !valid_ids.contains(&current_online_account_id) {
+            current_online_account_id.clear();
+        }
+        let store = AccountStore {
+            selected_account_id,
+            accounts,
+            current_online_account_id,
+            status_card_order_snapshot: load_order(&conn, "status_card_order")?,
+            cached_traffic_snapshots: load_snapshots(&conn)?,
+        };
+        Ok(self.normalize_store(store))
     }
 
     pub fn save_store(&self, store: &AccountStore) -> AppResult<()> {
         let normalized = self.normalize_store(store.clone());
-        let payload = AccountStoreFile {
-            selected_account_id: normalized.selected_account_id,
-            current_online_account_id: normalized.current_online_account_id,
-            status_card_order_snapshot: normalized.status_card_order_snapshot,
-            accounts: normalized.accounts,
-            cached_traffic_snapshots: normalized.cached_traffic_snapshots,
-        };
-        write_json_atomic(&self.paths.accounts_path(), &payload)
+        let mut conn = self.db.lock()?;
+        let tx = conn.transaction()?;
+        for (index, account) in normalized.accounts.iter().enumerate() {
+            tx.execute(
+                r#"
+                INSERT INTO accounts (id, remark_name, username, sort_order)
+                VALUES (?1, ?2, ?3, ?4)
+                ON CONFLICT(id) DO UPDATE SET
+                    remark_name = excluded.remark_name,
+                    username = excluded.username,
+                    sort_order = excluded.sort_order
+                "#,
+                params![
+                    account.id,
+                    account.remark_name,
+                    account.username,
+                    index as i64
+                ],
+            )?;
+        }
+        let valid_ids: HashSet<String> = normalized
+            .accounts
+            .iter()
+            .map(|account| account.id.clone())
+            .collect();
+        let existing_ids = load_account_ids(&tx)?;
+        for account_id in existing_ids {
+            if !valid_ids.contains(&account_id) {
+                tx.execute("DELETE FROM accounts WHERE id = ?1", params![account_id])?;
+            }
+        }
+        tx.execute(
+            "UPDATE selection_state SET selected_account_id = ?1, current_online_account_id = ?2 WHERE id = 1",
+            params![normalized.selected_account_id, normalized.current_online_account_id],
+        )?;
+        save_order_tx(
+            &tx,
+            "status_card_order",
+            &normalized.status_card_order_snapshot,
+        )?;
+        save_snapshots_tx(&tx, &normalized.cached_traffic_snapshots)?;
+        tx.commit()?;
+        Ok(())
     }
 
     pub fn ensure_store(&self) -> AppResult<AccountStore> {
@@ -130,7 +171,10 @@ impl AccountRepository {
         if store.selected_account_id.is_empty() {
             store.selected_account_id = account.id.clone();
         }
-        self.save_store(&store)?;
+        if let Err(err) = self.save_store(&store) {
+            let _ = self.vault.delete_password(&account.id);
+            return Err(err);
+        }
         Ok(account)
     }
 
@@ -305,5 +349,208 @@ impl AccountRepository {
         } else {
             Ok(())
         }
+    }
+}
+
+fn load_accounts(conn: &rusqlite::Connection) -> AppResult<Vec<PortalAccount>> {
+    let mut stmt =
+        conn.prepare("SELECT id, remark_name, username FROM accounts ORDER BY sort_order, rowid")?;
+    let rows = stmt.query_map([], |row| {
+        Ok(PortalAccount {
+            id: row.get(0)?,
+            remark_name: row.get(1)?,
+            username: row.get(2)?,
+        })
+    })?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+fn load_account_ids(conn: &rusqlite::Connection) -> AppResult<Vec<String>> {
+    let mut stmt = conn.prepare("SELECT id FROM accounts")?;
+    let rows = stmt.query_map([], |row| row.get(0))?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+fn load_order(conn: &rusqlite::Connection, table_name: &str) -> AppResult<Vec<String>> {
+    let sql = format!("SELECT account_id FROM {table_name} ORDER BY sort_order, rowid");
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map([], |row| row.get(0))?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+fn save_order_tx(
+    tx: &rusqlite::Transaction<'_>,
+    table_name: &str,
+    order: &[String],
+) -> AppResult<()> {
+    tx.execute(&format!("DELETE FROM {table_name}"), [])?;
+    let sql = format!("INSERT INTO {table_name} (account_id, sort_order) VALUES (?1, ?2)");
+    for (index, account_id) in order.iter().enumerate() {
+        tx.execute(&sql, params![account_id, index as i64])?;
+    }
+    Ok(())
+}
+
+fn load_snapshots(
+    conn: &rusqlite::Connection,
+) -> AppResult<BTreeMap<String, CachedTrafficSnapshot>> {
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT
+            account_id,
+            used_traffic_text,
+            product_balance_text,
+            included_package_text,
+            online_device_count_text,
+            package_text,
+            status_text,
+            detail_text,
+            queried_at,
+            progress_percent
+        FROM traffic_snapshots
+        "#,
+    )?;
+    let rows = stmt.query_map([], |row| {
+        let queried_at: Option<String> = row.get(8)?;
+        let queried_at = queried_at
+            .as_deref()
+            .map(DateTime::parse_from_rfc3339)
+            .transpose()
+            .map(|value| value.map(|dt| dt.with_timezone(&Local)))
+            .map_err(|err| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    8,
+                    rusqlite::types::Type::Text,
+                    Box::new(err),
+                )
+            })?;
+        Ok((
+            row.get::<_, String>(0)?,
+            CachedTrafficSnapshot {
+                used_traffic_text: row.get(1)?,
+                product_balance_text: row.get(2)?,
+                included_package_text: row.get(3)?,
+                online_device_count_text: row.get(4)?,
+                package_text: row.get(5)?,
+                status_text: row.get(6)?,
+                detail_text: row.get(7)?,
+                queried_at,
+                progress_percent: row.get(9)?,
+            },
+        ))
+    })?;
+    rows.collect::<Result<BTreeMap<_, _>, _>>()
+        .map_err(Into::into)
+}
+
+fn save_snapshots_tx(
+    tx: &rusqlite::Transaction<'_>,
+    snapshots: &BTreeMap<String, CachedTrafficSnapshot>,
+) -> AppResult<()> {
+    tx.execute("DELETE FROM traffic_snapshots", [])?;
+    for (account_id, snapshot) in snapshots {
+        tx.execute(
+            r#"
+            INSERT INTO traffic_snapshots (
+                account_id,
+                used_traffic_text,
+                product_balance_text,
+                included_package_text,
+                online_device_count_text,
+                package_text,
+                status_text,
+                detail_text,
+                queried_at,
+                progress_percent
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            "#,
+            params![
+                account_id,
+                snapshot.used_traffic_text,
+                snapshot.product_balance_text,
+                snapshot.included_package_text,
+                snapshot.online_device_count_text,
+                snapshot.package_text,
+                snapshot.status_text,
+                snapshot.detail_text,
+                snapshot.queried_at.map(|value| value.to_rfc3339()),
+                snapshot.progress_percent,
+            ],
+        )?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+    use std::sync::Arc;
+
+    use tempfile::tempdir;
+
+    use super::AccountRepository;
+    use crate::domain::models::CachedTrafficSnapshot;
+    use crate::infrastructure::persistence::database::AppDatabase;
+    use crate::infrastructure::persistence::runtime_paths::RuntimePaths;
+    use crate::infrastructure::security::credential_vault::{
+        CredentialVault, MemoryCredentialVault,
+    };
+
+    #[test]
+    fn stores_accounts_without_plaintext_passwords() {
+        let root = tempdir().expect("create temp dir");
+        let paths = RuntimePaths::from_cwd_for_tests(root.path()).expect("create paths");
+        let db = AppDatabase::open(&paths).expect("open db");
+        let vault: Arc<dyn CredentialVault> = Arc::new(MemoryCredentialVault::default());
+        let repo = AccountRepository::new(db, vault);
+
+        let account = repo
+            .add_account("主号", "20260001", "secret-1")
+            .expect("add account");
+        let store = repo.load_store().expect("load store");
+
+        assert_eq!(store.accounts, vec![account.clone()]);
+        assert_eq!(store.selected_account_id, account.id);
+        assert_eq!(
+            repo.load_account_with_password(&account)
+                .expect("load credential")
+                .password,
+            "secret-1"
+        );
+    }
+
+    #[test]
+    fn saves_cached_snapshots_and_status_order() {
+        let root = tempdir().expect("create temp dir");
+        let paths = RuntimePaths::from_cwd_for_tests(root.path()).expect("create paths");
+        let db = AppDatabase::open(&paths).expect("open db");
+        let vault: Arc<dyn CredentialVault> = Arc::new(MemoryCredentialVault::default());
+        let repo = AccountRepository::new(db, vault);
+        let account = repo
+            .add_account("主号", "20260001", "secret-1")
+            .expect("add account");
+
+        let mut snapshots = BTreeMap::new();
+        snapshots.insert(
+            account.id.clone(),
+            CachedTrafficSnapshot {
+                used_traffic_text: "1G".to_string(),
+                status_text: "已同步".to_string(),
+                ..Default::default()
+            },
+        );
+        repo.save_cached_traffic_snapshots(snapshots, account.id.clone(), vec![account.id.clone()])
+            .expect("save snapshots");
+
+        let store = repo.load_store().expect("load store");
+        assert_eq!(
+            store
+                .cached_traffic_snapshots
+                .get(&account.id)
+                .expect("snapshot")
+                .used_traffic_text,
+            "1G"
+        );
+        assert_eq!(store.status_card_order_snapshot, vec![account.id]);
     }
 }
