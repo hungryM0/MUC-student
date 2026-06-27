@@ -275,7 +275,7 @@ export default function HomePage() {
     >
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <main className="min-w-0 flex-1 overflow-y-auto p-6">
-          <div className="mx-auto flex max-w-5xl flex-col gap-6">
+          <div className="mx-auto flex w-full max-w-5xl xl:max-w-7xl 2xl:max-w-[1440px] flex-col gap-6">
             {/* 顶栏 Header */}
             <header className="flex items-center justify-between border-b border-border/40 pb-4">
               <div className="flex items-center gap-4">
@@ -342,7 +342,7 @@ export default function HomePage() {
                   </CardHeader>
                   <CardContent className="p-6">
                     <div className="max-h-[calc(100vh-240px)] min-h-[300px] overflow-y-auto pr-1">
-                      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 2xl:grid-cols-3">
                         {snapshot?.accounts.length ? (
                           snapshot.accounts.map((account) => (
                             <AccountRow
