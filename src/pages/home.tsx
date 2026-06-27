@@ -42,6 +42,26 @@ import {
 } from "@/lib/muc";
 import { cn } from "@/lib/utils";
 
+function getTrafficProgressColor(percent: number, isOnline: boolean = true) {
+  if (percent < 70) {
+    return isOnline ? "bg-emerald-500" : "bg-emerald-500/60";
+  }
+  if (percent < 80) {
+    return isOnline ? "bg-yellow-500" : "bg-yellow-500/60";
+  }
+  if (percent < 90) {
+    return isOnline ? "bg-orange-500" : "bg-orange-500/60";
+  }
+  return isOnline ? "bg-red-500" : "bg-red-500/60";
+}
+
+function getTrafficProgressTextColor(percent: number) {
+  if (percent < 70) return "text-emerald-500";
+  if (percent < 80) return "text-yellow-500";
+  if (percent < 90) return "text-orange-500";
+  return "text-red-500";
+}
+
 type RunningAction = "login" | "refresh" | "logout";
 type AccountFormState = {
   accountId: string;
@@ -391,11 +411,11 @@ export default function HomePage() {
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium text-muted-foreground">流量池已用</span>
-                        <span className="text-sm font-bold text-emerald-500">{safeProgress}%</span>
+                        <span className={cn("text-sm font-bold", getTrafficProgressTextColor(safeProgress))}>{safeProgress}%</span>
                       </div>
                       <div className="bg-muted h-2 rounded-full overflow-hidden">
                         <div
-                          className="h-full rounded-full bg-emerald-500 transition-[width] duration-500"
+                          className={cn("h-full rounded-full transition-[width] duration-500", getTrafficProgressColor(safeProgress, true))}
                           style={{ width: `${safeProgress}%` }}
                         />
                       </div>
@@ -592,7 +612,7 @@ function AccountRow({
       </div>
       <div className="flex flex-col items-end justify-between gap-3">
         <div className="w-full text-right">
-          <div className="font-semibold">
+          <div className={cn("font-semibold", getTrafficProgressTextColor(Math.min(100, Math.max(0, progress))))}>
             {Math.min(100, Math.max(0, progress))}%
           </div>
           <div className="text-muted-foreground mt-1 truncate text-xs">
@@ -651,14 +671,14 @@ function AccountRow({
           className={cn(
             "h-1.5 w-full rounded-full overflow-hidden",
             accountState === "online"
-              ? "bg-white dark:bg-zinc-950/30"
+              ? "bg-emerald-500/8 dark:bg-zinc-950/30"
               : "bg-muted"
           )}
         >
           <div
             className={cn(
               "h-full rounded-full transition-[width] duration-500 ease-out",
-              accountState === "online" ? "bg-emerald-500" : "bg-emerald-500/60"
+              getTrafficProgressColor(Math.min(100, Math.max(0, progress)), accountState === "online")
             )}
             style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
           />
