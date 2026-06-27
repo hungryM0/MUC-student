@@ -15,8 +15,8 @@ use crate::application::services::portal_snapshot_service::{
 use crate::application::services::snapshot_mapper::{
     build_app_snapshot, restore_cached_snapshots, to_cached_snapshots,
 };
-use crate::domain::models::traffic::AccountTrafficSnapshot;
 use crate::domain::models::AccountStore;
+use crate::domain::models::traffic::AccountTrafficSnapshot;
 use crate::domain::policies::traffic_math::build_status_card_order;
 use crate::infrastructure::network::legacy_portal_status_client::LegacyPortalStatusClient;
 use crate::infrastructure::network::network_status_service::NetworkStatusService;
@@ -74,53 +74,51 @@ impl DashboardRefreshService {
         }
         self.emit_state()?;
 
-        let success_result = self.portal_status_client.fetch_success_info().await;
-        let fetch_succeeded = success_result.is_ok();
-        let success_info = success_result.ok();
-        let success_account = success_info.as_ref().and_then(|info| {
-            local_ip
-                .filter(|ip| info.ip.trim() == ip.trim())
-                .and_then(|_| {
-                    store
-                        .accounts
-                        .iter()
-                        .find(|account| username_matches(&account.username, &info.username))
-                })
-        });
-        let current_online_id = if fetch_succeeded {
-            success_account
-                .as_ref()
-                .map(|account| account.id.clone())
-                .unwrap_or_default()
-        } else {
-            store.current_online_account_id.clone()
-        };
-        if let (Some(account), Some(info)) = (success_account.as_ref(), success_info.as_ref()) {
-            let snapshot = match self
-                .panel_client
-                .fetch_sso_html(&account.id, &info.username, "/home")
-                .await
-                .and_then(|html| {
-                    AccountTrafficService::snapshot_from_panel_home(account, &html, local_ip)
-                }) {
-                Ok(snapshot) => snapshot,
-                Err(_) => build_single_success_snapshot(
-                    account,
-                    info,
-                    store.cached_traffic_snapshots.get(&account.id),
-                ),
-            };
-            snapshot_map.insert(account.id.clone(), snapshot);
-        }
-        for (account_id, snapshot) in self
-            .refresh_cached_panel_sessions(
-                &store,
-                success_account.map(|account| account.id.as_str()),
-                local_ip,
-            )
-            .await
-        {
+        let mut current_online_id = String::new();
+        for (account_id, snapshot) in self.refresh_cached_panel_sessions(&store, local_ip).await {
+            if current_online_id.is_empty() && snapshot.matched_local_ip_device.is_some() {
+                current_online_id = account_id.clone();
+            }
             snapshot_map.insert(account_id, snapshot);
+        }
+
+        if current_online_id.is_empty() {
+            let success_result = self.portal_status_client.fetch_success_info().await;
+            match success_result {
+                Ok(info) => {
+                    let success_account = local_ip
+                        .filter(|ip| info.ip.trim() == ip.trim())
+                        .and_then(|_| {
+                            store
+                                .accounts
+                                .iter()
+                                .find(|account| username_matches(&account.username, &info.username))
+                        });
+                    if let Some(account) = success_account {
+                        current_online_id = account.id.clone();
+                        let snapshot = match self
+                            .panel_client
+                            .fetch_sso_html(&account.id, &info.username, "/home")
+                            .await
+                            .and_then(|html| {
+                                AccountTrafficService::snapshot_from_panel_home(
+                                    account, &html, local_ip,
+                                )
+                            }) {
+                            Ok(snapshot) => snapshot,
+                            Err(_) => build_single_success_snapshot(
+                                account,
+                                &info,
+                                store.cached_traffic_snapshots.get(&account.id),
+                            ),
+                        };
+                        snapshot_map.insert(account.id.clone(), snapshot);
+                    }
+                }
+                Err(_) => {
+                    current_online_id = store.current_online_account_id.clone();
+                }
+            }
         }
         let order = build_status_card_order(
             &store,
@@ -150,22 +148,14 @@ impl DashboardRefreshService {
     async fn refresh_cached_panel_sessions(
         &self,
         store: &AccountStore,
-        current_online_id: Option<&str>,
         local_ip: Option<&str>,
     ) -> Vec<(String, AccountTrafficSnapshot)> {
         let semaphore = Arc::new(Semaphore::new(
             AccountTrafficService::DEFAULT_PANEL_QUERY_CONCURRENCY,
         ));
         let mut join_set = JoinSet::new();
-        let current_online_id = current_online_id.map(str::to_string);
         let local_ip = local_ip.map(str::to_string);
         for account in store.accounts.iter().cloned() {
-            if current_online_id
-                .as_deref()
-                .is_some_and(|id| id == account.id)
-            {
-                continue;
-            }
             let panel_client = self.panel_client.clone();
             let local_ip = local_ip.clone();
             let sem = semaphore.clone();
