@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
+export const FREE_PRODUCT_QUOTA_GB = 70;
+
 export type NetworkStatus = {
   isOnline: boolean;
   statusText: string;

@@ -58,7 +58,7 @@ impl AccountRepository {
             selected_account_id,
             accounts,
             current_online_account_id,
-            status_card_order_snapshot: load_order(&conn, "status_card_order")?,
+            status_card_order_snapshot: load_status_card_order(&conn)?,
             cached_traffic_snapshots: load_snapshots(&conn)?,
         };
         Ok(self.normalize_store(store))
@@ -101,11 +101,7 @@ impl AccountRepository {
             "UPDATE selection_state SET selected_account_id = ?1, current_online_account_id = ?2 WHERE id = 1",
             params![normalized.selected_account_id, normalized.current_online_account_id],
         )?;
-        save_order_tx(
-            &tx,
-            "status_card_order",
-            &normalized.status_card_order_snapshot,
-        )?;
+        save_status_card_order_tx(&tx, &normalized.status_card_order_snapshot)?;
         save_snapshots_tx(&tx, &normalized.cached_traffic_snapshots)?;
         tx.commit()?;
         Ok(())
@@ -362,22 +358,20 @@ fn load_account_ids(conn: &rusqlite::Connection) -> AppResult<Vec<String>> {
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
-fn load_order(conn: &rusqlite::Connection, table_name: &str) -> AppResult<Vec<String>> {
-    let sql = format!("SELECT account_id FROM {table_name} ORDER BY sort_order, rowid");
-    let mut stmt = conn.prepare(&sql)?;
+fn load_status_card_order(conn: &rusqlite::Connection) -> AppResult<Vec<String>> {
+    let mut stmt =
+        conn.prepare("SELECT account_id FROM status_card_order ORDER BY sort_order, rowid")?;
     let rows = stmt.query_map([], |row| row.get(0))?;
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
-fn save_order_tx(
-    tx: &rusqlite::Transaction<'_>,
-    table_name: &str,
-    order: &[String],
-) -> AppResult<()> {
-    tx.execute(&format!("DELETE FROM {table_name}"), [])?;
-    let sql = format!("INSERT INTO {table_name} (account_id, sort_order) VALUES (?1, ?2)");
+fn save_status_card_order_tx(tx: &rusqlite::Transaction<'_>, order: &[String]) -> AppResult<()> {
+    tx.execute("DELETE FROM status_card_order", [])?;
     for (index, account_id) in order.iter().enumerate() {
-        tx.execute(&sql, params![account_id, index as i64])?;
+        tx.execute(
+            "INSERT INTO status_card_order (account_id, sort_order) VALUES (?1, ?2)",
+            params![account_id, index as i64],
+        )?;
     }
     Ok(())
 }

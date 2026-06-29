@@ -4,8 +4,8 @@ use chrono::Local;
 
 use crate::application::error::{AppError, AppResult};
 use crate::application::runtime::SharedRuntimeState;
+use crate::application::runtime_refresh::refresh_runtime_from_disk;
 use crate::application::services::portal_snapshot_service::username_matches;
-use crate::application::services::snapshot_mapper::restore_cached_snapshots;
 use crate::domain::models::{CachedTrafficSnapshot, LoginResult, PortalAccount};
 use crate::infrastructure::network::legacy_portal_auth_client::{
     is_portal_arrearage_response, LegacyPortalAuthClient,
@@ -284,23 +284,6 @@ impl SessionService {
     }
 
     fn refresh_runtime_from_disk(&self) -> AppResult<()> {
-        let account_store = self.account_repo.load_store()?;
-        let app_state = self.app_state_repo.load_state()?;
-        let preferences = self.app_state_repo.load_preferences()?;
-        let valid_ids = account_store
-            .accounts
-            .iter()
-            .map(|account| account.id.clone())
-            .collect::<std::collections::HashSet<_>>();
-        let mut state = self.state.write();
-        state.current_online_account_id = account_store.current_online_account_id.clone();
-        state.snapshots.retain(|id, _| valid_ids.contains(id));
-        for (id, snapshot) in restore_cached_snapshots(&account_store.cached_traffic_snapshots) {
-            state.snapshots.entry(id).or_insert(snapshot);
-        }
-        state.account_store = account_store;
-        state.app_state = app_state;
-        state.preferences = preferences;
-        Ok(())
+        refresh_runtime_from_disk(&self.state, &self.account_repo, &self.app_state_repo)
     }
 }

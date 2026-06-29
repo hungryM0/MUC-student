@@ -40,6 +40,7 @@ import {
   refreshDashboard,
   selectAccount,
   updateAccount,
+  FREE_PRODUCT_QUOTA_GB,
 } from "@/lib/muc";
 import { cn } from "@/lib/utils";
 import appIconUrl from "../../src-tauri/icons/icon.svg?url";
@@ -681,7 +682,7 @@ function AccountRow({
 }) {
   const snapshot = account.snapshot;
   const totalUsed = parseTrafficValue(snapshot?.usedTrafficText);
-  const freeQuota = 70;
+  const freeQuota = FREE_PRODUCT_QUOTA_GB;
   const packageTotal = parseTrafficValue(snapshot?.packageTotalText);
   const packageAvailable = parseTrafficValue(snapshot?.packageAvailableText);
   const packageUsed = Math.max(0, packageTotal - packageAvailable);
@@ -726,7 +727,7 @@ function AccountRow({
             {Math.round(freeProgress)}%
           </div>
           <div className="text-muted-foreground mt-1 truncate text-xs">
-            {formatTrafficAmount(totalUsed)} / 70.000G
+            {formatTrafficAmount(totalUsed)} / {formatTrafficAmount(freeQuota)}
           </div>
         </div>
         <div className="grid w-full grid-cols-[1fr_32px_32px] gap-1.5">
@@ -802,7 +803,7 @@ function AccountRow({
             </div>
             <div className="flex justify-between text-[11px] text-muted-foreground">
               <span>{snapshot?.usedTrafficText ?? "-"}</span>
-              <span>70.000G</span>
+              <span>{formatTrafficAmount(freeQuota)}</span>
             </div>
           </div>
 
