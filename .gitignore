@@ -5,7 +5,7 @@ dist/
 # Rust
 target/
 build/
-src-tauri/gen/
+src-tauri/gen/schemas/
 
 # Local configuration
 .idea/

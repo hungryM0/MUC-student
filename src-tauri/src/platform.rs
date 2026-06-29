@@ -23,13 +23,23 @@ impl RuntimePathProvider for TauriRuntimePathProvider {
 
 #[derive(Clone)]
 pub struct RunKeyStartupController {
+    #[cfg(windows)]
     app_name: String,
 }
 
 impl RunKeyStartupController {
     pub fn new(app_name: impl Into<String>) -> Self {
-        Self {
-            app_name: app_name.into(),
+        #[cfg(windows)]
+        {
+            Self {
+                app_name: app_name.into(),
+            }
+        }
+
+        #[cfg(not(windows))]
+        {
+            let _ = app_name;
+            Self {}
         }
     }
 }

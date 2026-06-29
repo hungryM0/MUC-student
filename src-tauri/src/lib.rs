@@ -148,6 +148,7 @@ async fn update_preferences(
 }
 
 #[tauri::command]
+#[cfg(desktop)]
 fn update_tray_menu(
     app: tauri::AppHandle,
     show_text: String,
@@ -158,42 +159,62 @@ fn update_tray_menu(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri::Builder::default()
-        .setup(|app| {
-            let core = AppCore::build(
-                Arc::new(TauriRuntimePathProvider),
-                Arc::new(RunKeyStartupController::new("MUC-student")),
-                Arc::new(TauriEventSink::new(app.handle().clone())),
-            )?;
-            app.manage(ManagedAppCore {
-                core: Arc::new(core),
-            });
-            Ok(())
-        })
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.set_focus();
-                let _ = window.unminimize();
-                let _ = window.show();
-            }
-        }))
-        .plugin(tauri_plugin_opener::init())
-        .plugin(plugins::system_tray::init())
-        .invoke_handler(tauri::generate_handler![
-            bootstrap_app,
-            get_app_snapshot,
-            select_account,
-            add_account,
-            update_account,
-            delete_account,
-            login_selected_account,
-            refresh_dashboard,
-            logout_local_device,
-            update_preferences,
-            update_tray_menu
-        ]);
+    let builder = tauri::Builder::default().setup(|app| {
+        let core = AppCore::build(
+            Arc::new(TauriRuntimePathProvider),
+            Arc::new(RunKeyStartupController::new("MUC-student")),
+            Arc::new(TauriEventSink::new(app.handle().clone())),
+        )?;
+        app.manage(ManagedAppCore {
+            core: Arc::new(core),
+        });
+        Ok(())
+    });
 
-    #[cfg(not(debug_assertions))]
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.set_focus();
+            let _ = window.unminimize();
+            let _ = window.show();
+        }
+    }));
+
+    let builder = builder.plugin(tauri_plugin_opener::init());
+
+    #[cfg(desktop)]
+    let builder = builder.plugin(plugins::system_tray::init());
+
+    #[cfg(desktop)]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        bootstrap_app,
+        get_app_snapshot,
+        select_account,
+        add_account,
+        update_account,
+        delete_account,
+        login_selected_account,
+        refresh_dashboard,
+        logout_local_device,
+        update_preferences,
+        update_tray_menu
+    ]);
+
+    #[cfg(mobile)]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        bootstrap_app,
+        get_app_snapshot,
+        select_account,
+        add_account,
+        update_account,
+        delete_account,
+        login_selected_account,
+        refresh_dashboard,
+        logout_local_device,
+        update_preferences
+    ]);
+
+    #[cfg(all(desktop, not(debug_assertions)))]
     let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
 
     builder
