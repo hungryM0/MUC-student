@@ -4,15 +4,6 @@ use std::collections::{BTreeMap, HashMap};
 use crate::domain::models::traffic::AccountTrafficSnapshot;
 use crate::domain::models::{AccountStore, PortalAccount};
 
-#[derive(Clone, Debug, Default)]
-pub struct RuntimeFlags {
-    pub login_running: bool,
-    pub refresh_running: bool,
-    pub logout_running: bool,
-    pub current_ip: String,
-    pub current_online_account_id: String,
-}
-
 pub fn build_auto_switch_candidate(
     account_store: &AccountStore,
     snapshots: &BTreeMap<String, AccountTrafficSnapshot>,
@@ -223,15 +214,6 @@ pub fn build_progress_percent(used_traffic_text: &str, total_traffic_text: &str)
     ))
 }
 
-pub fn build_remaining_traffic_text(
-    total_traffic_text: &str,
-    used_traffic_text: &str,
-) -> Option<String> {
-    let total_mb = parse_traffic_text_to_mb(total_traffic_text)?;
-    let used_mb = parse_traffic_text_to_mb(used_traffic_text)?;
-    Some(format_gigabytes((total_mb - used_mb).max(0.0)))
-}
-
 pub fn parse_traffic_text_to_mb(text: &str) -> Option<f64> {
     let normalized = text.trim().to_uppercase().replace([' ', ','], "");
     let re = regex::Regex::new(r"(\d+(?:\.\d+)?)(K|M|G|T|B)(?:YTE|YTES|B)?").ok()?;
@@ -317,19 +299,6 @@ pub fn extract_included_package_gb(text: &str) -> Option<f64> {
     caps.get(1)?.as_str().parse().ok()
 }
 
-pub fn format_megabytes(value_mb: f64) -> String {
-    let mb = value_mb.max(0.0);
-    if mb >= 1024.0 * 1024.0 {
-        format!("{:.2}T", mb / 1024.0 / 1024.0)
-    } else if mb >= 1024.0 {
-        format!("{:.2}G", mb / 1024.0)
-    } else if mb >= 1.0 {
-        format!("{:.2}M", mb)
-    } else {
-        format!("{:.2}K", mb * 1024.0)
-    }
-}
-
 pub fn format_gigabytes(value_mb: f64) -> String {
     format!("{:.2}GB", value_mb.max(0.0) / 1024.0)
 }
@@ -344,12 +313,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn calculates_progress_and_remaining_text() {
+    fn calculates_progress_percent() {
         assert_eq!(build_progress_percent("1GB", "2GB"), Some(50.0));
-        assert_eq!(
-            build_remaining_traffic_text("2GB", "512MB"),
-            Some("1.50GB".to_string())
-        );
     }
 
     #[test]

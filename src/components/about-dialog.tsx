@@ -7,7 +7,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { APP_DISPLAY_VERSION } from "@/lib/app-version";
+import { getVersion } from "@tauri-apps/api/app";
+import { useState, useEffect } from "react";
 import appIconUrl from "../../src-tauri/icons/icon.svg?url";
 
 interface AboutDialogProps {
@@ -16,6 +17,12 @@ interface AboutDialogProps {
 }
 
 export function AboutDialog({ open, onClose }: AboutDialogProps) {
+  const [version, setVersion] = useState("");
+
+  useEffect(() => {
+    void getVersion().then(setVersion);
+  }, []);
+
   const handleOpenGithub = async () => {
     await openUrl("https://github.com/hungryM0/MUC-student");
   };
@@ -46,7 +53,7 @@ export function AboutDialog({ open, onClose }: AboutDialogProps) {
           <div className="space-y-2 text-xs border border-border/60 bg-muted/20 rounded-lg p-3">
             <div className="flex justify-between items-center">
               <span className="text-muted-foreground">版本</span>
-              <span className="font-semibold">{APP_DISPLAY_VERSION}</span>
+              <span className="font-semibold">{version}</span>
             </div>
           </div>
 

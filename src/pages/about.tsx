@@ -1,15 +1,21 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { getVersion } from "@tauri-apps/api/app";
 import { GitFork } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TitleBar } from "@/components/title-bar";
 import { WindowFrame } from "@/components/window-frame";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { cancelDestroyWindow, destroyWindow } from "@/lib/window";
-import { APP_DISPLAY_VERSION } from "@/lib/app-version";
 import appIconUrl from "../../src-tauri/icons/icon.svg?url";
 
 export default function AboutPage() {
+  const [version, setVersion] = useState("");
+
+  useEffect(() => {
+    void getVersion().then(setVersion);
+  }, []);
+
   useEffect(() => {
     const appWindow = getCurrentWebviewWindow();
 
@@ -56,7 +62,7 @@ export default function AboutPage() {
         <div className="space-y-2 text-sm">
           <div className="flex justify-between">
             <span className="text-muted-foreground">版本</span>
-            <span className="font-medium">{APP_DISPLAY_VERSION}</span>
+            <span className="font-medium">{version}</span>
           </div>
         </div>
 

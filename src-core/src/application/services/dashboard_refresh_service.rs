@@ -10,7 +10,9 @@ use crate::application::error::{AppError, AppResult};
 use crate::application::platform::AppEventSink;
 use crate::application::runtime::SharedRuntimeState;
 use crate::application::runtime_refresh::refresh_runtime_from_disk;
-use crate::application::services::account_traffic_service::AccountTrafficService;
+use crate::application::services::account_traffic_service::{
+    snapshot_from_panel_home, DEFAULT_PANEL_QUERY_CONCURRENCY,
+};
 use crate::application::services::portal_snapshot_service::{
     build_single_success_snapshot_with_online_info, username_matches,
 };
@@ -38,26 +40,24 @@ pub struct DashboardRefreshService {
     event_sink: Arc<dyn AppEventSink>,
 }
 
-pub struct DashboardRefreshDependencies {
-    pub state: SharedRuntimeState,
-    pub account_repo: AccountRepository,
-    pub app_state_repo: AppStateRepository,
-    pub portal_status_client: LegacyPortalStatusClient,
-    pub panel_client: SelfServicePanelClient,
-    pub network_status_service: Arc<dyn NetworkStatusDetector>,
-    pub event_sink: Arc<dyn AppEventSink>,
-}
-
 impl DashboardRefreshService {
-    pub fn new(deps: DashboardRefreshDependencies) -> Self {
+    pub fn new(
+        state: SharedRuntimeState,
+        account_repo: AccountRepository,
+        app_state_repo: AppStateRepository,
+        portal_status_client: LegacyPortalStatusClient,
+        panel_client: SelfServicePanelClient,
+        network_status_service: Arc<dyn NetworkStatusDetector>,
+        event_sink: Arc<dyn AppEventSink>,
+    ) -> Self {
         Self {
-            state: deps.state,
-            account_repo: deps.account_repo,
-            app_state_repo: deps.app_state_repo,
-            portal_status_client: deps.portal_status_client,
-            panel_client: deps.panel_client,
-            network_status_service: deps.network_status_service,
-            event_sink: deps.event_sink,
+            state,
+            account_repo,
+            app_state_repo,
+            portal_status_client,
+            panel_client,
+            network_status_service,
+            event_sink,
         }
     }
 
@@ -109,7 +109,7 @@ impl DashboardRefreshService {
                         .fetch_sso_html(&account.id, &info.username, "/home")
                         .await
                         .and_then(|html| {
-                            AccountTrafficService::snapshot_from_panel_home(
+                            snapshot_from_panel_home(
                                 account, &html, local_ip,
                             )
                         }) {
@@ -166,9 +166,7 @@ impl DashboardRefreshService {
         store: &AccountStore,
         local_ip: Option<&str>,
     ) -> Vec<(String, AccountTrafficSnapshot)> {
-        let semaphore = Arc::new(Semaphore::new(
-            AccountTrafficService::DEFAULT_PANEL_QUERY_CONCURRENCY,
-        ));
+        let semaphore = Arc::new(Semaphore::new(DEFAULT_PANEL_QUERY_CONCURRENCY));
         let mut join_set = JoinSet::new();
         let local_ip = local_ip.map(str::to_string);
         for account in store.accounts.iter().cloned() {
@@ -184,11 +182,7 @@ impl DashboardRefreshService {
                     Ok(Some(html)) => html,
                     _ => return None,
                 };
-                AccountTrafficService::snapshot_from_panel_home(
-                    &account,
-                    &html,
-                    local_ip.as_deref(),
-                )
+                snapshot_from_panel_home(&account, &html, local_ip.as_deref())
                 .ok()
                 .map(|snapshot| (account.id.clone(), snapshot))
             });

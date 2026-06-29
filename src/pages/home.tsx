@@ -45,28 +45,14 @@ import {
 import { cn } from "@/lib/utils";
 import appIconUrl from "../../src-tauri/icons/icon.svg?url";
 
-function getTrafficProgressColor(percent: number, isOnline: boolean = true) {
-  if (percent >= 100) {
-    return isOnline ? "bg-red-700" : "bg-red-700/60";
-  }
-  if (percent < 70) {
-    return isOnline ? "bg-emerald-500" : "bg-emerald-500/60";
-  }
-  if (percent < 80) {
-    return isOnline ? "bg-yellow-500" : "bg-yellow-500/60";
-  }
-  if (percent < 90) {
-    return isOnline ? "bg-orange-500" : "bg-orange-500/60";
-  }
-  return isOnline ? "bg-red-500" : "bg-red-500/60";
-}
-
-function getTrafficProgressTextColor(percent: number) {
-  if (percent >= 100) return "text-red-700";
-  if (percent < 70) return "text-emerald-500";
-  if (percent < 80) return "text-yellow-500";
-  if (percent < 90) return "text-orange-500";
-  return "text-red-500";
+function trafficProgressClasses(percent: number, isOnline = true) {
+  const c =
+    percent >= 100 ? { bar: "bg-red-700", barOff: "bg-red-700/60", text: "text-red-700" } :
+    percent >= 90  ? { bar: "bg-red-500", barOff: "bg-red-500/60", text: "text-red-500" } :
+    percent >= 80  ? { bar: "bg-orange-500", barOff: "bg-orange-500/60", text: "text-orange-500" } :
+    percent >= 70  ? { bar: "bg-yellow-500", barOff: "bg-yellow-500/60", text: "text-yellow-500" } :
+                     { bar: "bg-emerald-500", barOff: "bg-emerald-500/60", text: "text-emerald-500" };
+  return { bar: isOnline ? c.bar : c.barOff, text: c.text };
 }
 
 function parseTrafficValue(text?: string | null) {
@@ -482,7 +468,7 @@ export default function HomePage() {
                         <span
                           className={cn(
                             "text-sm font-bold",
-                            getTrafficProgressTextColor(safeProgress),
+                            trafficProgressClasses(safeProgress).text,
                           )}
                         >
                           {safeProgress}%
@@ -492,7 +478,7 @@ export default function HomePage() {
                         <div
                           className={cn(
                             "h-full rounded-full transition-[width] duration-500",
-                            getTrafficProgressColor(safeProgress, true),
+                            trafficProgressClasses(safeProgress).bar,
                           )}
                           style={{ width: `${safeProgress}%` }}
                         />
@@ -721,7 +707,7 @@ function AccountRow({
           <div
             className={cn(
               "font-semibold",
-              getTrafficProgressTextColor(Math.round(freeProgress)),
+              trafficProgressClasses(Math.round(freeProgress)).text,
             )}
           >
             {Math.round(freeProgress)}%
@@ -796,7 +782,7 @@ function AccountRow({
               <div
                 className={cn(
                 "h-full rounded-full transition-[width] duration-500 ease-out",
-                  getTrafficProgressColor(Math.round(freeProgress), accountState === "online"),
+                  trafficProgressClasses(Math.round(freeProgress), accountState === "online").bar,
                 )}
                 style={{ width: `${freeProgress}%` }}
               />

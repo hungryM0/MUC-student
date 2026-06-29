@@ -20,23 +20,6 @@ pub trait AppEventSink: Send + Sync {
 }
 
 #[derive(Clone, Default)]
-pub struct NoopEventSink;
-
-impl AppEventSink for NoopEventSink {
-    fn state_updated(&self, _snapshot: &AppSnapshotDto) -> AppResult<()> {
-        Ok(())
-    }
-
-    fn task_started(&self, _task: &str) -> AppResult<()> {
-        Ok(())
-    }
-
-    fn task_finished(&self, _task: &str) -> AppResult<()> {
-        Ok(())
-    }
-}
-
-#[derive(Clone, Default)]
 pub struct NoopStartupController;
 
 impl StartupController for NoopStartupController {

@@ -84,8 +84,7 @@
 
 - 密码不写回 JSON。
 - 凭据继续走 `src-core/src/infrastructure/security/credential_vault.rs`。
-- 改本地存储格式时，先补 `src-core/src/infrastructure/persistence/migration.rs`。
-- 迁移要兼容旧用户数据。
+- 改本地存储格式时，迁移逻辑写在 `src-core/src/infrastructure/persistence/database.rs` 的 `user_version` 分支里。
 
 ## 修改流程
 

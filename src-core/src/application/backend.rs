@@ -8,9 +8,7 @@ use crate::application::error::{AppError, AppResult};
 use crate::application::platform::{AppEventSink, RuntimePathProvider, StartupController};
 use crate::application::runtime::{AppRuntimeState, SharedRuntimeState};
 use crate::application::runtime_refresh::refresh_runtime_from_disk;
-use crate::application::services::dashboard_refresh_service::{
-    DashboardRefreshDependencies, DashboardRefreshService,
-};
+use crate::application::services::dashboard_refresh_service::DashboardRefreshService;
 use crate::application::services::session_service::SessionService;
 use crate::application::services::snapshot_mapper::{build_app_snapshot, restore_cached_snapshots};
 use crate::domain::models::NetworkStatus;
@@ -25,7 +23,7 @@ use crate::infrastructure::persistence::account_repository::AccountRepository;
 use crate::infrastructure::persistence::app_state_repository::AppStateRepository;
 use crate::infrastructure::persistence::database::AppDatabase;
 use crate::infrastructure::persistence::panel_session_repository::PanelSessionRepository;
-use crate::infrastructure::persistence::runtime_paths::{resolve_default_paths, RuntimePaths};
+use crate::infrastructure::persistence::runtime_paths::RuntimePaths;
 use crate::infrastructure::security::credential_vault::{CredentialVault, WindowsCredentialVault};
 use crate::infrastructure::settings::AppSettings;
 
@@ -72,14 +70,12 @@ impl AppCore {
         preferences.launch_on_startup = startup_controller.is_enabled()?;
         let panel_session_repo = PanelSessionRepository::new(db.clone());
 
-        let auth_transport = HttpTransport::new(settings.clone())?;
-        let legacy_portal_transport = HttpTransport::new(settings.clone())?;
-        let panel_transport = HttpTransport::new(settings.clone())?;
-        let auth_client = LegacyPortalAuthClient::new(settings.clone(), auth_transport);
+        let transport = HttpTransport::new(settings.clone())?;
+        let auth_client = LegacyPortalAuthClient::new(settings.clone(), transport.clone());
         let portal_status_client =
-            LegacyPortalStatusClient::new(settings.clone(), legacy_portal_transport);
+            LegacyPortalStatusClient::new(settings.clone(), transport.clone());
         let panel_client =
-            SelfServicePanelClient::new(settings.clone(), panel_transport, panel_session_repo);
+            SelfServicePanelClient::new(settings.clone(), transport, panel_session_repo);
         let network_status_service = Arc::new(NetworkStatusService::new(settings));
         let snapshots = restore_cached_snapshots(&account_store.cached_traffic_snapshots);
         let runtime = SharedRuntimeState::new(AppRuntimeState {
@@ -101,16 +97,15 @@ impl AppCore {
             portal_status_client.clone(),
             network_status_service.clone(),
         );
-        let dashboard_refresh_service =
-            DashboardRefreshService::new(DashboardRefreshDependencies {
-                state: runtime.clone(),
-                account_repo: account_repo.clone(),
-                app_state_repo: app_state_repo.clone(),
-                portal_status_client,
-                panel_client: panel_client.clone(),
-                network_status_service,
-                event_sink: event_sink.clone(),
-            });
+        let dashboard_refresh_service = DashboardRefreshService::new(
+            runtime.clone(),
+            account_repo.clone(),
+            app_state_repo.clone(),
+            portal_status_client,
+            panel_client.clone(),
+            network_status_service,
+            event_sink.clone(),
+        );
         let backend = Self {
             state: runtime,
             account_repo,
@@ -122,13 +117,6 @@ impl AppCore {
             startup_controller,
         };
         Ok(backend)
-    }
-
-    pub fn build_default(
-        startup_controller: Arc<dyn StartupController>,
-        event_sink: Arc<dyn AppEventSink>,
-    ) -> AppResult<Self> {
-        Self::build_with_paths(resolve_default_paths()?, startup_controller, event_sink)
     }
 
     pub async fn bootstrap_app(&self) -> AppResult<AppSnapshotDto> {
@@ -536,16 +524,15 @@ mod tests {
             portal_status_client.clone(),
             network_status_service.clone(),
         );
-        let dashboard_refresh_service =
-            DashboardRefreshService::new(DashboardRefreshDependencies {
-                state: runtime.clone(),
-                account_repo: account_repo.clone(),
-                app_state_repo: app_state_repo.clone(),
-                portal_status_client,
-                panel_client,
-                network_status_service,
-                event_sink: event_sink.clone(),
-            });
+        let dashboard_refresh_service = DashboardRefreshService::new(
+            runtime.clone(),
+            account_repo.clone(),
+            app_state_repo.clone(),
+            portal_status_client,
+            panel_client,
+            network_status_service,
+            event_sink.clone(),
+        );
         let core = AppCore {
             state: runtime,
             account_repo,
