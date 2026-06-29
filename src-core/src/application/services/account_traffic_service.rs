@@ -4,9 +4,7 @@ use crate::application::error::AppResult;
 use crate::domain::models::traffic::AccountTrafficSnapshot;
 use crate::domain::models::PortalAccount;
 use crate::domain::policies::traffic_math::{build_progress_percent, format_traffic_text_as_gb};
-use crate::infrastructure::parsers::panel_home_parser::{
-    build_product_balance_texts, parse_panel_home,
-};
+use crate::infrastructure::parsers::panel_home_parser::parse_panel_home;
 
 pub struct AccountTrafficService;
 
@@ -24,7 +22,9 @@ impl AccountTrafficService {
             account_id: account.id.clone(),
             used_traffic_text: used_traffic_text.clone(),
             product_balance_text: panel_home.product_balance.clone(),
-            included_package_text: build_product_balance_texts(home_html).1,
+            included_package_text: panel_home.included_package_text,
+            package_total_text: panel_home.package_total_text,
+            package_available_text: panel_home.package_available_text,
             online_device_count_text: panel_home.online_devices.len().to_string(),
             package_text: panel_home.package_name,
             status_text: "已同步".to_string(),

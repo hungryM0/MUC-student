@@ -21,6 +21,8 @@ pub struct CachedTrafficSnapshot {
     pub used_traffic_text: String,
     pub product_balance_text: String,
     pub included_package_text: String,
+    pub package_total_text: String,
+    pub package_available_text: String,
     pub online_device_count_text: String,
     pub package_text: String,
     pub status_text: String,

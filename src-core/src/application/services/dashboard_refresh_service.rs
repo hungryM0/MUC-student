@@ -323,6 +323,8 @@ mod tests {
                 used_traffic_text: "10.00GB".to_string(),
                 product_balance_text: "70.00GB".to_string(),
                 included_package_text: "70GB".to_string(),
+                package_total_text: String::new(),
+                package_available_text: String::new(),
                 online_device_count_text: "1".to_string(),
                 package_text: "校园网".to_string(),
                 status_text: "已同步".to_string(),

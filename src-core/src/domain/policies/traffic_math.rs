@@ -137,25 +137,49 @@ pub fn build_pool_quota_summary(
 ) -> (String, String, String, Option<f64>) {
     let mut used_total_mb = 0.0;
     let mut total_balance_gb = 0.0;
-    let mut included_package_total_gb = 0.0;
+    let mut included_package_total_mb = 0.0;
     let mut has_used_value = false;
     let mut has_total_value = false;
 
     for account in &account_store.accounts {
-        let Some(snapshot) = snapshots.get(&account.id) else {
-            continue;
-        };
+        let used_text = snapshots
+            .get(&account.id)
+            .map(|item| item.used_traffic_text.as_str())
+            .or_else(|| {
+                account_store
+                    .cached_traffic_snapshots
+                    .get(&account.id)
+                    .map(|item| item.used_traffic_text.as_str())
+            });
+        let total_text = snapshots
+            .get(&account.id)
+            .map(|item| item.product_balance_text.as_str())
+            .or_else(|| {
+                account_store
+                    .cached_traffic_snapshots
+                    .get(&account.id)
+                    .map(|item| item.product_balance_text.as_str())
+            });
+        let included_text = snapshots
+            .get(&account.id)
+            .map(|item| item.included_package_text.as_str())
+            .or_else(|| {
+                account_store
+                    .cached_traffic_snapshots
+                    .get(&account.id)
+                    .map(|item| item.included_package_text.as_str())
+            });
 
-        if let Some(used_mb) = parse_traffic_text_to_mb(&snapshot.used_traffic_text) {
+        if let Some(used_mb) = used_text.and_then(parse_traffic_text_to_mb) {
             used_total_mb += used_mb;
             has_used_value = true;
         }
-        if let Some(total_gb) = parse_traffic_text_to_gb(&snapshot.product_balance_text) {
+        if let Some(total_gb) = total_text.and_then(parse_traffic_text_to_gb) {
             total_balance_gb += total_gb;
             has_total_value = true;
         }
-        if let Some(included_gb) = extract_included_package_gb(&snapshot.included_package_text) {
-            included_package_total_gb += included_gb;
+        if let Some(included_gb) = included_text.and_then(extract_included_package_gb) {
+            included_package_total_mb += included_gb * 1024.0;
         }
     }
 
@@ -169,8 +193,8 @@ pub fn build_pool_quota_summary(
     } else {
         "-".to_string()
     };
-    let included_text = if has_total_value && included_package_total_gb > 0.0 {
-        format!("含{included_package_total_gb:.2}GB套餐流量")
+    let included_text = if has_total_value && included_package_total_mb > 0.0 {
+        format!("含{:.2}GB套餐流量", included_package_total_mb / 1024.0)
     } else {
         String::new()
     };
@@ -243,6 +267,38 @@ pub fn extract_total_quota_from_billing_policy(text: &str) -> Option<String> {
         .map(|value| format!("{value:.2}GB"))
 }
 
+pub fn extract_paid_package_quota_from_billing_policy(text: &str) -> Option<String> {
+    let normalized = text.replace([' ', ','], "");
+    let explicit_patterns = [
+        r"Package(?:-use)?-[^/]*?([0-9]+(?:\.[0-9]+)?)GB",
+        r"套餐[^/]*?([0-9]+(?:\.[0-9]+)?)GB",
+        r"包月[^/]*?([0-9]+(?:\.[0-9]+)?)GB",
+    ];
+
+    explicit_patterns.iter().find_map(|pattern| {
+        regex::Regex::new(pattern)
+            .ok()?
+            .captures(&normalized)
+            .and_then(|caps| caps.get(1))
+            .and_then(|item| item.as_str().parse::<f64>().ok())
+            .map(|value| format!("{value:.2}GB"))
+    })
+}
+
+pub fn normalize_included_package_text(text: &str) -> String {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let Some(included_gb) = extract_included_package_gb(trimmed) else {
+        return trimmed.to_string();
+    };
+    if (included_gb - 70.0).abs() < 0.01 {
+        return String::new();
+    }
+    format!("含{included_gb:.2}GB套餐流量")
+}
+
 pub fn format_traffic_text_as_gb(text: &str) -> String {
     parse_traffic_text_to_mb(text)
         .map(format_gigabytes)
@@ -256,7 +312,7 @@ pub fn format_traffic_bytes_as_gb(text: &str) -> Option<String> {
 
 pub fn extract_included_package_gb(text: &str) -> Option<f64> {
     let normalized = text.replace(' ', "");
-    let re = regex::Regex::new(r"含([0-9]+(?:\.[0-9]+)?)GB套餐流量").ok()?;
+    let re = regex::Regex::new(r"含([0-9]+(?:\.[0-9]+)?)GB(?:套餐流量|增值套餐)").ok()?;
     let caps = re.captures(&normalized)?;
     caps.get(1)?.as_str().parse().ok()
 }
@@ -323,5 +379,41 @@ mod tests {
             extract_total_quota_from_billing_policy("免费45GB/1GB1元（超出45GB）/校内流量"),
             Some("45.00GB".to_string())
         );
+    }
+
+    #[test]
+    fn extracts_paid_package_quota_from_billing_policy() {
+        assert_eq!(
+            extract_paid_package_quota_from_billing_policy("Package-use-20元30GB"),
+            Some("30.00GB".to_string())
+        );
+        assert_eq!(
+            extract_paid_package_quota_from_billing_policy("免费70GB/Package-use-20元30GB"),
+            Some("30.00GB".to_string())
+        );
+        assert_eq!(
+            extract_paid_package_quota_from_billing_policy("免费70GB"),
+            None
+        );
+        assert_eq!(
+            extract_paid_package_quota_from_billing_policy("免费70GB/1GB1元（超出70GB）/校内流量"),
+            None
+        );
+    }
+
+    #[test]
+    fn extracts_included_package_gb_for_both_text_styles() {
+        assert_eq!(extract_included_package_gb("含30.00GB套餐流量"), Some(30.0));
+        assert_eq!(extract_included_package_gb("含30.00GB增值套餐"), Some(30.0));
+    }
+
+    #[test]
+    fn normalizes_included_package_text_and_drops_fake_free_quota() {
+        assert_eq!(
+            normalize_included_package_text("含30.00GB增值套餐"),
+            "含30.00GB套餐流量"
+        );
+        assert_eq!(normalize_included_package_text("含70.00GB套餐流量"), "");
+        assert_eq!(normalize_included_package_text(""), "");
     }
 }

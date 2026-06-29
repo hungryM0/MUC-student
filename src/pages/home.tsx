@@ -68,6 +68,16 @@ function getTrafficProgressTextColor(percent: number) {
   return "text-red-500";
 }
 
+function parseTrafficValue(text?: string | null) {
+  if (!text) return 0;
+  const match = text.trim().match(/([0-9]+(?:\.[0-9]+)?)/);
+  return match ? Number.parseFloat(match[1]) : 0;
+}
+
+function formatTrafficAmount(value: number, digits = 3) {
+  return `${value.toFixed(digits)}G`;
+}
+
 type RunningAction = "login" | "refresh" | "logout";
 type AccountFormState = {
   accountId: string;
@@ -670,7 +680,15 @@ function AccountRow({
   onLogin: () => void;
 }) {
   const snapshot = account.snapshot;
-  const progress = Math.round(snapshot?.progressPercent ?? 0);
+  const totalUsed = parseTrafficValue(snapshot?.usedTrafficText);
+  const freeQuota = 70;
+  const packageTotal = parseTrafficValue(snapshot?.packageTotalText);
+  const packageAvailable = parseTrafficValue(snapshot?.packageAvailableText);
+  const packageUsed = Math.max(0, packageTotal - packageAvailable);
+  const freeProgress =
+    freeQuota > 0 ? Math.min(100, Math.max(0, (totalUsed / freeQuota) * 100)) : 0;
+  const packageProgress =
+    packageTotal > 0 ? Math.min(100, Math.max(0, (packageUsed / packageTotal) * 100)) : 0;
   const accountState = account.isCurrentOnline ? "online" : "idle";
 
   return (
@@ -702,13 +720,13 @@ function AccountRow({
           <div
             className={cn(
               "font-semibold",
-              getTrafficProgressTextColor(Math.min(100, Math.max(0, progress))),
+              getTrafficProgressTextColor(Math.round(freeProgress)),
             )}
           >
-            {Math.min(100, Math.max(0, progress))}%
+            {Math.round(freeProgress)}%
           </div>
           <div className="text-muted-foreground mt-1 truncate text-xs">
-            {snapshot?.productBalanceText ?? "-"}
+            {formatTrafficAmount(totalUsed)} / 70.000G
           </div>
         </div>
         <div className="grid w-full grid-cols-[1fr_32px_32px] gap-1.5">
@@ -760,24 +778,54 @@ function AccountRow({
       </div>
       {/* 进度条 */}
       <div className="col-span-2 mt-1">
-        <div
-          className={cn(
-            "h-1.5 w-full rounded-full overflow-hidden",
-            accountState === "online"
-              ? "bg-emerald-500/8 dark:bg-zinc-950/30"
-              : "bg-muted",
+        <div className="grid gap-2">
+          <div className="grid gap-1">
+            <div className="flex justify-between text-[11px] text-muted-foreground">
+              <span>免费包</span>
+              <span>{Math.round(freeProgress)}%</span>
+            </div>
+            <div
+              className={cn(
+                "h-1.5 w-full rounded-full overflow-hidden",
+                accountState === "online"
+                  ? "bg-emerald-500/8 dark:bg-zinc-950/30"
+                  : "bg-muted",
+              )}
+            >
+              <div
+                className={cn(
+                "h-full rounded-full transition-[width] duration-500 ease-out",
+                  getTrafficProgressColor(Math.round(freeProgress), accountState === "online"),
+                )}
+                style={{ width: `${freeProgress}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-[11px] text-muted-foreground">
+              <span>{snapshot?.usedTrafficText ?? "-"}</span>
+              <span>70.000G</span>
+            </div>
+          </div>
+
+          {packageTotal > 0 && (
+            <div className="grid gap-1">
+              <div className="flex justify-between text-[11px] text-muted-foreground">
+                <span>套餐流量</span>
+                <span>{Math.round(packageProgress)}%</span>
+              </div>
+              <div className="bg-muted h-1.5 rounded-full overflow-hidden">
+                <div
+                  className={cn(
+                    "h-full rounded-full transition-[width] duration-500 ease-out bg-sky-500",
+                  )}
+                  style={{ width: `${packageProgress}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-[11px] text-muted-foreground">
+                <span>{formatTrafficAmount(packageUsed)}</span>
+                <span>{snapshot?.packageTotalText || "-"}</span>
+              </div>
+            </div>
           )}
-        >
-          <div
-            className={cn(
-              "h-full rounded-full transition-[width] duration-500 ease-out",
-              getTrafficProgressColor(
-                Math.min(100, Math.max(0, progress)),
-                accountState === "online",
-              ),
-            )}
-            style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
-          />
         </div>
       </div>
     </div>

@@ -33,6 +33,15 @@ pub fn build_single_success_snapshot_with_online_info(
     let used_traffic_text = online_info
         .and_then(|info| format_traffic_bytes_as_gb(&info.used_traffic_bytes))
         .unwrap_or_else(|| format_traffic_text_as_gb(&info.used_traffic));
+    let included_package_text = cached_current
+        .map(|item| item.included_package_text.clone())
+        .filter(|text| !text.trim().is_empty())
+        .unwrap_or_else(|| {
+            info.paid_package_quota
+                .as_ref()
+                .map(|quota| format!("含{quota}套餐流量"))
+                .unwrap_or_default()
+        });
     let matched_local_ip_device = Some(OnlineDeviceRecord {
         ip: info.ip.clone(),
         device_id: String::new(),
@@ -42,9 +51,9 @@ pub fn build_single_success_snapshot_with_online_info(
         account_id: account.id.clone(),
         used_traffic_text: used_traffic_text.clone(),
         product_balance_text: product_balance_text.clone(),
-        included_package_text: cached_current
-            .map(|item| item.included_package_text.clone())
-            .unwrap_or_default(),
+        included_package_text,
+        package_total_text: String::new(),
+        package_available_text: String::new(),
         online_device_count_text: cached_current
             .map(|item| item.online_device_count_text.clone())
             .filter(|text| !text.trim().is_empty())
@@ -102,6 +111,7 @@ mod tests {
             username: "25011777".to_string(),
             used_traffic: "22,230.78M".to_string(),
             billing_policy: "免费70GB".to_string(),
+            paid_package_quota: None,
         };
 
         let snapshot = build_single_success_snapshot(&account, &info, None);
@@ -109,6 +119,7 @@ mod tests {
         assert_eq!(snapshot.used_traffic_text, "21.71GB");
         assert_eq!(snapshot.product_balance_text, "70.00GB");
         assert_eq!(snapshot.progress_percent, Some(31.0));
+        assert_eq!(snapshot.included_package_text, "");
     }
 
     #[test]
@@ -123,6 +134,7 @@ mod tests {
             username: "25011777".to_string(),
             used_traffic: "22,230.78M".to_string(),
             billing_policy: "免费70GB".to_string(),
+            paid_package_quota: None,
         };
 
         let snapshot = build_single_success_snapshot(&account, &info, None);
@@ -151,6 +163,7 @@ mod tests {
             username: "25011777".to_string(),
             used_traffic: "0M".to_string(),
             billing_policy: "免费70GB".to_string(),
+            paid_package_quota: None,
         };
         let online_info = LegacyPortalOnlineInfo {
             used_traffic_bytes: "41675360258".to_string(),
@@ -170,5 +183,25 @@ mod tests {
 
         assert_eq!(snapshot.used_traffic_text, "38.81GB");
         assert_eq!(snapshot.progress_percent, Some(55.4));
+    }
+
+    #[test]
+    fn current_account_snapshot_uses_paid_package_quota_when_available() {
+        let account = PortalAccount {
+            id: "acc-1".to_string(),
+            remark_name: "当前账号".to_string(),
+            username: "25011777".to_string(),
+        };
+        let info = LegacyPortalSuccessInfo {
+            ip: "10.0.0.1".to_string(),
+            username: "25011777".to_string(),
+            used_traffic: "101,264.17M".to_string(),
+            billing_policy: "Package-use-20元30GB".to_string(),
+            paid_package_quota: Some("30.00GB".to_string()),
+        };
+
+        let snapshot = build_single_success_snapshot(&account, &info, None);
+
+        assert_eq!(snapshot.included_package_text, "含30.00GB套餐流量");
     }
 }

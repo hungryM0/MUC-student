@@ -1,5 +1,6 @@
 use crate::application::error::{AppError, AppResult};
 use crate::domain::models::traffic::OnlineDeviceRecord;
+use crate::domain::policies::traffic_math::extract_paid_package_quota_from_billing_policy;
 use crate::infrastructure::parsers::online_device_parser::parse_online_devices;
 use crate::infrastructure::parsers::portal_page_parser::extract_meta_content;
 
@@ -8,6 +9,9 @@ const FREE_PRODUCT_QUOTA_GB: f64 = 70.0;
 pub struct PanelHomeSnapshot {
     pub package_name: String,
     pub billing_policy: String,
+    pub included_package_text: String,
+    pub package_total_text: String,
+    pub package_available_text: String,
     pub used_traffic: String,
     pub product_balance: String,
     pub online_devices: Vec<OnlineDeviceRecord>,
@@ -87,28 +91,19 @@ pub fn parse_home_table(html: &str) -> AppResult<(String, String, String, String
     ))
 }
 
-pub fn build_product_balance_texts(html: &str) -> (String, String) {
-    let re = regex::Regex::new(r"可用流量[:：]\s*([0-9]+(?:\.[0-9]+)?)\s*([KMGT])B?")
-        .expect("valid regex");
-    let mut package_total_gb = 0.0;
-    for caps in re.captures_iter(html) {
-        let value = caps
-            .get(1)
-            .and_then(|m| m.as_str().parse::<f64>().ok())
-            .unwrap_or(0.0);
-        let unit = caps
-            .get(2)
-            .map(|m| m.as_str().to_uppercase())
-            .unwrap_or_default();
-        package_total_gb += convert_to_gigabytes(value, &unit);
-    }
+pub fn build_product_balance_text(html: &str) -> String {
+    let package_total_gb = extract_package_total_gb(html);
     let total_gb = FREE_PRODUCT_QUOTA_GB + package_total_gb;
-    let included = if package_total_gb > 0.0 {
+    format!("{total_gb:.2}GB")
+}
+
+pub fn build_included_package_text(html: &str) -> String {
+    let package_total_gb = extract_package_total_gb(html);
+    if package_total_gb > 0.0 {
         format!("含{package_total_gb:.2}GB套餐流量")
     } else {
         String::new()
-    };
-    (format!("{total_gb:.2}GB"), included)
+    }
 }
 
 pub fn extract_csrf_meta(html: &str) -> (String, String) {
@@ -134,12 +129,24 @@ pub fn match_local_ip_device(
 
 pub fn parse_panel_home(html: &str, local_ip: Option<&str>) -> AppResult<PanelHomeSnapshot> {
     let (package_name, billing_policy, used_traffic, _) = parse_home_table(html)?;
-    let (product_balance, _included_package_text) = build_product_balance_texts(html);
+    let product_balance = build_product_balance_text(html);
+    let package_total_text = extract_package_total_text(html)
+        .or_else(|| extract_paid_package_quota_from_billing_policy(&billing_policy))
+        .unwrap_or_default();
+    let package_available_text = extract_package_available_text(html);
+    let included_package_text = if package_total_text.trim().is_empty() {
+        build_included_package_text(html)
+    } else {
+        format!("含{package_total_text}套餐流量")
+    };
     let online_devices = parse_online_devices(html);
     let matched = match_local_ip_device(&online_devices, local_ip.unwrap_or_default());
     Ok(PanelHomeSnapshot {
         package_name,
         billing_policy,
+        included_package_text,
+        package_total_text,
+        package_available_text,
         used_traffic,
         product_balance,
         online_devices,
@@ -166,16 +173,70 @@ fn non_empty(value: &str, fallback: &str) -> String {
     }
 }
 
+fn extract_package_total_gb(html: &str) -> f64 {
+    let total_gb = extract_gb_values(html, r"总流量[:：]\s*([0-9]+(?:\.[0-9]+)?)\s*([KMGT])B?");
+    if total_gb > 0.0 {
+        return total_gb;
+    }
+    extract_gb_values(html, r"可用流量[:：]\s*([0-9]+(?:\.[0-9]+)?)\s*([KMGT])B?")
+}
+
+fn extract_package_total_text(html: &str) -> Option<String> {
+    let re = regex::Regex::new(r"总流量[:：]\s*([0-9]+(?:\.[0-9]+)?)\s*([KMGT])B?").ok()?;
+    let result = re.captures_iter(html).find_map(|caps| {
+        let value = caps.get(1)?.as_str().parse::<f64>().ok()?;
+        let unit = caps.get(2)?.as_str().to_uppercase();
+        Some(format!("{:.2}GB", convert_to_gigabytes(value, &unit)))
+    });
+    result
+}
+
+fn extract_package_available_text(html: &str) -> String {
+    let re = regex::Regex::new(r"可用流量[:：]\s*([0-9]+(?:\.[0-9]+)?)\s*([KMGT])B?").ok();
+    let Some(re) = re else {
+        return String::new();
+    };
+    let values = re
+        .captures_iter(html)
+        .filter_map(|caps| {
+            let value = caps.get(1)?.as_str().parse::<f64>().ok()?;
+            let unit = caps.get(2)?.as_str().to_uppercase();
+            Some(convert_to_gigabytes(value, &unit))
+        })
+        .collect::<Vec<_>>();
+    if values.is_empty() {
+        return String::new();
+    }
+    format!("{:.3}G", values.iter().sum::<f64>())
+}
+
+fn extract_gb_values(html: &str, pattern: &str) -> f64 {
+    let re = regex::Regex::new(pattern).expect("valid regex");
+    re.captures_iter(html)
+        .map(|caps| {
+            let value = caps
+                .get(1)
+                .and_then(|m| m.as_str().parse::<f64>().ok())
+                .unwrap_or(0.0);
+            let unit = caps
+                .get(2)
+                .map(|m| m.as_str().to_uppercase())
+                .unwrap_or_default();
+            convert_to_gigabytes(value, &unit)
+        })
+        .sum()
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        build_product_balance_texts, extract_csrf_meta, match_local_ip_device, parse_home_table,
-        parse_panel_home,
+        build_included_package_text, build_product_balance_text, extract_csrf_meta,
+        match_local_ip_device, parse_home_table, parse_panel_home,
     };
     use crate::domain::models::traffic::OnlineDeviceRecord;
 
     #[test]
-    fn parses_home_table_and_combines_package_traffic() {
+    fn parses_home_table_and_keeps_total_quota_from_available_package_traffic() {
         let html = r#"
         <table>
           <tr>
@@ -191,14 +252,34 @@ mod tests {
 
         let (package_name, billing_policy, used_traffic, product_balance) =
             parse_home_table(html).expect("parse table");
-        let (total, included) = build_product_balance_texts(html);
+        let total = build_product_balance_text(html);
 
         assert_eq!(package_name, "校园网");
         assert_eq!(billing_policy, "免费70GB + 套餐");
         assert_eq!(used_traffic, "12.50GB");
         assert_eq!(product_balance, "57.50GB");
         assert_eq!(total, "80.50GB");
-        assert_eq!(included, "含10.50GB套餐流量");
+    }
+
+    #[test]
+    fn reads_package_total_from_expanded_package_detail() {
+        let html = r#"
+        <table>
+          <tr><th>产品名称</th><th>计费策略</th><th>已用流量</th><th>产品余额</th></tr>
+          <tr>
+            <td>海淀校区学生</td>
+            <td>免费70GB/1GB1元（超出70GB）/校内流量</td>
+            <td>99.761G</td>
+            <td>0.84</td>
+          </tr>
+        </table>
+        <div>共1个套餐包</div>
+        <button>总流量：30.000G</button>
+        <button>可用流量：25.883G</button>
+        "#;
+
+        assert_eq!(build_product_balance_text(html), "100.00GB");
+        assert_eq!(build_included_package_text(html), "含30.00GB套餐流量");
     }
 
     #[test]
@@ -222,6 +303,7 @@ mod tests {
 
         assert_eq!(snapshot.package_name, "校园网");
         assert_eq!(snapshot.billing_policy, "免费70GB");
+        assert_eq!(snapshot.included_package_text, "");
         assert_eq!(snapshot.used_traffic, "1.00GB");
         assert_eq!(snapshot.product_balance, "70.00GB");
         assert_eq!(snapshot.online_devices.len(), 1);
@@ -232,6 +314,22 @@ mod tests {
                 .map(|item| item.device_id.as_str()),
             Some("device-a")
         );
+    }
+
+    #[test]
+    fn parses_paid_package_text_from_billing_policy() {
+        let snapshot = parse_panel_home(
+            r#"
+            <table>
+              <tr><th>产品名称</th><th>计费策略</th><th>已用流量</th><th>产品余额</th></tr>
+              <tr><td>校园网</td><td>Package-use-20元30GB</td><td>1.00GB</td><td>29.00GB</td></tr>
+            </table>
+            "#,
+            None,
+        )
+        .expect("parse panel home");
+
+        assert_eq!(snapshot.included_package_text, "含30.00GB套餐流量");
     }
 
     #[test]

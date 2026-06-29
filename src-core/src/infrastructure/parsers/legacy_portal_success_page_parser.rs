@@ -1,4 +1,5 @@
 use crate::application::error::{AppError, AppResult};
+use crate::domain::policies::traffic_math::extract_paid_package_quota_from_billing_policy;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LegacyPortalSuccessInfo {
@@ -6,6 +7,7 @@ pub struct LegacyPortalSuccessInfo {
     pub username: String,
     pub used_traffic: String,
     pub billing_policy: String,
+    pub paid_package_quota: Option<String>,
 }
 
 pub fn parse_legacy_portal_success_page(raw: &str) -> AppResult<LegacyPortalSuccessInfo> {
@@ -27,12 +29,14 @@ pub fn parse_legacy_portal_success_page(raw: &str) -> AppResult<LegacyPortalSucc
         .ok_or_else(|| AppError::Network("旧门户成功页缺少已用流量".to_string()))?;
     let billing_policy =
         extract_value(&text, &["计费方式", "计费策略"]).unwrap_or_else(|| "-".to_string());
+    let paid_package_quota = extract_paid_package_quota_from_billing_policy(&billing_policy);
 
     Ok(LegacyPortalSuccessInfo {
         ip,
         username,
         used_traffic,
         billing_policy,
+        paid_package_quota,
     })
 }
 
@@ -138,6 +142,7 @@ mod tests {
         assert_eq!(info.username, "13377235977");
         assert_eq!(info.used_traffic, "7.10G");
         assert_eq!(info.billing_policy, "包月");
+        assert_eq!(info.paid_package_quota, None);
     }
 
     #[test]
@@ -151,6 +156,25 @@ mod tests {
         assert_eq!(info.username, "13377235977");
         assert_eq!(info.used_traffic, "7.10G");
         assert_eq!(info.billing_policy, "flow");
+        assert_eq!(info.paid_package_quota, None);
+    }
+
+    #[test]
+    fn parses_paid_package_quota_from_billing_policy() {
+        let info = parse_legacy_portal_success_page(
+            r#"
+            <ul>
+              <li>当前的ip：10.151.109.180</li>
+              <li>上网用户：25080004</li>
+              <li>已用流量：101,264.17M</li>
+              <li>计费方式：Package-use-20元30GB</li>
+            </ul>
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(info.billing_policy, "Package-use-20元30GB");
+        assert_eq!(info.paid_package_quota, Some("30.00GB".to_string()));
     }
 
     #[test]

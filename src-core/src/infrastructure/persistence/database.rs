@@ -99,10 +99,19 @@ impl AppDatabase {
                 selected_account_id,
                 current_online_account_id
             ) VALUES (1, '', '');
-
-            PRAGMA user_version = 1;
             "#,
         )?;
+        let version: u32 =
+            connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        if version < 1 {
+            connection.execute_batch(
+                r#"
+                ALTER TABLE traffic_snapshots ADD COLUMN package_total_text TEXT NOT NULL DEFAULT '';
+                ALTER TABLE traffic_snapshots ADD COLUMN package_available_text TEXT NOT NULL DEFAULT '';
+                PRAGMA user_version = 1;
+                "#,
+            )?;
+        }
         Ok(Self {
             connection: Arc::new(Mutex::new(connection)),
         })

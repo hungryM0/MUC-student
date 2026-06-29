@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use crate::application::error::{AppError, AppResult};
 use crate::domain::models::{AccountStore, CachedTrafficSnapshot, PortalAccount};
+use crate::domain::policies::traffic_math::normalize_included_package_text;
 use crate::infrastructure::persistence::database::AppDatabase;
 use crate::infrastructure::security::credential_vault::CredentialVault;
 
@@ -391,6 +392,8 @@ fn load_snapshots(
             used_traffic_text,
             product_balance_text,
             included_package_text,
+            package_total_text,
+            package_available_text,
             online_device_count_text,
             package_text,
             status_text,
@@ -401,7 +404,7 @@ fn load_snapshots(
         "#,
     )?;
     let rows = stmt.query_map([], |row| {
-        let queried_at: Option<String> = row.get(8)?;
+        let queried_at: Option<String> = row.get(10)?;
         let queried_at = queried_at
             .as_deref()
             .map(DateTime::parse_from_rfc3339)
@@ -409,7 +412,7 @@ fn load_snapshots(
             .map(|value| value.map(|dt| dt.with_timezone(&Local)))
             .map_err(|err| {
                 rusqlite::Error::FromSqlConversionFailure(
-                    8,
+                    10,
                     rusqlite::types::Type::Text,
                     Box::new(err),
                 )
@@ -419,13 +422,15 @@ fn load_snapshots(
             CachedTrafficSnapshot {
                 used_traffic_text: row.get(1)?,
                 product_balance_text: row.get(2)?,
-                included_package_text: row.get(3)?,
-                online_device_count_text: row.get(4)?,
-                package_text: row.get(5)?,
-                status_text: row.get(6)?,
-                detail_text: row.get(7)?,
+                included_package_text: normalize_included_package_text(&row.get::<_, String>(3)?),
+                package_total_text: row.get(4).unwrap_or_default(),
+                package_available_text: row.get(5).unwrap_or_default(),
+                online_device_count_text: row.get(6)?,
+                package_text: row.get(7)?,
+                status_text: row.get(8)?,
+                detail_text: row.get(9)?,
                 queried_at,
-                progress_percent: row.get(9)?,
+                progress_percent: row.get(11)?,
             },
         ))
     })?;
@@ -446,19 +451,23 @@ fn save_snapshots_tx(
                 used_traffic_text,
                 product_balance_text,
                 included_package_text,
+                package_total_text,
+                package_available_text,
                 online_device_count_text,
                 package_text,
                 status_text,
                 detail_text,
                 queried_at,
                 progress_percent
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
             "#,
             params![
                 account_id,
                 snapshot.used_traffic_text,
                 snapshot.product_balance_text,
                 snapshot.included_package_text,
+                snapshot.package_total_text,
+                snapshot.package_available_text,
                 snapshot.online_device_count_text,
                 snapshot.package_text,
                 snapshot.status_text,

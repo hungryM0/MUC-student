@@ -12,6 +12,8 @@ export type AccountTrafficSnapshot = {
   usedTrafficText: string;
   productBalanceText: string;
   includedPackageText: string;
+  packageTotalText: string;
+  packageAvailableText: string;
   onlineDeviceCountText: string;
   packageText: string;
   statusText: string;

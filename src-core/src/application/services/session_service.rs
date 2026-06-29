@@ -186,7 +186,9 @@ impl SessionService {
             CachedTrafficSnapshot {
                 used_traffic_text: "70.00GB".to_string(),
                 product_balance_text: "70.00GB".to_string(),
-                included_package_text: "含70.00GB套餐流量".to_string(),
+                included_package_text: String::new(),
+                package_total_text: String::new(),
+                package_available_text: String::new(),
                 online_device_count_text: if previous.online_device_count_text.trim().is_empty() {
                     "-".to_string()
                 } else {

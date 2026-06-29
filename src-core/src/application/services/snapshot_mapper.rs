@@ -8,7 +8,9 @@ use crate::application::dto::{
 use crate::application::runtime::AppRuntimeState;
 use crate::domain::models::traffic::AccountTrafficSnapshot;
 use crate::domain::models::CachedTrafficSnapshot;
-use crate::domain::policies::traffic_math::build_pool_quota_summary;
+use crate::domain::policies::traffic_math::{
+    build_pool_quota_summary, normalize_included_package_text,
+};
 
 pub fn build_app_snapshot(state: &AppRuntimeState) -> AppSnapshotDto {
     let (used, total, included, progress) =
@@ -58,7 +60,11 @@ pub fn restore_cached_snapshots(
                     account_id: account_id.clone(),
                     used_traffic_text: snapshot.used_traffic_text.clone(),
                     product_balance_text: snapshot.product_balance_text.clone(),
-                    included_package_text: snapshot.included_package_text.clone(),
+                    included_package_text: normalize_included_package_text(
+                        &snapshot.included_package_text,
+                    ),
+                    package_total_text: snapshot.package_total_text.clone(),
+                    package_available_text: snapshot.package_available_text.clone(),
                     online_device_count_text: snapshot.online_device_count_text.clone(),
                     package_text: snapshot.package_text.clone(),
                     status_text: snapshot.status_text.clone(),
@@ -87,7 +93,11 @@ pub fn to_cached_snapshots(
                 CachedTrafficSnapshot {
                     used_traffic_text: snapshot.used_traffic_text.clone(),
                     product_balance_text: snapshot.product_balance_text.clone(),
-                    included_package_text: snapshot.included_package_text.clone(),
+                    included_package_text: normalize_included_package_text(
+                        &snapshot.included_package_text,
+                    ),
+                    package_total_text: snapshot.package_total_text.clone(),
+                    package_available_text: snapshot.package_available_text.clone(),
                     online_device_count_text: snapshot.online_device_count_text.clone(),
                     package_text: snapshot.package_text.clone(),
                     status_text: snapshot.status_text.clone(),
@@ -98,4 +108,52 @@ pub fn to_cached_snapshots(
             )
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use super::restore_cached_snapshots;
+    use crate::domain::models::CachedTrafficSnapshot;
+
+    #[test]
+    fn restore_cached_snapshots_normalizes_dirty_included_package_text() {
+        let mut cached = BTreeMap::new();
+        cached.insert(
+            "acc-1".to_string(),
+            CachedTrafficSnapshot {
+                included_package_text: "含70.00GB套餐流量".to_string(),
+                package_total_text: "30.00GB".to_string(),
+                package_available_text: "25.883GB".to_string(),
+                ..Default::default()
+            },
+        );
+        cached.insert(
+            "acc-2".to_string(),
+            CachedTrafficSnapshot {
+                included_package_text: "含30.00GB增值套餐".to_string(),
+                package_total_text: "30.00GB".to_string(),
+                package_available_text: "25.883GB".to_string(),
+                ..Default::default()
+            },
+        );
+
+        let snapshots = restore_cached_snapshots(&cached);
+
+        assert_eq!(
+            snapshots
+                .get("acc-1")
+                .expect("snapshot")
+                .included_package_text,
+            ""
+        );
+        assert_eq!(
+            snapshots
+                .get("acc-2")
+                .expect("snapshot")
+                .included_package_text,
+            "含30.00GB套餐流量"
+        );
+    }
 }
