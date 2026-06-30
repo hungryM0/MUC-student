@@ -13,9 +13,27 @@ val tauriProperties = Properties().apply {
     }
 }
 
+val signingKeystorePath = providers.gradleProperty("muc.android.signing.keystorePath").orNull
+val signingStorePassword = providers.gradleProperty("muc.android.signing.storePassword").orNull
+val signingKeyAlias = providers.gradleProperty("muc.android.signing.keyAlias").orNull
+val hasReleaseSigning =
+    !signingKeystorePath.isNullOrBlank() &&
+        !signingStorePassword.isNullOrBlank() &&
+        !signingKeyAlias.isNullOrBlank()
+
 android {
     compileSdk = 36
     namespace = "cn.muc.student"
+    if (hasReleaseSigning) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(signingKeystorePath!!)
+                storePassword = signingStorePassword
+                keyAlias = signingKeyAlias
+                keyPassword = signingStorePassword
+            }
+        }
+    }
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "true"
         applicationId = "cn.muc.student"
@@ -39,6 +57,9 @@ android {
         }
         getByName("release") {
             isMinifyEnabled = true
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 *fileTree(".") { include("**/*.pro") }
                     .plus(getDefaultProguardFile("proguard-android-optimize.txt"))

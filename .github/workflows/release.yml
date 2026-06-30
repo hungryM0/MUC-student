@@ -61,7 +61,7 @@ jobs:
           Copy-Item -LiteralPath $installer.FullName -Destination ("dist\MUC-student_{0}_setup.exe" -f "${{ github.ref_name }}")
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: MUC-student_${{ github.ref_name }}_setup.exe
           path: dist/MUC-student_${{ github.ref_name }}_setup.exe
@@ -89,6 +89,14 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+
+      - name: Restore signing keystore
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/android-signing"
+          echo "$ANDROID_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/android-signing/release.jks"
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
@@ -121,7 +129,11 @@ jobs:
         run: cargo test
 
       - name: Build Android app
-        run: pnpm tauri:android:build
+        run: >
+          pnpm tauri:android:build
+          -- -Pmuc.android.signing.keystorePath=$RUNNER_TEMP/android-signing/release.jks
+          -Pmuc.android.signing.storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          -Pmuc.android.signing.keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
 
       - name: Prepare artifact
         shell: bash
@@ -135,7 +147,7 @@ jobs:
           cp "$apk" "dist/MUC-student_${{ github.ref_name }}.apk"
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: MUC-student_${{ github.ref_name }}.apk
           path: dist/MUC-student_${{ github.ref_name }}.apk
