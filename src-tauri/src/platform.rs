@@ -1,23 +1,66 @@
-use std::env;
 use std::path::PathBuf;
 
 use muc_student_core::application::error::{AppError, AppResult};
 use muc_student_core::application::platform::{RuntimePathProvider, StartupController};
+#[cfg(not(target_os = "android"))]
+use std::env;
+#[cfg(target_os = "android")]
+use tauri::Manager;
 
-pub struct TauriRuntimePathProvider;
+pub struct TauriRuntimePathProvider {
+    #[cfg(target_os = "android")]
+    app: tauri::AppHandle,
+}
+
+impl TauriRuntimePathProvider {
+    pub fn new(app: tauri::AppHandle) -> Self {
+        #[cfg(target_os = "android")]
+        {
+            Self { app }
+        }
+
+        #[cfg(not(target_os = "android"))]
+        {
+            let _ = app;
+            Self {}
+        }
+    }
+}
 
 impl RuntimePathProvider for TauriRuntimePathProvider {
     fn app_data_dir(&self) -> AppResult<PathBuf> {
-        dirs::data_local_dir()
-            .map(|path| path.join("MUC-student"))
-            .ok_or_else(|| AppError::Storage("无法定位 Windows 本地应用数据目录".to_string()))
+        #[cfg(target_os = "android")]
+        {
+            self.app
+                .path()
+                .app_data_dir()
+                .map_err(|err| AppError::Storage(format!("无法定位 Android 应用数据目录：{err}")))
+        }
+
+        #[cfg(not(target_os = "android"))]
+        {
+            dirs::data_local_dir()
+                .map(|path| path.join("MUC-student"))
+                .ok_or_else(|| AppError::Storage("无法定位本地应用数据目录".to_string()))
+        }
     }
 
     fn resource_base_dir(&self) -> AppResult<PathBuf> {
-        env::current_exe()
-            .ok()
-            .and_then(|path| path.parent().map(PathBuf::from))
-            .ok_or_else(|| AppError::Storage("无法定位程序资源目录".to_string()))
+        #[cfg(target_os = "android")]
+        {
+            self.app
+                .path()
+                .resource_dir()
+                .map_err(|err| AppError::Storage(format!("无法定位 Android 资源目录：{err}")))
+        }
+
+        #[cfg(not(target_os = "android"))]
+        {
+            env::current_exe()
+                .ok()
+                .and_then(|path| path.parent().map(PathBuf::from))
+                .ok_or_else(|| AppError::Storage("无法定位程序资源目录".to_string()))
+        }
     }
 }
 

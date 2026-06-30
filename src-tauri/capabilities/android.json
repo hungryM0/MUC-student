@@ -1,9 +1,9 @@
 {
-  "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "default-desktop",
-  "description": "Desktop capability for app windows",
-  "windows": ["main", "about", "settings"],
-  "platforms": ["windows"],
+  "$schema": "../gen/schemas/android-schema.json",
+  "identifier": "default-android",
+  "description": "Android capability for the main webview",
+  "windows": ["main"],
+  "platforms": ["android"],
   "permissions": [
     "core:default",
     "core:window:allow-close",
@@ -28,11 +28,6 @@
     "core:window:allow-center",
     "core:event:allow-emit",
     "core:event:allow-listen",
-    "core:webview:allow-create-webview-window",
-    "core:webview:allow-webview-position",
-    "core:webview:allow-webview-size",
-    "opener:default",
-    "updater:default",
-    "updater:allow-check"
+    "opener:default"
   ]
 }

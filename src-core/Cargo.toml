@@ -25,6 +25,9 @@ tokio = { version = "1", features = ["macros", "process", "rt-multi-thread", "sy
 url = "2"
 uuid = { version = "1", features = ["v4", "serde"] }
 
+[target.'cfg(target_os = "android")'.dependencies]
+android-native-keyring-store = "1.0.0"
+
 [dev-dependencies]
 tempfile = "3"
 wiremock = "0.6"

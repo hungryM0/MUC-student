@@ -108,11 +108,8 @@ impl DashboardRefreshService {
                         .panel_client
                         .fetch_sso_html(&account.id, &info.username, "/home")
                         .await
-                        .and_then(|html| {
-                            snapshot_from_panel_home(
-                                account, &html, local_ip,
-                            )
-                        }) {
+                        .and_then(|html| snapshot_from_panel_home(account, &html, local_ip))
+                    {
                         Ok(snapshot) => snapshot,
                         Err(_) => build_single_success_snapshot_with_online_info(
                             account,
@@ -183,8 +180,8 @@ impl DashboardRefreshService {
                     _ => return None,
                 };
                 snapshot_from_panel_home(&account, &html, local_ip.as_deref())
-                .ok()
-                .map(|snapshot| (account.id.clone(), snapshot))
+                    .ok()
+                    .map(|snapshot| (account.id.clone(), snapshot))
             });
         }
 

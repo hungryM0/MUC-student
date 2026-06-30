@@ -24,7 +24,7 @@ use crate::infrastructure::persistence::app_state_repository::AppStateRepository
 use crate::infrastructure::persistence::database::AppDatabase;
 use crate::infrastructure::persistence::panel_session_repository::PanelSessionRepository;
 use crate::infrastructure::persistence::runtime_paths::RuntimePaths;
-use crate::infrastructure::security::credential_vault::{CredentialVault, WindowsCredentialVault};
+use crate::infrastructure::security::credential_vault::{CredentialVault, SystemCredentialVault};
 use crate::infrastructure::settings::AppSettings;
 
 #[derive(Clone)]
@@ -60,7 +60,7 @@ impl AppCore {
         event_sink: Arc<dyn AppEventSink>,
     ) -> AppResult<Self> {
         let settings = AppSettings::default();
-        let vault: Arc<dyn CredentialVault> = Arc::new(WindowsCredentialVault::initialize()?);
+        let vault: Arc<dyn CredentialVault> = Arc::new(SystemCredentialVault::initialize()?);
         let db = AppDatabase::open(&paths)?;
         let account_repo = AccountRepository::new(db.clone(), vault.clone());
         let app_state_repo = AppStateRepository::new(db.clone());
@@ -196,6 +196,7 @@ impl AppCore {
     ) -> AppResult<AppSnapshotDto> {
         self.startup_controller
             .set_launch_on_startup(launch_on_startup)?;
+        let launch_on_startup = self.startup_controller.is_enabled()?;
         let mut preferences = self.app_state_repo.load_preferences()?;
         preferences.minimize_to_tray_on_close = minimize_to_tray_on_close;
         preferences.launch_on_startup = launch_on_startup;
@@ -404,9 +405,7 @@ mod tests {
     use crate::application::dto::AppSnapshotDto;
     use crate::application::platform::{AppEventSink, NoopStartupController};
     use crate::application::runtime::{AppRuntimeState, SharedRuntimeState};
-    use crate::application::services::dashboard_refresh_service::{
-        DashboardRefreshDependencies, DashboardRefreshService,
-    };
+    use crate::application::services::dashboard_refresh_service::DashboardRefreshService;
     use crate::application::services::session_service::SessionService;
     use crate::domain::models::NetworkStatus;
     use crate::infrastructure::network::http_transport::HttpTransport;

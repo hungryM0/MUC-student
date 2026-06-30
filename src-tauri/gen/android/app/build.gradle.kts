@@ -17,7 +17,7 @@ android {
     compileSdk = 36
     namespace = "cn.muc.student"
     defaultConfig {
-        manifestPlaceholders["usesCleartextTraffic"] = "false"
+        manifestPlaceholders["usesCleartextTraffic"] = "true"
         applicationId = "cn.muc.student"
         minSdk = 24
         targetSdk = 36

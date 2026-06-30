@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+#[cfg(target_os = "android")]
+use std::sync::OnceLock;
 use std::sync::{Arc, Mutex};
 
 use keyring::Entry;
@@ -12,30 +14,51 @@ pub trait CredentialVault: Send + Sync {
 }
 
 #[derive(Clone, Default)]
-pub struct WindowsCredentialVault;
+pub struct SystemCredentialVault;
 
-impl WindowsCredentialVault {
+impl SystemCredentialVault {
     pub fn initialize() -> AppResult<Self> {
         Ok(Self)
     }
 
+    #[cfg(target_os = "android")]
+    fn ensure_default_store() -> AppResult<()> {
+        static INIT: OnceLock<Result<(), String>> = OnceLock::new();
+
+        INIT.get_or_init(|| {
+            let mut config = HashMap::new();
+            config.insert("name", "muc-student");
+            android_native_keyring_store::Store::new_with_configuration(&config)
+                .map(|store| keyring_core::set_default_store(store))
+                .map_err(|err| format!("初始化 Android 凭据库失败：{err}"))
+        })
+        .clone()
+        .map_err(AppError::System)
+    }
+
+    #[cfg(not(target_os = "android"))]
+    fn ensure_default_store() -> AppResult<()> {
+        Ok(())
+    }
+
     fn entry(account_id: &str) -> AppResult<Entry> {
+        Self::ensure_default_store()?;
         Entry::new("MUC-student", &format!("muc-student:{account_id}"))
             .map_err(|err| AppError::System(format!("打开凭据项失败：{err}")))
     }
 }
 
-impl CredentialVault for WindowsCredentialVault {
+impl CredentialVault for SystemCredentialVault {
     fn get_password(&self, account_id: &str) -> AppResult<String> {
         Self::entry(account_id)?
             .get_password()
-            .map_err(|err| AppError::System(format!("读取 Windows 凭据失败：{err}")))
+            .map_err(|err| AppError::System(format!("读取系统凭据失败：{err}")))
     }
 
     fn set_password(&self, account_id: &str, password: &str) -> AppResult<()> {
         Self::entry(account_id)?
             .set_password(password)
-            .map_err(|err| AppError::System(format!("写入 Windows 凭据失败：{err}")))
+            .map_err(|err| AppError::System(format!("写入系统凭据失败：{err}")))
     }
 
     fn delete_password(&self, account_id: &str) -> AppResult<()> {
@@ -49,7 +72,7 @@ impl CredentialVault for WindowsCredentialVault {
                 {
                     Ok(())
                 } else {
-                    Err(AppError::System(format!("删除 Windows 凭据失败：{err}")))
+                    Err(AppError::System(format!("删除系统凭据失败：{err}")))
                 }
             }
         }

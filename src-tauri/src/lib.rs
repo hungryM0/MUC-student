@@ -157,11 +157,17 @@ fn update_tray_menu(
     plugins::system_tray::update_tray_menu(&app, &show_text, &quit_text)
 }
 
+#[tauri::command]
+#[cfg(mobile)]
+fn update_tray_menu(_show_text: String, _quit_text: String) -> Result<(), String> {
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default().setup(|app| {
         let core = AppCore::build(
-            Arc::new(TauriRuntimePathProvider),
+            Arc::new(TauriRuntimePathProvider::new(app.handle().clone())),
             Arc::new(RunKeyStartupController::new("MUC-student")),
             Arc::new(TauriEventSink::new(app.handle().clone())),
         )?;
@@ -211,7 +217,8 @@ pub fn run() {
         login_selected_account,
         refresh_dashboard,
         logout_local_device,
-        update_preferences
+        update_preferences,
+        update_tray_menu
     ]);
 
     #[cfg(all(desktop, not(debug_assertions)))]
