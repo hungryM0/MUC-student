@@ -15,13 +15,13 @@ use crate::application::services::session_service::SessionService;
 use crate::application::services::snapshot_mapper::{build_app_snapshot, restore_cached_snapshots};
 use crate::domain::models::NetworkStatus;
 use crate::domain::policies::traffic_math::build_auto_switch_candidate;
+use crate::infrastructure::android_keepalive::write_android_keepalive_state;
 use crate::infrastructure::network::{
     http_transport::HttpTransport, legacy_portal_auth_client::LegacyPortalAuthClient,
     legacy_portal_status_client::LegacyPortalStatusClient,
     network_status_service::NetworkStatusService,
     self_service_panel_client::SelfServicePanelClient,
 };
-use crate::infrastructure::android_keepalive::write_android_keepalive_state;
 use crate::infrastructure::persistence::account_repository::AccountRepository;
 use crate::infrastructure::persistence::app_state_repository::AppStateRepository;
 use crate::infrastructure::persistence::database::AppDatabase;
@@ -304,7 +304,11 @@ impl AppCore {
         let Ok(_task_guard) = self.network_task_lock.try_lock() else {
             return Ok(());
         };
-        let result = self.dashboard_refresh_service.refresh_accounts().await;
+        let result = async {
+            self.dashboard_refresh_service.refresh_accounts().await?;
+            self.try_auto_switch().await
+        }
+        .await;
         self.emit_state()?;
         result?;
         Ok(())
@@ -450,7 +454,7 @@ mod tests {
     use crate::application::runtime::{AppRuntimeState, SharedRuntimeState};
     use crate::application::services::dashboard_refresh_service::DashboardRefreshService;
     use crate::application::services::session_service::SessionService;
-    use crate::domain::models::NetworkStatus;
+    use crate::domain::models::{CachedTrafficSnapshot, NetworkStatus};
     use crate::infrastructure::network::http_transport::HttpTransport;
     use crate::infrastructure::network::legacy_portal_auth_client::LegacyPortalAuthClient;
     use crate::infrastructure::network::legacy_portal_status_client::LegacyPortalStatusClient;
@@ -584,6 +588,7 @@ mod tests {
             dashboard_refresh_service,
             network_task_lock: Arc::new(tokio::sync::Mutex::new(())),
             background_refresh_started: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            app_data_dir: paths.app_data_dir().to_path_buf(),
             event_sink: event_sink.clone(),
             startup_controller: Arc::new(NoopStartupController),
         };
@@ -797,6 +802,140 @@ mod tests {
         assert!(!events.iter().any(|event| event == "start:refresh"));
         assert!(!events.iter().any(|event| event == "finish:refresh"));
         assert!(events.iter().any(|event| event == "state:running=false"));
+    }
+
+    #[tokio::test]
+    async fn silent_refresh_auto_switches_to_most_recent_previous_account() {
+        let server = MockServer::start().await;
+        let local_ip = "10.151.119.57";
+        let success_count = Arc::new(AtomicUsize::new(0));
+        let success_count_for_mock = success_count.clone();
+        Mock::given(method("GET"))
+            .and(path("/srun_portal_pc_success.php"))
+            .respond_with(move |_request: &wiremock::Request| {
+                let count = success_count_for_mock.fetch_add(1, Ordering::SeqCst);
+                let username = if count < 2 { "20260002" } else { "20260001" };
+                ResponseTemplate::new(200).set_body_string(success_page(local_ip, username))
+            })
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/include/auth_action.php"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(format!("1073741824,60,0.00,aa:bb:cc:dd:ee:ff,0,{local_ip}")),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/site/sso"))
+            .respond_with(
+                ResponseTemplate::new(302)
+                    .insert_header("set-cookie", "PHPSESSID_8800=abc; path=/; HttpOnly")
+                    .insert_header("location", "/home"),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/home"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(format!(
+                r#"
+                    <table>
+                      <tr><th>产品名称</th><th>计费策略</th><th>已用流量</th><th>产品余额</th></tr>
+                      <tr><td>校园网</td><td>免费70GB</td><td>70.00GB</td><td>70.00GB</td></tr>
+                    </table>
+                    <tr data-key="device-a">
+                      <td data-col-seq="1">{local_ip}</td>
+                      <td><a href="/home/delete?id=device-a">下线</a></td>
+                    </tr>
+                    "#
+            )))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/srun_portal_pc.php"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("login_ok,ok"))
+            .mount(&server)
+            .await;
+
+        let (core, _root, _event_sink) = build_test_core(settings_for(&server), local_ip);
+        let first_snapshot = core
+            .add_account(
+                "上一个号".to_string(),
+                "20260001".to_string(),
+                "p1".to_string(),
+            )
+            .await
+            .expect("add first");
+        let second_snapshot = core
+            .add_account(
+                "当前号".to_string(),
+                "20260002".to_string(),
+                "p2".to_string(),
+            )
+            .await
+            .expect("add second");
+        let first_id = first_snapshot
+            .accounts
+            .iter()
+            .find(|account| account.username == "20260001")
+            .expect("first account")
+            .id
+            .clone();
+        let second_id = second_snapshot
+            .accounts
+            .iter()
+            .find(|account| account.username == "20260002")
+            .expect("second account")
+            .id
+            .clone();
+
+        let mut preferences = core
+            .app_state_repo
+            .load_preferences()
+            .expect("load preferences");
+        preferences.auto_switch_account_on_traffic_exhausted = true;
+        core.app_state_repo
+            .save_preferences(&preferences)
+            .expect("save preferences");
+        core.refresh_runtime_from_disk().expect("refresh runtime");
+
+        core.select_account(first_id.clone())
+            .await
+            .expect("select first");
+        core.select_account(second_id.clone())
+            .await
+            .expect("reselect second");
+        let mut store = core.account_repo.load_store().expect("load store");
+        store.cached_traffic_snapshots.insert(
+            first_id.clone(),
+            CachedTrafficSnapshot {
+                used_traffic_text: "10.00GB".to_string(),
+                product_balance_text: "70.00GB".to_string(),
+                status_text: "已同步".to_string(),
+                detail_text: "测试缓存快照".to_string(),
+                progress_percent: Some(14.3),
+                ..Default::default()
+            },
+        );
+        core.account_repo.save_store(&store).expect("save store");
+        core.refresh_runtime_from_disk().expect("refresh runtime");
+
+        core.refresh_dashboard_silently()
+            .await
+            .expect("silent refresh");
+
+        let snapshot = core.get_snapshot().expect("snapshot");
+        assert_eq!(snapshot.selected_account_id, first_id);
+        assert_eq!(snapshot.current_online_account_id, first_id);
+        let requests = server.received_requests().await.unwrap_or_default();
+        let bodies = requests
+            .iter()
+            .map(|request| String::from_utf8_lossy(&request.body).to_string())
+            .collect::<Vec<_>>();
+        assert!(bodies
+            .iter()
+            .any(|body| body.contains("action=login") && body.contains("username=20260001")));
     }
 
     #[tokio::test]

@@ -81,6 +81,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 disabled={!preferences}
                 onToggle={() => togglePreference("launchOnStartup")}
               />
+              <PreferenceRow
+                title="流量耗尽后自动切换到上一个使用的账号"
+                checked={!!preferences?.autoSwitchAccountOnTrafficExhausted}
+                disabled={!preferences}
+                onToggle={() =>
+                  togglePreference("autoSwitchAccountOnTrafficExhausted")
+                }
+              />
             </div>
           </section>
 

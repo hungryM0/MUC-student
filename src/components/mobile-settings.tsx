@@ -5,11 +5,12 @@ import { usePreferences } from "@/hooks/use-preferences";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getVersion } from "@tauri-apps/api/app";
 import { useState, useEffect } from "react";
+import { cn } from "@/lib/utils";
 import appIconUrl from "../../src-tauri/icons/icon.svg?url";
 
 export function MobileSettings() {
   const { theme, setTheme } = useTheme();
-  const { errorText } = usePreferences(true);
+  const { preferences, errorText, togglePreference } = usePreferences(true);
   const [version, setVersion] = useState("");
 
   useEffect(() => {
@@ -70,6 +71,22 @@ export function MobileSettings() {
         </section>
 
         {/* 行为 */}
+        <section className="space-y-3">
+          <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase px-2">
+            行为配置
+          </h3>
+          <div className="overflow-hidden rounded-2xl border border-border/80 bg-background/60">
+            <MobilePreferenceRow
+              title="流量耗尽后自动切换到上一个使用的账号"
+              checked={!!preferences?.autoSwitchAccountOnTrafficExhausted}
+              disabled={!preferences}
+              onToggle={() =>
+                togglePreference("autoSwitchAccountOnTrafficExhausted")
+              }
+            />
+          </div>
+        </section>
+
         {/* Links */}
         <section className="pt-2">
           <Button
@@ -89,5 +106,46 @@ export function MobileSettings() {
         )}
       </div>
     </div>
+  );
+}
+
+function MobilePreferenceRow({
+  title,
+  checked,
+  disabled,
+  onToggle,
+}: {
+  title: string;
+  checked: boolean;
+  disabled: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      disabled={disabled}
+      className={cn(
+        "flex min-h-[60px] w-full items-center justify-between gap-4 px-4 py-3 text-left transition-colors",
+        disabled
+          ? "cursor-not-allowed opacity-60"
+          : "hover:bg-muted/40 active:bg-muted/60",
+      )}
+    >
+      <span className="text-sm font-medium text-foreground">{title}</span>
+      <span
+        className={cn(
+          "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-200",
+          checked ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-700",
+        )}
+      >
+        <span
+          className={cn(
+            "block h-5 w-5 rounded-full bg-background shadow-sm transition-transform duration-200",
+            checked ? "translate-x-5.5" : "translate-x-0.5",
+          )}
+        />
+      </span>
+    </button>
   );
 }

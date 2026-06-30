@@ -38,7 +38,10 @@ impl AndroidKeepaliveState {
     }
 }
 
-pub fn write_android_keepalive_state(app_data_dir: &Path, snapshot: &AppSnapshotDto) -> AppResult<()> {
+pub fn write_android_keepalive_state(
+    app_data_dir: &Path,
+    snapshot: &AppSnapshotDto,
+) -> AppResult<()> {
     let state_path = android_keepalive_state_path(app_data_dir);
     let payload = serde_json::to_vec_pretty(&AndroidKeepaliveState::from_snapshot(snapshot))
         .map_err(|err| AppError::Storage(format!("序列化 Android 保活状态失败：{err}")))?;
