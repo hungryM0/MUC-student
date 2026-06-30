@@ -21,6 +21,7 @@ use crate::infrastructure::network::{
     network_status_service::NetworkStatusService,
     self_service_panel_client::SelfServicePanelClient,
 };
+use crate::infrastructure::android_keepalive::write_android_keepalive_state;
 use crate::infrastructure::persistence::account_repository::AccountRepository;
 use crate::infrastructure::persistence::app_state_repository::AppStateRepository;
 use crate::infrastructure::persistence::database::AppDatabase;
@@ -38,6 +39,7 @@ pub struct AppCore {
     dashboard_refresh_service: DashboardRefreshService,
     network_task_lock: Arc<Mutex<()>>,
     background_refresh_started: Arc<AtomicBool>,
+    app_data_dir: std::path::PathBuf,
     event_sink: Arc<dyn AppEventSink>,
     startup_controller: Arc<dyn StartupController>,
 }
@@ -118,6 +120,7 @@ impl AppCore {
             dashboard_refresh_service,
             network_task_lock: Arc::new(Mutex::new(())),
             background_refresh_started: Arc::new(AtomicBool::new(false)),
+            app_data_dir: paths.app_data_dir().to_path_buf(),
             event_sink,
             startup_controller,
         };
@@ -405,6 +408,9 @@ impl AppCore {
     fn emit_state(&self) -> AppResult<AppSnapshotDto> {
         let snapshot = self.build_snapshot()?;
         self.event_sink.state_updated(&snapshot)?;
+        if cfg!(target_os = "android") {
+            let _ = write_android_keepalive_state(&self.app_data_dir, &snapshot);
+        }
         Ok(snapshot)
     }
 
