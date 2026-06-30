@@ -144,9 +144,7 @@ function findJavaHome() {
     ...defaultJavaHomeCandidates(),
   ].filter(Boolean);
 
-  const javaHome = candidates.find((item) =>
-    existsSync(path.join(item, "bin", `java${executableExtension()}`)),
-  );
+  const javaHome = candidates.find((item) => hasJavaExecutable(path.join(item, "bin")));
   if (!javaHome) {
     throw new Error("找不到 Java。请安装 JDK 17+，或设置 JAVA_HOME。");
   }
@@ -207,6 +205,17 @@ function reversePort(serial, port) {
 
 function executableExtension() {
   return process.platform === "win32" ? ".cmd" : "";
+}
+
+function hasJavaExecutable(binDir) {
+  if (process.platform === "win32") {
+    return (
+      existsSync(path.join(binDir, "java.exe")) ||
+      existsSync(path.join(binDir, "java.cmd"))
+    );
+  }
+
+  return existsSync(path.join(binDir, "java"));
 }
 
 function findAdbExecutable(androidSdk) {
@@ -346,5 +355,13 @@ function findJavaHomeFromPath() {
   }
 
   const javaHome = line.slice("java.home = ".length).trim();
-  return javaHome || null;
+  if (!javaHome) {
+    return null;
+  }
+
+  if (path.basename(javaHome).toLowerCase() === "bin") {
+    return path.dirname(javaHome);
+  }
+
+  return javaHome;
 }
