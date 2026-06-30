@@ -616,6 +616,12 @@ export default function HomePage() {
             </div>
           </div>
         )}
+        {/* 加载动画遮罩 */}
+        <ActionLoadingOverlay
+          runningAction={runningAction}
+          loginAccountId={loginAccountId}
+          accounts={snapshot?.accounts ?? []}
+        />
       </div>
       <AccountDialog
         form={accountForm}
@@ -1040,3 +1046,76 @@ function DeleteConfirmDialog({
     </Dialog>
   );
 }
+
+function ActionLoadingOverlay({
+  runningAction,
+  loginAccountId,
+  accounts,
+}: {
+  runningAction: RunningAction | null;
+  loginAccountId: string;
+  accounts: AccountDto[];
+}) {
+  if (!runningAction) return null;
+
+  const targetAccount = accounts.find((a) => a.id === loginAccountId);
+  const remarkName = targetAccount?.remarkName || targetAccount?.username;
+
+  // 极简动作配置，仅配置主题色圆环和状态文字
+  let config = {
+    themeColor: "border-t-emerald-500",
+    title: remarkName ? `正在登录 ${remarkName}...` : "正在登录校园网...",
+    subtitle: "此过程可能需要一些时间，请稍候",
+  };
+
+  if (runningAction === "refresh") {
+    config = {
+      themeColor: "border-t-amber-500",
+      title: "正在同步数据...",
+      subtitle: "正在拉取最新的套餐流量与在线设备信息",
+    };
+  } else if (runningAction === "logout") {
+    config = {
+      themeColor: "border-t-red-500",
+      title: "正在断开校园网...",
+      subtitle: "正在向 Portal 认证服务器请求断开连接",
+    };
+  }
+
+  return (
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/35 backdrop-blur-[4px] transition-all duration-300 animate-fade-in">
+      <div className="bg-card/90 border border-border/40 shadow-xl rounded-xl p-6 flex flex-col items-center gap-4 max-w-[260px] w-[90%] backdrop-blur-md transition-all duration-300 animate-scale-in-simple">
+        {/* 极简优雅的 App Logo 旋转环 */}
+        <div className="relative flex items-center justify-center h-14 w-14">
+          {/* 极其纤细的外旋转环 */}
+          <div
+            className={cn(
+              "absolute -inset-1.5 rounded-full border border-muted/40 animate-spin",
+              config.themeColor,
+            )}
+          />
+          {/* 应用 Logo，伴随温和呼吸效果 */}
+          <img
+            src={appIconUrl}
+            alt="App Logo"
+            className="h-10 w-10 shrink-0 rounded-lg animate-pulse"
+          />
+        </div>
+
+        {/* 简约文案 */}
+        <div className="text-center space-y-1">
+          <h3 className="text-xs font-semibold text-foreground/90 tracking-wide">
+            {config.title}
+          </h3>
+          <p className="text-[10px] text-muted-foreground leading-normal max-w-[180px] mx-auto">
+            {config.subtitle}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+
+

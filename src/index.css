@@ -259,3 +259,112 @@ button {
   pointer-events: none;
   overflow: hidden;
 }
+
+/* ==========================================
+   Advanced Loading & Shimmer Animations
+   ========================================== */
+
+/* 逆时针旋转 */
+@keyframes spinReverse {
+  from {
+    transform: rotate(360deg);
+  }
+  to {
+    transform: rotate(0deg);
+  }
+}
+
+.animate-spin-reverse {
+  animation: spinReverse 1.5s linear infinite;
+}
+
+/* 呼吸心跳效果 */
+@keyframes heartBeat {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.12);
+  }
+}
+
+.animate-heart-beat {
+  animation: heartBeat 2s infinite ease-in-out;
+}
+
+/* 雷达脉冲扩散波纹 */
+@keyframes radarRipple {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+.animate-radar-ripple {
+  animation: radarRipple 2s cubic-bezier(0.1, 0.8, 0.3, 1) infinite;
+}
+
+/* 流光文字 */
+.text-shimmer {
+  background: linear-gradient(
+    to right,
+    #0f172a 20%,
+    #64748b 40%,
+    #0f172a 60%,
+    #0f172a 80%
+  );
+  background-size: 200% auto;
+  color: transparent;
+  background-clip: text;
+  -webkit-background-clip: text;
+  animation: textShimmer 3s linear infinite;
+}
+
+.dark .text-shimmer {
+  background: linear-gradient(
+    to right,
+    #f8fafc 20%,
+    #94a3b8 40%,
+    #f8fafc 60%,
+    #f8fafc 80%
+  );
+  background-size: 200% auto;
+  color: transparent;
+  background-clip: text;
+  -webkit-background-clip: text;
+  animation: textShimmer 3s linear infinite;
+}
+
+@keyframes textShimmer {
+  0% {
+    background-position: 200% center;
+  }
+  100% {
+    background-position: -200% center;
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 300ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes scaleInSimple {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-scale-in-simple {
+  animation: scaleInSimple 300ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+
