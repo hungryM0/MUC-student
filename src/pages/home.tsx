@@ -671,8 +671,7 @@ function formatSnapshotSyncText(snapshot: AccountDto["snapshot"]) {
   }
   if (
     snapshot.statusText === "查询中..." ||
-    snapshot.statusText === "查询失败" ||
-    snapshot.statusText === "同步失败"
+    snapshot.statusText === "查询失败"
   ) {
     return snapshot.statusText;
   }

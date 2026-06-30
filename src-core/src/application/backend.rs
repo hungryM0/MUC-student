@@ -771,34 +771,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn refresh_failure_emits_settled_state() {
+    async fn login_failure_emits_settled_state() {
         let server = MockServer::start().await;
         let local_ip = "10.151.119.57";
-        Mock::given(method("GET"))
-            .and(path("/include/auth_action.php"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_string(format!("1073741824,60,0.00,aa:bb:cc:dd:ee:ff,0,{local_ip}")),
-            )
-            .mount(&server)
-            .await;
-        Mock::given(method("GET"))
-            .and(path("/srun_portal_pc_success.php"))
-            .respond_with(ResponseTemplate::new(500).set_body_string("server error"))
-            .mount(&server)
-            .await;
 
         let (core, _root, event_sink) = build_test_core(settings_for(&server), local_ip);
-        core.add_account("主号".to_string(), "20260001".to_string(), "p1".to_string())
-            .await
-            .expect("add account");
 
-        let result = core.refresh_dashboard().await;
+        let result = core.login_selected_account().await;
 
         assert!(result.is_err());
+        assert_eq!(result.unwrap_err().code(), "VALIDATION_ERROR");
         let events = event_sink.events();
-        assert!(events.contains(&"start:refresh".to_string()));
-        assert!(events.contains(&"finish:refresh".to_string()));
+        assert!(events.contains(&"start:login".to_string()));
+        assert!(events.contains(&"finish:login".to_string()));
         assert_eq!(events.last(), Some(&"state:running=false".to_string()));
     }
 }
