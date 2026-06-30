@@ -1,6 +1,7 @@
 import { useEffect, useState, ReactNode } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { Minus, Maximize2, Minimize2, X } from "lucide-react";
+import { cn, isAndroid } from "@/lib/utils";
 
 interface TitleBarProps {
   title?: string;
@@ -90,28 +91,40 @@ export function TitleBar({
   };
 
   return (
-    <div className="bg-background/95 supports-backdrop-filter:bg-background/60 border-border/40 flex h-8 items-center justify-between border-b backdrop-blur select-none">
+    <div
+      className={cn(
+        "bg-background/95 supports-backdrop-filter:bg-background/60 border-border/40 flex items-center justify-between border-b backdrop-blur select-none",
+        isAndroid() ? "h-14 px-4" : "h-8"
+      )}
+    >
       {/* Left: Title + Drag region */}
       <div
-        data-tauri-drag-region
+        data-tauri-drag-region={!isAndroid() ? true : undefined}
         onDoubleClick={handleDragRegionDoubleClick}
-        className="flex grow items-center gap-2 pl-2"
+        className={cn("flex grow items-center gap-2", isAndroid() ? "" : "pl-2")}
       >
         {title && (
-          <span className="text-sm font-medium text-slate-400">{title}</span>
+          <span
+            className={cn(
+              "font-medium",
+              isAndroid() ? "text-base text-foreground" : "text-sm text-slate-400"
+            )}
+          >
+            {title}
+          </span>
         )}
         {leftActions}
       </div>
 
       {/* Right: Control buttons */}
-      <div className="flex items-center">
+      <div className={cn("flex items-center", isAndroid() && "gap-2")}>
         {rightActions}
 
-        {rightActions && (showMinimize || showMaximize || showClose) && (
+        {!isAndroid() && rightActions && (showMinimize || showMaximize || showClose) && (
           <div className="bg-border/40 mx-1 h-4 w-px" />
         )}
 
-        {showMinimize && (
+        {!isAndroid() && showMinimize && (
           <button
             onClick={handleMinimize}
             className="title-bar-control"
@@ -122,7 +135,7 @@ export function TitleBar({
           </button>
         )}
 
-        {showMaximize && (
+        {!isAndroid() && showMaximize && (
           <button
             onClick={handleToggleMaximize}
             className="title-bar-control"
@@ -137,7 +150,7 @@ export function TitleBar({
           </button>
         )}
 
-        {showClose && (
+        {!isAndroid() && showClose && (
           <button
             onClick={handleClose}
             className="title-bar-control hover:bg-destructive hover:text-destructive-foreground"

@@ -13,6 +13,8 @@ import {
   RefreshCw,
   Trash2,
   X,
+  Users,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,6 +30,7 @@ import { WindowFrame } from "@/components/window-frame";
 import { MainTitleBar } from "@/components/main-title-bar";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { AboutDialog } from "@/components/about-dialog";
+import { MobileSettings } from "@/components/mobile-settings";
 import {
   type AccountDto,
   type AppSnapshotDto,
@@ -42,7 +45,7 @@ import {
   updateAccount,
   FREE_PRODUCT_QUOTA_GB,
 } from "@/lib/muc";
-import { cn } from "@/lib/utils";
+import { cn, isAndroid } from "@/lib/utils";
 import appIconUrl from "../../src-tauri/icons/icon.svg?url";
 
 function trafficProgressClasses(percent: number, isOnline = true) {
@@ -98,6 +101,7 @@ export default function HomePage() {
   const [runningAction, setRunningAction] = useState<RunningAction | null>(
     null,
   );
+  const [activeTab, setActiveTab] = useState<"accounts" | "overview" | "settings">("accounts");
   const [savingAccount, setSavingAccount] = useState(false);
   const [deletingAccountId, setDeletingAccountId] = useState("");
   const [accountToDelete, setAccountToDelete] = useState<AccountDto | null>(
@@ -307,10 +311,12 @@ export default function HomePage() {
   return (
     <WindowFrame
       titleBar={
-        <MainTitleBar
-          onOpenSettings={() => setSettingsOpen(true)}
-          onOpenAbout={() => setAboutOpen(true)}
-        />
+        !isAndroid() ? (
+          <MainTitleBar
+            onOpenSettings={() => setSettingsOpen(true)}
+            onOpenAbout={() => setAboutOpen(true)}
+          />
+        ) : null
       }
       contentClassName="flex flex-1 overflow-hidden"
     >
@@ -343,10 +349,10 @@ export default function HomePage() {
           )}
         </div>
 
-        <div className="shrink-0 px-6 pt-6">
+        <div className={cn("shrink-0 px-4 pt-4 md:px-6 md:pt-6", isAndroid() && activeTab === "settings" && "hidden")}>
           <div className="mx-auto w-full max-w-5xl xl:max-w-7xl 2xl:max-w-[1440px]">
-            <header className="flex items-center justify-between border-b border-border/40 pb-4">
-              <div className="flex items-center gap-4">
+            <header className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-border/40 pb-3 md:pb-4 gap-2 sm:gap-0">
+              <div className="flex items-center gap-3 md:gap-4">
                 <h1 className="flex items-center gap-2.5 text-xl font-bold tracking-tight text-foreground">
                   <img
                     src={appIconUrl}
@@ -357,6 +363,11 @@ export default function HomePage() {
                 </h1>
                 <div className="bg-border/60 h-4 w-px hidden sm:block" />
               </div>
+              <span className="text-muted-foreground text-xs md:hidden">
+                IP: {snapshot?.network.ip && snapshot.network.ip !== "unknown"
+                  ? snapshot.network.ip
+                  : "未知"}
+              </span>
               <span className="text-muted-foreground hidden font-mono text-xs sm:inline">
                 {snapshot?.network.ip && snapshot.network.ip !== "unknown"
                   ? snapshot.network.ip
@@ -366,11 +377,11 @@ export default function HomePage() {
           </div>
         </div>
 
-        <main className="min-w-0 flex-1 overflow-y-auto p-6">
-          <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 xl:max-w-7xl 2xl:max-w-[1440px]">
-            <div className="flex flex-col gap-6 md:flex-row">
+        <main className={cn("min-w-0 flex-1 overflow-y-auto p-4 md:p-6", isAndroid() ? "pb-24" : "")}>
+          <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 md:gap-6 xl:max-w-7xl 2xl:max-w-[1440px]">
+            <div className="flex flex-col gap-4 md:gap-6 md:flex-row">
               {/* 左侧：账号池 */}
-              <div className="flex-1 min-w-0">
+              <div className={cn("flex-1 min-w-0", isAndroid() && activeTab !== "accounts" ? "hidden md:block" : "")}>
                 <Card className="border-border bg-background/95 flex flex-col rounded-xl backdrop-blur-sm overflow-hidden h-full">
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b border-border/40">
                     <div className="space-y-1">
@@ -388,10 +399,10 @@ export default function HomePage() {
                         size="sm"
                         onClick={openAddAccountForm}
                         disabled={isBusy}
-                        className="h-8 gap-1.5"
+                        className="h-8 w-8 px-0 md:w-auto md:px-3 md:gap-1.5"
                       >
                         <Plus className="h-4 w-4" />
-                        添加账号
+                        <span className="hidden md:inline">添加账号</span>
                       </Button>
                       <Button
                         variant="outline"
@@ -400,7 +411,7 @@ export default function HomePage() {
                           runSnapshotAction("refresh", refreshDashboard)
                         }
                         disabled={isBusy}
-                        className="h-8 gap-1.5"
+                        className="h-8 w-8 px-0 md:w-auto md:px-3 md:gap-1.5"
                       >
                         <RefreshCw
                           className={cn(
@@ -408,13 +419,13 @@ export default function HomePage() {
                             runningAction === "refresh" && "animate-spin",
                           )}
                         />
-                        同步数据
+                        <span className="hidden md:inline">同步数据</span>
                       </Button>
                     </div>
                   </CardHeader>
-                  <CardContent className="p-6">
+                  <CardContent className="p-4 md:p-6">
                     <div className="max-h-[calc(100vh-240px)] min-h-[300px] overflow-y-auto pr-1">
-                      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 2xl:grid-cols-3">
+                      <div className="grid grid-cols-1 gap-3 md:gap-4 xl:grid-cols-2 2xl:grid-cols-3">
                         {snapshot?.accounts.length ? (
                           snapshot.accounts.map((account) => (
                             <AccountRow
@@ -448,7 +459,7 @@ export default function HomePage() {
               </div>
 
               {/* 右侧：状态与流量概览 */}
-              <div className="w-full md:w-80 shrink-0 flex flex-col gap-6">
+              <div className={cn("w-full md:w-80 shrink-0 flex flex-col gap-6", isAndroid() && activeTab !== "overview" ? "hidden md:flex" : "")}>
                 <Card className="border-border bg-background/95 rounded-xl backdrop-blur-sm">
                   <CardHeader className="pb-3 border-b border-border/40">
                     <CardTitle className="flex items-center justify-between text-base font-semibold">
@@ -557,9 +568,54 @@ export default function HomePage() {
                   </CardContent>
                 </Card>
               </div>
+
+              {/* Android 设置 */}
+              {isAndroid() && activeTab === "settings" && (
+                <div className="w-full flex-1 md:hidden">
+                  <MobileSettings />
+                </div>
+              )}
             </div>
           </div>
         </main>
+
+        {/* Android 底部导航栏 */}
+        {isAndroid() && (
+          <div className="absolute bottom-0 left-0 right-0 border-t border-border/40 bg-background/95 backdrop-blur-md pb-[env(safe-area-inset-bottom)] z-40 shadow-[0_-4px_16px_rgba(0,0,0,0.05)]">
+            <div className="flex h-16 items-center justify-around px-2">
+              <button
+                onClick={() => setActiveTab("accounts")}
+                className={cn(
+                  "flex flex-col items-center justify-center w-full h-full gap-1 transition-colors",
+                  activeTab === "accounts" ? "text-emerald-500" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <Users className="h-6 w-6" />
+                <span className="text-[10px] font-medium">账号池</span>
+              </button>
+              <button
+                onClick={() => setActiveTab("overview")}
+                className={cn(
+                  "flex flex-col items-center justify-center w-full h-full gap-1 transition-colors",
+                  activeTab === "overview" ? "text-emerald-500" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <CircleGauge className="h-6 w-6" />
+                <span className="text-[10px] font-medium">概览</span>
+              </button>
+              <button
+                onClick={() => setActiveTab("settings")}
+                className={cn(
+                  "flex flex-col items-center justify-center w-full h-full gap-1 transition-colors",
+                  activeTab === "settings" ? "text-emerald-500" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <SettingsIcon className="h-6 w-6" />
+                <span className="text-[10px] font-medium">设置</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
       <AccountDialog
         form={accountForm}

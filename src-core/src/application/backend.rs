@@ -229,6 +229,7 @@ impl AppCore {
             state.login_running = false;
         }
         self.emit_task_finished("login")?;
+        self.emit_state()?;
         result?;
         self.run_refresh_inner(true).await
     }
@@ -255,8 +256,9 @@ impl AppCore {
             state.logout_running = false;
         }
         self.emit_task_finished("logout")?;
+        let settled_snapshot = self.emit_state()?;
         result?;
-        self.emit_state()
+        Ok(settled_snapshot)
     }
 
     async fn run_refresh(&self, force: bool) -> AppResult<AppSnapshotDto> {
@@ -286,8 +288,9 @@ impl AppCore {
             state.refresh_running = false;
         }
         self.emit_task_finished("refresh")?;
+        let settled_snapshot = self.emit_state()?;
         result?;
-        self.emit_state()
+        Ok(settled_snapshot)
     }
 
     async fn try_auto_switch(&self) -> AppResult<()> {
@@ -451,11 +454,12 @@ mod tests {
     }
 
     impl AppEventSink for RecordingEventSink {
-        fn state_updated(&self, _snapshot: &AppSnapshotDto) -> crate::application::AppResult<()> {
+        fn state_updated(&self, snapshot: &AppSnapshotDto) -> crate::application::AppResult<()> {
+            let running = snapshot.login_state.running || snapshot.refresh_state.running;
             self.events
                 .lock()
                 .expect("events lock")
-                .push("state".to_string());
+                .push(format!("state:running={running}"));
             Ok(())
         }
 
@@ -764,5 +768,37 @@ mod tests {
         let events = event_sink.events();
         assert!(events.contains(&"start:logout".to_string()));
         assert!(events.contains(&"finish:logout".to_string()));
+    }
+
+    #[tokio::test]
+    async fn refresh_failure_emits_settled_state() {
+        let server = MockServer::start().await;
+        let local_ip = "10.151.119.57";
+        Mock::given(method("GET"))
+            .and(path("/include/auth_action.php"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(format!("1073741824,60,0.00,aa:bb:cc:dd:ee:ff,0,{local_ip}")),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/srun_portal_pc_success.php"))
+            .respond_with(ResponseTemplate::new(500).set_body_string("server error"))
+            .mount(&server)
+            .await;
+
+        let (core, _root, event_sink) = build_test_core(settings_for(&server), local_ip);
+        core.add_account("主号".to_string(), "20260001".to_string(), "p1".to_string())
+            .await
+            .expect("add account");
+
+        let result = core.refresh_dashboard().await;
+
+        assert!(result.is_err());
+        let events = event_sink.events();
+        assert!(events.contains(&"start:refresh".to_string()));
+        assert!(events.contains(&"finish:refresh".to_string()));
+        assert_eq!(events.last(), Some(&"state:running=false".to_string()));
     }
 }

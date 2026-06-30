@@ -1,5 +1,5 @@
 import { ThemeProvider } from "@/components/theme-provider";
-import { cn } from "@/lib/utils";
+import { cn, isAndroid } from "@/lib/utils";
 import { type ReactNode, useEffect, useState } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
@@ -32,9 +32,11 @@ export function WindowFrame({
       <div
         className={cn(
           "bg-background text-foreground flex h-screen w-screen flex-col overflow-hidden",
-          isMain
-            ? "border border-border/70"
-            : "rounded-xl border border-border/80 shadow-2xl",
+          isAndroid()
+            ? "border-none pt-[env(safe-area-inset-top)]"
+            : isMain
+              ? "border border-border/70"
+              : "rounded-xl border border-border/80 shadow-2xl",
           className,
         )}
       >

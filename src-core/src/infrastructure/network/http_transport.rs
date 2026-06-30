@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::error::Error;
 use std::net::IpAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -22,6 +23,7 @@ pub struct HttpTransport {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 struct ClientKey {
     use_source_ip: bool,
+    use_system_proxy: bool,
     max_redirects: usize,
 }
 
@@ -101,14 +103,17 @@ impl HttpTransport {
 
     pub async fn request(&self, spec: HttpRequestSpec) -> AppResult<HttpResponseData> {
         let modes = if self.source_ip.is_some() {
-            vec![true, false]
+            vec![(true, false), (false, false), (false, true)]
         } else {
-            vec![false]
+            vec![(false, false), (false, true)]
         };
 
         let mut last_error = None;
-        for use_source_ip in modes {
-            match self.request_with_mode(&spec, use_source_ip).await {
+        for (use_source_ip, use_system_proxy) in modes {
+            match self
+                .request_with_mode(&spec, use_source_ip, use_system_proxy)
+                .await
+            {
                 Ok(response) => return Ok(response),
                 Err(err) => last_error = Some(err),
             }
@@ -128,6 +133,7 @@ impl HttpTransport {
         &self,
         spec: &HttpRequestSpec,
         use_source_ip: bool,
+        use_system_proxy: bool,
     ) -> AppResult<HttpResponseData> {
         let parsed_url = Url::parse(&spec.url)
             .map_err(|err| AppError::Network(format!("无效 URL：{}，{err}", spec.url)))?;
@@ -144,10 +150,11 @@ impl HttpTransport {
             build_client(
                 if use_source_ip { self.source_ip } else { None },
                 spec.max_redirects,
+                use_system_proxy,
                 Some(cookie_jar.clone()),
             )?
         } else {
-            self.client_for(use_source_ip, spec.max_redirects)?
+            self.client_for(use_source_ip, use_system_proxy, spec.max_redirects)?
         };
         let method = spec
             .method
@@ -181,7 +188,13 @@ impl HttpTransport {
             request = request.body(spec.body.clone());
         }
 
-        let response = request.send().await?;
+        let response = request.send().await.map_err(|err| {
+            AppError::Network(format!(
+                "请求发送失败: url={}, detail={}",
+                spec.url,
+                format_error_chain(&err)
+            ))
+        })?;
         let status = response.status();
         let final_url = response.url().to_string();
         let reason = status.canonical_reason().unwrap_or("").to_string();
@@ -222,9 +235,15 @@ impl HttpTransport {
         })
     }
 
-    fn client_for(&self, use_source_ip: bool, max_redirects: usize) -> AppResult<reqwest::Client> {
+    fn client_for(
+        &self,
+        use_source_ip: bool,
+        use_system_proxy: bool,
+        max_redirects: usize,
+    ) -> AppResult<reqwest::Client> {
         let key = ClientKey {
             use_source_ip,
+            use_system_proxy,
             max_redirects,
         };
         let mut clients = self
@@ -235,7 +254,7 @@ impl HttpTransport {
             return Ok(client.clone());
         }
         let source_ip = if use_source_ip { self.source_ip } else { None };
-        let client = build_client(source_ip, max_redirects, None)?;
+        let client = build_client(source_ip, max_redirects, use_system_proxy, None)?;
         clients.insert(key, client.clone());
         Ok(client)
     }
@@ -244,13 +263,17 @@ impl HttpTransport {
 fn build_client(
     source_ip: Option<IpAddr>,
     max_redirects: usize,
+    use_system_proxy: bool,
     cookie_jar: Option<Arc<Jar>>,
 ) -> AppResult<reqwest::Client> {
     let mut builder = reqwest::Client::builder()
         .timeout(Duration::from_secs(25))
-        .no_proxy()
         .redirect(Policy::limited(max_redirects))
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0");
+
+    if !use_system_proxy {
+        builder = builder.no_proxy();
+    }
 
     if let Some(cookie_jar) = cookie_jar {
         builder = builder.cookie_provider(cookie_jar);
@@ -261,6 +284,19 @@ fn build_client(
     }
 
     Ok(builder.build()?)
+}
+
+fn format_error_chain(error: &(dyn Error + 'static)) -> String {
+    let mut parts = vec![error.to_string()];
+    let mut current = error.source();
+    while let Some(source) = current {
+        let text = source.to_string();
+        if !text.is_empty() && !parts.iter().any(|item| item == &text) {
+            parts.push(text);
+        }
+        current = source.source();
+    }
+    parts.join(" -> ")
 }
 
 fn extract_cookie_map(
