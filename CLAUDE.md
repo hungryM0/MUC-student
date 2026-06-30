@@ -1,6 +1,6 @@
 # MUC-student 协作说明
 
-MUC 校园网多账号桌面工具，Tauri v2 + React + Rust，目标平台 Windows。
+MUC 校园网多账号工具，Tauri v2 + React + Rust，目标平台 Windows 优先，Android 已接入。
 
 项目已进入稳定期。默认小步、低风险改动。先读现有实现，再判断落点。不要重写稳定链路。
 
@@ -9,7 +9,7 @@ MUC 校园网多账号桌面工具，Tauri v2 + React + Rust，目标平台 Wind
 - 桌面壳：Tauri v2，`src-tauri/`。
 - 前端：React，`src/`。
 - 后端核心：Rust，`src-core/`。
-- CI：`.github/workflows/ci.yml`，Windows 约束。
+- CI：`.github/workflows/ci.yml`，Windows 约束。Android 相关命令走本地环境检查。
 
 目录边界：
 
@@ -20,9 +20,11 @@ MUC 校园网多账号桌面工具，Tauri v2 + React + Rust，目标平台 Wind
 - `src-tauri/src/lib.rs`：command、插件注册、核心装配。
 - `src-tauri/src/platform.rs`：Windows 运行路径和 HKCU Run 自启。
 - `src-tauri/src/plugins/`：Tauri 插件封装。
+- `src-tauri/gen/android/`：Android Gradle 工程和 Tauri 生成物。
 - `src-core/src/application/`：用例、服务、DTO、运行时编排。
 - `src-core/src/domain/`：领域模型和纯策略。
 - `src-core/src/infrastructure/`：网络、解析、持久化、凭据、安全、系统适配。
+- Android 端也守这条边界。平台差异放适配层，不要往 React 或 `domain` 里塞条件分支。
 
 不手改生成物：`build/`、`dist/`、`target/`、`src-tauri/target/`。
 
@@ -43,6 +45,7 @@ MUC 校园网多账号桌面工具，Tauri v2 + React + Rust，目标平台 Wind
 - 查流量、在线设备、本机下线，优先走成功页和 SSO 自助面板链路。
 - 不要把切号改成"先下线再登录"。这是错路。
 - `/include/auth_action.php` 可返回 `IP has been online, please logout.`，不能当切号主链路。
+- Android 侧如果有平台差异，优先放适配层，不改稳定链路语义。
 
 ## 稳定链路入口
 
@@ -56,6 +59,7 @@ MUC 校园网多账号桌面工具，Tauri v2 + React + Rust，目标平台 Wind
 - 密码不写回 JSON。
 - 凭据走 `src-core/src/infrastructure/security/credential_vault.rs`。
 - 改本地存储格式时，迁移逻辑写在 `src-core/src/infrastructure/persistence/database.rs` 的 `user_version` 分支里。
+- Android 凭据继续走平台 keyring，不要改成明文文件。
 
 ## 修改流程
 
@@ -71,6 +75,7 @@ MUC 校园网多账号桌面工具，Tauri v2 + React + Rust，目标平台 Wind
 - 只改 Rust：`cargo fmt --check`、`cargo check`。
 - 改了策略/解析/持久化/网络流程：再跑 `cargo test`。
 - 发布相关：必要时 `cargo build --release`。
+- Android 适配相关：优先跑 `pnpm tauri:android:check`，需要时再跑 `pnpm tauri:android:dev` 或 `pnpm tauri:android:build`。
 
 ## 回复规则
 

@@ -1,6 +1,6 @@
 ---
 name: muc-student-architecture
-description: 规划或审查 MUC-student 的分层边界、模块落点和跨层改动。仅在跨 React、Tauri、src-core 多层修改，目录迁移，服务拆分，存储格式调整，领域层边界审查，或不确定代码该放哪里时使用；单文件小修、纯样式微调、纯测试运行不触发。
+description: 规划或审查 MUC-student 的分层边界、模块落点和跨层改动。仅在跨 React、Tauri、src-core 多层修改，目录迁移，服务拆分，存储格式调整，领域层边界审查，Android 适配边界，或不确定代码该放哪里时使用；单文件小修、纯样式微调、纯测试运行不触发。
 ---
 
 # MUC Student Architecture
@@ -15,6 +15,7 @@ description: 规划或审查 MUC-student 的分层边界、模块落点和跨层
 - 前端 DTO、Tauri invoke、窗口工具：`src/lib/`。
 - Tauri command、插件注册、核心装配：`src-tauri/src/lib.rs`。
 - Windows 桌面适配：`src-tauri/src/platform.rs`。
+- Android 适配：`src-tauri/gen/android/`、`src-core/src/infrastructure/security/credential_vault.rs`、`src-tauri/src/lib.rs` 的 mobile 入口。
 - Tauri 插件封装：`src-tauri/src/plugins/`。
 - 用例、服务、DTO、运行时编排：`src-core/src/application/`。
 - 领域模型、纯策略、纯计算：`src-core/src/domain/`。
@@ -27,6 +28,7 @@ description: 规划或审查 MUC-student 的分层边界、模块落点和跨层
 - 改存储格式时，先补迁移。
 - 改 DTO 时，同时查 React 类型和 Rust DTO。
 - 改策略时，先确认策略是否属于 `domain`，外部 IO 不准跟进去。
+- Android 平台差异放适配层，不要把条件分支塞进 React 或 `domain`。
 
 ## 硬禁区
 
@@ -36,6 +38,7 @@ description: 规划或审查 MUC-student 的分层边界、模块落点和跨层
 - 不把 HTTP、文件读写、系统 API 塞进 `domain`。
 - 不把密码写回 JSON。
 - 不在界面里写解释性废话。
+- 不把 Android 平台差异写成桌面专属逻辑。
 
 ## 调用链查法
 
@@ -44,6 +47,8 @@ description: 规划或审查 MUC-student 的分层边界、模块落点和跨层
 `src/pages/*` -> `src/lib/muc.ts` -> `src-tauri/src/lib.rs` -> `src-core/src/application/` -> `src-core/src/domain/` 或 `src-core/src/infrastructure/`
 
 先找已有入口。找不到再新建。
+
+Android 相关时，先看 `src-tauri/gen/android/` 和 Rust 侧 mobile 入口，再决定改哪层。
 
 ## 参考
 

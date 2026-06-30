@@ -1,6 +1,6 @@
 # MUC-student 协作说明
 
-这个仓库是 MUC 校园网多账号桌面工具。
+这个仓库是 MUC 校园网多账号工具。
 
 项目已进入稳定期。默认做小步、低风险改动。先读现有实现，再判断落点。不要重写已经稳定的链路。
 
@@ -9,8 +9,8 @@
 - 桌面壳：Tauri v2。
 - 前端：React。
 - 后端核心：Rust，放在 `src-core/`。
-- 目标平台：Windows。
-- CI：`.github/workflows/ci.yml`，按 Windows 约束跑。
+- 目标平台：Windows 优先，Android 已接入。
+- CI：`.github/workflows/ci.yml`，按 Windows 约束跑。Android 相关命令走本地环境检查。
 
 登录态规则要记住：
 
@@ -34,6 +34,7 @@
 - `src-tauri/src/lib.rs`：command、插件注册、核心装配。
 - `src-tauri/src/platform.rs`：Windows 运行路径和 HKCU Run 自启。
 - `src-tauri/src/plugins/`：Tauri 插件封装。
+- `src-tauri/gen/android/`：Android Gradle 工程和 Tauri 生成物。
 
 生成物不要手改：
 
@@ -51,6 +52,7 @@
 - 纯计算和选择策略放 `src-core/src/domain/`。
 - HTTP、HTML 解析、文件、凭据、系统 API 放 `src-core/src/infrastructure/`。
 - `domain` 里出现网络请求、文件读写、系统调用，直接判定分层打穿。
+- Android 端也守这条边界。平台差异放适配层，不要往 React 或 `domain` 里塞条件分支。
 
 ## 稳定链路
 
@@ -85,6 +87,7 @@
 - 密码不写回 JSON。
 - 凭据继续走 `src-core/src/infrastructure/security/credential_vault.rs`。
 - 改本地存储格式时，迁移逻辑写在 `src-core/src/infrastructure/persistence/database.rs` 的 `user_version` 分支里。
+- Android 凭据继续走平台 keyring，不要改成明文文件。
 
 ## 修改流程
 
@@ -114,6 +117,7 @@
 - Rust：`cargo fmt --check`、`cargo check`。
 - 策略、解析、持久化、网络流程：再跑 `cargo test`。
 - Windows 发布相关：必要时跑 `cargo build --release`。
+- Android 适配相关：优先跑 `pnpm tauri:android:check`，需要时再跑 `pnpm tauri:android:dev` 或 `pnpm tauri:android:build`。
 
 ## 回复规则
 

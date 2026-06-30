@@ -49,6 +49,15 @@ description: 为 MUC-student 改动选择最小验证命令，并解释已跑、
 - `pnpm build`
 - `cargo build --release`
 
+### 改 Android 适配、Tauri mobile、Android 凭据或打包
+
+- `pnpm tauri:android:check`
+
+需要看 mobile 构建或真机流程时，再跑：
+
+- `pnpm tauri:android:dev`
+- `pnpm tauri:android:build`
+
 ## 输出规则
 
 - 明确列出已跑命令和结果。
