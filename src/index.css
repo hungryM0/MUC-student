@@ -280,7 +280,8 @@ button {
 
 /* 呼吸心跳效果 */
 @keyframes heartBeat {
-  0%, 100% {
+  0%,
+  100% {
     transform: scale(1);
   }
   50% {
@@ -366,5 +367,3 @@ button {
 .animate-scale-in-simple {
   animation: scaleInSimple 300ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
-
-

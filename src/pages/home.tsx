@@ -50,11 +50,27 @@ import appIconUrl from "../../src-tauri/icons/icon.svg?url";
 
 function trafficProgressClasses(percent: number, isOnline = true) {
   const c =
-    percent >= 100 ? { bar: "bg-red-700", barOff: "bg-red-700/60", text: "text-red-700" } :
-    percent >= 90  ? { bar: "bg-red-500", barOff: "bg-red-500/60", text: "text-red-500" } :
-    percent >= 80  ? { bar: "bg-orange-500", barOff: "bg-orange-500/60", text: "text-orange-500" } :
-    percent >= 70  ? { bar: "bg-yellow-500", barOff: "bg-yellow-500/60", text: "text-yellow-500" } :
-                     { bar: "bg-emerald-500", barOff: "bg-emerald-500/60", text: "text-emerald-500" };
+    percent >= 100
+      ? { bar: "bg-red-700", barOff: "bg-red-700/60", text: "text-red-700" }
+      : percent >= 90
+        ? { bar: "bg-red-500", barOff: "bg-red-500/60", text: "text-red-500" }
+        : percent >= 80
+          ? {
+              bar: "bg-orange-500",
+              barOff: "bg-orange-500/60",
+              text: "text-orange-500",
+            }
+          : percent >= 70
+            ? {
+                bar: "bg-yellow-500",
+                barOff: "bg-yellow-500/60",
+                text: "text-yellow-500",
+              }
+            : {
+                bar: "bg-emerald-500",
+                barOff: "bg-emerald-500/60",
+                text: "text-emerald-500",
+              };
   return { bar: isOnline ? c.bar : c.barOff, text: c.text };
 }
 
@@ -101,7 +117,9 @@ export default function HomePage() {
   const [runningAction, setRunningAction] = useState<RunningAction | null>(
     null,
   );
-  const [activeTab, setActiveTab] = useState<"accounts" | "overview" | "settings">("accounts");
+  const [activeTab, setActiveTab] = useState<
+    "accounts" | "overview" | "settings"
+  >("accounts");
   const [savingAccount, setSavingAccount] = useState(false);
   const [deletingAccountId, setDeletingAccountId] = useState("");
   const [accountToDelete, setAccountToDelete] = useState<AccountDto | null>(
@@ -349,7 +367,12 @@ export default function HomePage() {
           )}
         </div>
 
-        <div className={cn("shrink-0 px-4 pt-4 md:px-6 md:pt-6", isAndroid() && activeTab === "settings" && "hidden")}>
+        <div
+          className={cn(
+            "shrink-0 px-4 pt-4 md:px-6 md:pt-6",
+            isAndroid() && activeTab === "settings" && "hidden",
+          )}
+        >
           <div className="mx-auto w-full max-w-5xl xl:max-w-7xl 2xl:max-w-[1440px]">
             <header className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-border/40 pb-3 md:pb-4 gap-2 sm:gap-0">
               <div className="flex items-center gap-3 md:gap-4">
@@ -364,7 +387,8 @@ export default function HomePage() {
                 <div className="bg-border/60 h-4 w-px hidden sm:block" />
               </div>
               <span className="text-muted-foreground text-xs md:hidden">
-                IP: {snapshot?.network.ip && snapshot.network.ip !== "unknown"
+                IP:{" "}
+                {snapshot?.network.ip && snapshot.network.ip !== "unknown"
                   ? snapshot.network.ip
                   : "未知"}
               </span>
@@ -377,11 +401,23 @@ export default function HomePage() {
           </div>
         </div>
 
-        <main className={cn("min-w-0 flex-1 overflow-y-auto p-4 md:p-6", isAndroid() ? "pb-24" : "")}>
+        <main
+          className={cn(
+            "min-w-0 flex-1 overflow-y-auto p-4 md:p-6",
+            isAndroid() ? "pb-24" : "",
+          )}
+        >
           <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 md:gap-6 xl:max-w-7xl 2xl:max-w-[1440px]">
             <div className="flex flex-col gap-4 md:gap-6 md:flex-row">
               {/* 左侧：账号池 */}
-              <div className={cn("flex-1 min-w-0", isAndroid() && activeTab !== "accounts" ? "hidden md:block" : "")}>
+              <div
+                className={cn(
+                  "flex-1 min-w-0",
+                  isAndroid() && activeTab !== "accounts"
+                    ? "hidden md:block"
+                    : "",
+                )}
+              >
                 <Card className="border-border bg-background/95 flex flex-col rounded-xl backdrop-blur-sm overflow-hidden h-full">
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b border-border/40">
                     <div className="space-y-1">
@@ -459,7 +495,14 @@ export default function HomePage() {
               </div>
 
               {/* 右侧：状态与流量概览 */}
-              <div className={cn("w-full md:w-80 shrink-0 flex flex-col gap-6", isAndroid() && activeTab !== "overview" ? "hidden md:flex" : "")}>
+              <div
+                className={cn(
+                  "w-full md:w-80 shrink-0 flex flex-col gap-6",
+                  isAndroid() && activeTab !== "overview"
+                    ? "hidden md:flex"
+                    : "",
+                )}
+              >
                 <Card className="border-border bg-background/95 rounded-xl backdrop-blur-sm">
                   <CardHeader className="pb-3 border-b border-border/40">
                     <CardTitle className="flex items-center justify-between text-base font-semibold">
@@ -587,7 +630,9 @@ export default function HomePage() {
                 onClick={() => setActiveTab("accounts")}
                 className={cn(
                   "flex flex-col items-center justify-center w-full h-full gap-1 transition-colors",
-                  activeTab === "accounts" ? "text-emerald-500" : "text-muted-foreground hover:text-foreground"
+                  activeTab === "accounts"
+                    ? "text-emerald-500"
+                    : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 <Users className="h-6 w-6" />
@@ -597,7 +642,9 @@ export default function HomePage() {
                 onClick={() => setActiveTab("overview")}
                 className={cn(
                   "flex flex-col items-center justify-center w-full h-full gap-1 transition-colors",
-                  activeTab === "overview" ? "text-emerald-500" : "text-muted-foreground hover:text-foreground"
+                  activeTab === "overview"
+                    ? "text-emerald-500"
+                    : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 <CircleGauge className="h-6 w-6" />
@@ -607,7 +654,9 @@ export default function HomePage() {
                 onClick={() => setActiveTab("settings")}
                 className={cn(
                   "flex flex-col items-center justify-center w-full h-full gap-1 transition-colors",
-                  activeTab === "settings" ? "text-emerald-500" : "text-muted-foreground hover:text-foreground"
+                  activeTab === "settings"
+                    ? "text-emerald-500"
+                    : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 <SettingsIcon className="h-6 w-6" />
@@ -734,9 +783,13 @@ function AccountRow({
   const packageAvailable = parseTrafficValue(snapshot?.packageAvailableText);
   const packageUsed = Math.max(0, packageTotal - packageAvailable);
   const freeProgress =
-    freeQuota > 0 ? Math.min(100, Math.max(0, (totalUsed / freeQuota) * 100)) : 0;
+    freeQuota > 0
+      ? Math.min(100, Math.max(0, (totalUsed / freeQuota) * 100))
+      : 0;
   const packageProgress =
-    packageTotal > 0 ? Math.min(100, Math.max(0, (packageUsed / packageTotal) * 100)) : 0;
+    packageTotal > 0
+      ? Math.min(100, Math.max(0, (packageUsed / packageTotal) * 100))
+      : 0;
   const accountState = account.isCurrentOnline ? "online" : "idle";
 
   return (
@@ -842,8 +895,11 @@ function AccountRow({
             >
               <div
                 className={cn(
-                "h-full rounded-full transition-[width] duration-500 ease-out",
-                  trafficProgressClasses(Math.round(freeProgress), accountState === "online").bar,
+                  "h-full rounded-full transition-[width] duration-500 ease-out",
+                  trafficProgressClasses(
+                    Math.round(freeProgress),
+                    accountState === "online",
+                  ).bar,
                 )}
                 style={{ width: `${freeProgress}%` }}
               />
@@ -1115,7 +1171,3 @@ function ActionLoadingOverlay({
     </div>
   );
 }
-
-
-
-

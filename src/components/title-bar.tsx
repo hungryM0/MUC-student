@@ -94,20 +94,25 @@ export function TitleBar({
     <div
       className={cn(
         "bg-background/95 supports-backdrop-filter:bg-background/60 border-border/40 flex items-center justify-between border-b backdrop-blur select-none",
-        isAndroid() ? "h-14 px-4" : "h-8"
+        isAndroid() ? "h-14 px-4" : "h-8",
       )}
     >
       {/* Left: Title + Drag region */}
       <div
         data-tauri-drag-region={!isAndroid() ? true : undefined}
         onDoubleClick={handleDragRegionDoubleClick}
-        className={cn("flex grow items-center gap-2", isAndroid() ? "" : "pl-2")}
+        className={cn(
+          "flex grow items-center gap-2",
+          isAndroid() ? "" : "pl-2",
+        )}
       >
         {title && (
           <span
             className={cn(
               "font-medium",
-              isAndroid() ? "text-base text-foreground" : "text-sm text-slate-400"
+              isAndroid()
+                ? "text-base text-foreground"
+                : "text-sm text-slate-400",
             )}
           >
             {title}
@@ -120,9 +125,11 @@ export function TitleBar({
       <div className={cn("flex items-center", isAndroid() && "gap-2")}>
         {rightActions}
 
-        {!isAndroid() && rightActions && (showMinimize || showMaximize || showClose) && (
-          <div className="bg-border/40 mx-1 h-4 w-px" />
-        )}
+        {!isAndroid() &&
+          rightActions &&
+          (showMinimize || showMaximize || showClose) && (
+            <div className="bg-border/40 mx-1 h-4 w-px" />
+          )}
 
         {!isAndroid() && showMinimize && (
           <button

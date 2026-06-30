@@ -8,7 +8,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  checks:
+  windows:
+    name: Windows CI
     runs-on: windows-latest
 
     steps:
@@ -51,3 +52,40 @@ jobs:
 
       - name: Test workspace
         run: cargo test
+
+  android:
+    name: Android CI
+    runs-on: macos-latest
+
+    steps:
+      - name: Pull repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add Android target
+        run: rustup target add aarch64-linux-android
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check Android workspace
+        run: pnpm tauri:android:check
