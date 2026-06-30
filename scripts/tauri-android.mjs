@@ -9,6 +9,7 @@ const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, "..");
 
 const command = process.argv[2];
+const passthroughArgs = process.argv.slice(3);
 if (!command || !["dev", "check", "build"].includes(command)) {
   console.error("用法：node scripts/tauri-android.mjs <dev|check|build>");
   process.exit(1);
@@ -27,6 +28,8 @@ const ndkBin = path.join(
   "bin",
 );
 const originalPath = env.PATH ?? env.Path ?? "";
+const androidApiLevel = 34;
+const adbExecutable = path.join(androidSdk, "platform-tools", "adb.exe");
 
 env.ANDROID_HOME = androidSdk;
 env.ANDROID_SDK_ROOT = androidSdk;
@@ -38,14 +41,21 @@ env.PATH = [path.join(javaHome, "bin"), ndkBin, originalPath]
   .join(path.delimiter);
 env.Path = env.PATH;
 
+env.ORG_GRADLE_PROJECT_abiList = "arm64-v8a";
+env.ORG_GRADLE_PROJECT_archList = "arm64";
+env.ORG_GRADLE_PROJECT_targetList = "aarch64";
+
 for (const [target, triple] of [
   ["aarch64_linux_android", "aarch64-linux-android"],
-  ["armv7_linux_androideabi", "armv7a-linux-androideabi"],
-  ["i686_linux_android", "i686-linux-android"],
-  ["x86_64_linux_android", "x86_64-linux-android"],
 ]) {
-  env[`CC_${target}`] = path.join(ndkBin, `${triple}24-clang.cmd`);
-  env[`CXX_${target}`] = path.join(ndkBin, `${triple}24-clang++.cmd`);
+  env[`CC_${target}`] = path.join(
+    ndkBin,
+    `${triple}${androidApiLevel}-clang.cmd`,
+  );
+  env[`CXX_${target}`] = path.join(
+    ndkBin,
+    `${triple}${androidApiLevel}-clang++.cmd`,
+  );
 }
 
 const result =
@@ -56,12 +66,16 @@ const result =
         stdio: "inherit",
         shell: process.platform === "win32",
       })
-    : spawnSync("pnpm", ["tauri", "android", command], {
+    : spawnSync(
+        "pnpm",
+        ["tauri", "android", command, ...tauriArgs(command), ...passthroughArgs],
+        {
         cwd: rootDir,
         env,
         stdio: "inherit",
         shell: process.platform === "win32",
-      });
+      },
+      );
 
 process.exit(result.status ?? 1);
 
@@ -81,6 +95,23 @@ function findAndroidSdk() {
     );
   }
   return sdk;
+}
+
+function tauriArgs(command) {
+  if (command === "build") {
+    return ["--target", "aarch64"];
+  }
+
+  if (command !== "dev") {
+    return [];
+  }
+
+  if (passthroughArgs.includes("--host") || passthroughArgs.includes("--open")) {
+    return [];
+  }
+
+  setupAdbReverse();
+  return ["--host", "127.0.0.1"];
 }
 
 function findAndroidNdk(androidSdk) {
@@ -136,4 +167,53 @@ function findJavaHome() {
     throw new Error("找不到 Java。请安装 JDK 17+，或设置 JAVA_HOME。");
   }
   return javaHome;
+}
+
+function setupAdbReverse() {
+  if (!existsSync(adbExecutable)) {
+    console.warn("未找到 adb，跳过端口反向代理。");
+    return;
+  }
+
+  const devices = listAdbDevices();
+  if (devices.length === 0) {
+    console.warn("未发现已连接 Android 设备，跳过端口反向代理。");
+    return;
+  }
+
+  for (const serial of devices) {
+    reversePort(serial, 1420);
+    reversePort(serial, 1421);
+  }
+}
+
+function listAdbDevices() {
+  const result = spawnSync(adbExecutable, ["devices"], { encoding: "utf8" });
+  if (result.status !== 0) {
+    console.warn("读取 adb 设备列表失败，跳过端口反向代理。");
+    return [];
+  }
+
+  return result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("List of devices attached"))
+    .map((line) => line.split(/\s+/))
+    .filter((parts) => parts[1] === "device")
+    .map((parts) => parts[0]);
+}
+
+function reversePort(serial, port) {
+  const result = spawnSync(
+    adbExecutable,
+    ["-s", serial, "reverse", `tcp:${port}`, `tcp:${port}`],
+    { encoding: "utf8" },
+  );
+
+  if (result.status !== 0) {
+    const reason = [result.stdout, result.stderr].join("\n").trim();
+    console.warn(
+      `设备 ${serial} 的 adb reverse tcp:${port} 失败${reason ? `：${reason}` : ""}`,
+    );
+  }
 }

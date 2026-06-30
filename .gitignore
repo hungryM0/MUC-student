@@ -10,8 +10,8 @@ src-tauri/gen/schemas/
 # Local configuration
 .idea/
 .playwright-mcp/
-.codex/config.toml
-.codex/environments/
+.codex/
+.claude/settings.local.json
 accounts.json
 app_state.json
 *.log
