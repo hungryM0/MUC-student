@@ -1,7 +1,9 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use chrono::Local;
 use tokio::sync::Mutex;
+use tokio::time::sleep;
 
 use crate::application::dto::AppSnapshotDto;
 use crate::application::error::{AppError, AppResult};
@@ -35,12 +37,14 @@ pub struct AppCore {
     session_service: SessionService,
     dashboard_refresh_service: DashboardRefreshService,
     network_task_lock: Arc<Mutex<()>>,
+    background_refresh_started: Arc<AtomicBool>,
     event_sink: Arc<dyn AppEventSink>,
     startup_controller: Arc<dyn StartupController>,
 }
 
 impl AppCore {
     const QUOTA_REFRESH_COOLDOWN_MINUTES: i64 = 30;
+    const BACKGROUND_REFRESH_INTERVAL_SECONDS: u64 = 5 * 60;
 
     pub fn build(
         path_provider: Arc<dyn RuntimePathProvider>,
@@ -113,6 +117,7 @@ impl AppCore {
             session_service,
             dashboard_refresh_service,
             network_task_lock: Arc::new(Mutex::new(())),
+            background_refresh_started: Arc::new(AtomicBool::new(false)),
             event_sink,
             startup_controller,
         };
@@ -121,12 +126,11 @@ impl AppCore {
 
     pub async fn bootstrap_app(&self) -> AppResult<AppSnapshotDto> {
         self.refresh_runtime_from_disk()?;
+        self.start_background_refresh_loop();
         let snapshot = self.emit_state()?;
         let backend = self.clone();
         tokio::spawn(async move {
-            if backend.run_refresh(false).await.is_err() {
-                let _ = backend.emit_state();
-            }
+            let _ = backend.refresh_dashboard_silently().await;
         });
         Ok(snapshot)
     }
@@ -293,6 +297,16 @@ impl AppCore {
         Ok(settled_snapshot)
     }
 
+    async fn refresh_dashboard_silently(&self) -> AppResult<()> {
+        let Ok(_task_guard) = self.network_task_lock.try_lock() else {
+            return Ok(());
+        };
+        let result = self.dashboard_refresh_service.refresh_accounts().await;
+        self.emit_state()?;
+        result?;
+        Ok(())
+    }
+
     async fn try_auto_switch(&self) -> AppResult<()> {
         let (enabled, store, snapshots, recent_ids) = {
             let state = self.state.read();
@@ -319,6 +333,26 @@ impl AppCore {
         self.session_service.login_selected_account_inner().await?;
         let _ = current;
         Ok(())
+    }
+
+    fn start_background_refresh_loop(&self) {
+        if self.background_refresh_started.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let backend = self.clone();
+        tokio::spawn(async move {
+            sleep(std::time::Duration::from_secs(
+                Self::BACKGROUND_REFRESH_INTERVAL_SECONDS,
+            ))
+            .await;
+            loop {
+                let _ = backend.refresh_dashboard_silently().await;
+                sleep(std::time::Duration::from_secs(
+                    Self::BACKGROUND_REFRESH_INTERVAL_SECONDS,
+                ))
+                .await;
+            }
+        });
     }
 
     fn refresh_runtime_from_disk(&self) -> AppResult<()> {
@@ -543,6 +577,7 @@ mod tests {
             session_service,
             dashboard_refresh_service,
             network_task_lock: Arc::new(tokio::sync::Mutex::new(())),
+            background_refresh_started: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             event_sink: event_sink.clone(),
             startup_controller: Arc::new(NoopStartupController),
         };
@@ -707,6 +742,55 @@ mod tests {
         assert_eq!(traffic.package_text, "校园网");
         assert_eq!(traffic.online_device_count_text, "1");
         assert!(account.can_logout_local_device);
+    }
+
+    #[tokio::test]
+    async fn silent_refresh_does_not_emit_refresh_running_state() {
+        let server = MockServer::start().await;
+        let local_ip = "10.151.119.57";
+        Mock::given(method("GET"))
+            .and(path("/include/auth_action.php"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(format!("1073741824,60,0.00,aa:bb:cc:dd:ee:ff,0,{local_ip}")),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/srun_portal_pc_success.php"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string(success_page(local_ip, "20260001")),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/site/sso"))
+            .respond_with(
+                ResponseTemplate::new(302)
+                    .insert_header("set-cookie", "PHPSESSID_8800=abc; path=/; HttpOnly")
+                    .insert_header("location", "/home"),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/home"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(panel_home_html(local_ip)))
+            .mount(&server)
+            .await;
+
+        let (core, _root, event_sink) = build_test_core(settings_for(&server), local_ip);
+        core.add_account("主号".to_string(), "20260001".to_string(), "p1".to_string())
+            .await
+            .expect("add account");
+
+        core.refresh_dashboard_silently()
+            .await
+            .expect("silent refresh");
+
+        let events = event_sink.events();
+        assert!(!events.iter().any(|event| event == "start:refresh"));
+        assert!(!events.iter().any(|event| event == "finish:refresh"));
+        assert!(events.iter().any(|event| event == "state:running=false"));
     }
 
     #[tokio::test]

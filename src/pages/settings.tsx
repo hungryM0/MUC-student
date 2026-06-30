@@ -65,14 +65,6 @@ export default function SettingsPage() {
                 disabled={!preferences}
                 onToggle={() => togglePreference("launchOnStartup")}
               />
-              <PreferenceRow
-                title="流量用完后自动切换账号"
-                checked={!!preferences?.autoSwitchAccountOnTrafficExhausted}
-                disabled={!preferences}
-                onToggle={() =>
-                  togglePreference("autoSwitchAccountOnTrafficExhausted")
-                }
-              />
             </div>
           </section>
 

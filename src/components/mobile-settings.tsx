@@ -2,7 +2,6 @@ import { Monitor, Moon, Sun, GitFork } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/components/theme-provider";
 import { usePreferences } from "@/hooks/use-preferences";
-import { cn } from "@/lib/utils";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getVersion } from "@tauri-apps/api/app";
 import { useState, useEffect } from "react";
@@ -10,7 +9,7 @@ import appIconUrl from "../../src-tauri/icons/icon.svg?url";
 
 export function MobileSettings() {
   const { theme, setTheme } = useTheme();
-  const { preferences, errorText, togglePreference } = usePreferences(true);
+  const { errorText } = usePreferences(true);
   const [version, setVersion] = useState("");
 
   useEffect(() => {
@@ -71,22 +70,6 @@ export function MobileSettings() {
         </section>
 
         {/* 行为 */}
-        <section className="space-y-3">
-          <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase px-2">
-            行为配置
-          </h3>
-          <div className="divide-y divide-border/60 overflow-hidden rounded-xl border border-border/80 bg-background/50">
-            <PreferenceRow
-              title="流量用完后自动切换账号"
-              checked={!!preferences?.autoSwitchAccountOnTrafficExhausted}
-              disabled={!preferences}
-              onToggle={() =>
-                togglePreference("autoSwitchAccountOnTrafficExhausted")
-              }
-            />
-          </div>
-        </section>
-
         {/* Links */}
         <section className="pt-2">
           <Button
@@ -105,55 +88,6 @@ export function MobileSettings() {
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-function PreferenceRow({
-  title,
-  checked,
-  disabled,
-  onToggle,
-}: {
-  title: string;
-  checked: boolean;
-  disabled: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <div
-      onClick={disabled ? undefined : onToggle}
-      className={cn(
-        "flex min-h-[56px] items-center justify-between gap-4 px-4 py-3 text-sm transition-colors select-none",
-        disabled
-          ? "cursor-not-allowed opacity-60"
-          : "cursor-pointer hover:bg-muted/40",
-      )}
-    >
-      <span className="font-medium text-foreground">{title}</span>
-      <span
-        className="flex items-center gap-2.5"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button
-          type="button"
-          role="switch"
-          aria-checked={checked}
-          disabled={disabled}
-          onClick={onToggle}
-          className={cn(
-            "relative inline-flex h-6 w-10 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus:outline-hidden disabled:cursor-not-allowed",
-            checked ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-700",
-          )}
-        >
-          <span
-            className={cn(
-              "pointer-events-none block h-5 w-5 rounded-full bg-background shadow-sm ring-0 transition-transform duration-200",
-              checked ? "translate-x-5" : "translate-x-0.5",
-            )}
-          />
-        </button>
-      </span>
     </div>
   );
 }
