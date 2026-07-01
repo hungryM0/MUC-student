@@ -98,7 +98,7 @@ class AndroidKeepaliveService : Service() {
         KeepaliveSummary(
           listOf(
             accountText,
-            "流量配额：号池总流量 $trafficValue",
+            "号池配额：$trafficValue",
           ).joinToString("\n")
         )
       }
