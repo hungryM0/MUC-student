@@ -1,6 +1,5 @@
 import { Moon, Sun, Info, Settings } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
-import { createWindow } from "@/lib/window";
 import { TitleBar } from "@/components/title-bar";
 
 interface MainTitleBarProps {
@@ -19,44 +18,11 @@ export function MainTitleBar({
   };
 
   const handleOpenAbout = async () => {
-    if (onOpenAbout) {
-      onOpenAbout();
-    } else {
-      await createWindow("about", {
-        title: "关于",
-        url: "/about",
-        width: 500,
-        height: 400,
-        resizable: false,
-        maximizable: false,
-        minimizable: false,
-        decorations: false,
-        transparent: true,
-        shadow: true,
-        alwaysOnTop: true,
-        parent: "main",
-      });
-    }
+    onOpenAbout?.();
   };
 
   const handleOpenSettings = async () => {
-    if (onOpenSettings) {
-      onOpenSettings();
-    } else {
-      await createWindow("settings", {
-        title: "设置",
-        url: "/settings",
-        width: 600,
-        height: 500,
-        resizable: true,
-        maximizable: true,
-        minimizable: false,
-        decorations: false,
-        transparent: true,
-        shadow: true,
-        parent: "main",
-      });
-    }
+    onOpenSettings?.();
   };
 
   return (

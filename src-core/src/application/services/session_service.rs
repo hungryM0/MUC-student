@@ -15,12 +15,14 @@ use crate::infrastructure::network::network_status_service::NetworkStatusDetecto
 use crate::infrastructure::persistence::account_repository::{
     AccountRepository, AccountWithPassword,
 };
+use crate::infrastructure::persistence::account_snapshot_repository::AccountSnapshotRepository;
 use crate::infrastructure::persistence::app_state_repository::AppStateRepository;
 
 #[derive(Clone)]
 pub struct SessionService {
     state: SharedRuntimeState,
     account_repo: AccountRepository,
+    snapshot_repo: AccountSnapshotRepository,
     app_state_repo: AppStateRepository,
     auth_client: LegacyPortalAuthClient,
     portal_status_client: LegacyPortalStatusClient,
@@ -45,6 +47,7 @@ impl SessionService {
     pub fn new(
         state: SharedRuntimeState,
         account_repo: AccountRepository,
+        snapshot_repo: AccountSnapshotRepository,
         app_state_repo: AppStateRepository,
         auth_client: LegacyPortalAuthClient,
         portal_status_client: LegacyPortalStatusClient,
@@ -53,6 +56,7 @@ impl SessionService {
         Self {
             state,
             account_repo,
+            snapshot_repo,
             app_state_repo,
             auth_client,
             portal_status_client,
@@ -196,37 +200,35 @@ impl SessionService {
         target: &AccountWithPassword,
         checked_at: chrono::DateTime<Local>,
     ) -> AppResult<()> {
-        let mut store = self.account_repo.load_store()?;
+        let store = self.account_repo.load_store()?;
         let previous = store
             .cached_traffic_snapshots
             .get(&target.account.id)
             .cloned()
             .unwrap_or_default();
-        store.cached_traffic_snapshots.insert(
-            target.account.id.clone(),
-            CachedTrafficSnapshot {
-                used_traffic_text: "70.00GB".to_string(),
-                product_balance_text: "70.00GB".to_string(),
-                included_package_text: String::new(),
-                package_total_text: String::new(),
-                package_available_text: String::new(),
-                online_device_count_text: if previous.online_device_count_text.trim().is_empty() {
-                    "-".to_string()
-                } else {
-                    previous.online_device_count_text
-                },
-                package_text: if previous.package_text.trim().is_empty() {
-                    "-".to_string()
-                } else {
-                    previous.package_text
-                },
-                status_text: "已耗尽".to_string(),
-                detail_text: "Portal 返回欠费，按流量 100% 耗尽处理".to_string(),
-                queried_at: Some(checked_at),
-                progress_percent: Some(100.0),
+        let snapshot = CachedTrafficSnapshot {
+            used_traffic_text: "70.00GB".to_string(),
+            product_balance_text: "70.00GB".to_string(),
+            included_package_text: String::new(),
+            package_total_text: String::new(),
+            package_available_text: String::new(),
+            online_device_count_text: if previous.online_device_count_text.trim().is_empty() {
+                "-".to_string()
+            } else {
+                previous.online_device_count_text
             },
-        );
-        self.account_repo.save_store(&store)
+            package_text: if previous.package_text.trim().is_empty() {
+                "-".to_string()
+            } else {
+                previous.package_text
+            },
+            status_text: "已耗尽".to_string(),
+            detail_text: "Portal 返回欠费，按流量 100% 耗尽处理".to_string(),
+            queried_at: Some(checked_at),
+            progress_percent: Some(100.0),
+        };
+        self.snapshot_repo
+            .save_cached_snapshot(&store.accounts, &target.account.id, snapshot)
     }
 
     pub async fn logout_local_device_inner(&self) -> AppResult<()> {
@@ -297,9 +299,9 @@ impl SessionService {
                 target.account.display_name()
             )));
         }
-        let mut store = self.account_repo.load_store()?;
-        store.current_online_account_id = target.account.id.clone();
-        self.account_repo.save_store(&store)?;
+        let store = self.account_repo.load_store()?;
+        self.snapshot_repo
+            .set_current_online_account_id(&store.accounts, target.account.id.clone())?;
         {
             let mut state = self.state.write();
             state.current_online_account_id = target.account.id.clone();

@@ -1,17 +1,28 @@
 import { Monitor, Moon, Sun, GitFork, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/components/theme-provider";
-import { usePreferences } from "@/hooks/use-preferences";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getVersion } from "@tauri-apps/api/app";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { useManualUpdateCheck } from "@/components/updater-dialog";
 import appIconUrl from "../../src-tauri/icons/icon.svg?url";
+import type { Preferences } from "@/components/home/types";
 
-export function MobileSettings() {
+interface MobileSettingsProps {
+  preferences: Preferences | null;
+  errorText: string;
+  saving: boolean;
+  onTogglePreference: (key: keyof Preferences) => void;
+}
+
+export function MobileSettings({
+  preferences,
+  errorText,
+  saving,
+  onTogglePreference,
+}: MobileSettingsProps) {
   const { theme, setTheme } = useTheme();
-  const { preferences, errorText, togglePreference } = usePreferences(true);
   const { checkUpdate, checking, showNoUpdate, dismissNoUpdate } =
     useManualUpdateCheck();
   const [version, setVersion] = useState("");
@@ -103,9 +114,9 @@ export function MobileSettings() {
             <MobilePreferenceRow
               title="流量耗尽后自动切换到上一个使用的账号"
               checked={!!preferences?.autoSwitchAccountOnTrafficExhausted}
-              disabled={!preferences}
+              disabled={!preferences || saving}
               onToggle={() =>
-                togglePreference("autoSwitchAccountOnTrafficExhausted")
+                onTogglePreference("autoSwitchAccountOnTrafficExhausted")
               }
             />
           </div>
@@ -147,7 +158,11 @@ function MobilePreferenceRow({
   return (
     <button
       type="button"
-      onClick={onToggle}
+      onClick={() => {
+        if (!disabled) {
+          onToggle();
+        }
+      }}
       disabled={disabled}
       className={cn(
         "flex min-h-[60px] w-full items-center justify-between gap-4 px-4 py-3 text-left transition-colors",

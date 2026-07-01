@@ -215,24 +215,6 @@ pub fn run() {
     #[cfg(desktop)]
     let builder = builder.plugin(plugins::system_tray::init());
 
-    #[cfg(desktop)]
-    let builder = builder.invoke_handler(tauri::generate_handler![
-        bootstrap_app,
-        get_app_snapshot,
-        select_account,
-        add_account,
-        update_account,
-        delete_account,
-        export_account_pool,
-        import_account_pool,
-        login_selected_account,
-        refresh_dashboard,
-        logout_local_device,
-        update_preferences,
-        update_tray_menu
-    ]);
-
-    #[cfg(mobile)]
     let builder = builder.invoke_handler(tauri::generate_handler![
         bootstrap_app,
         get_app_snapshot,

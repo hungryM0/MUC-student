@@ -1,20 +1,9 @@
-import React, { lazy, Suspense, useEffect } from "react";
+import React, { Suspense, useEffect } from "react";
 import ReactDOM from "react-dom/client";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import "./index.css";
 
-const HomePage = lazy(() => import("./pages/home"));
-const AboutPage = lazy(() => import("./pages/about"));
-const SettingsPage = lazy(() => import("./pages/settings"));
-
-const pageMap = {
-  "/": HomePage,
-  "/about": AboutPage,
-  "/settings": SettingsPage,
-};
-
-const pathname = window.location.pathname;
-const PageComponent = pageMap[pathname as keyof typeof pageMap] ?? HomePage;
+import HomePage from "./pages/home";
 
 function AppWrapper() {
   useEffect(() => {
@@ -22,7 +11,7 @@ function AppWrapper() {
     getCurrentWindow().show();
   }, []);
 
-  return <PageComponent />;
+  return <HomePage />;
 }
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(

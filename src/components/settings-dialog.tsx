@@ -7,17 +7,27 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { usePreferences } from "@/hooks/use-preferences";
 import { cn } from "@/lib/utils";
+import type { Preferences } from "@/components/home/types";
 
 interface SettingsDialogProps {
   open: boolean;
   onClose: () => void;
+  preferences: Preferences | null;
+  errorText: string;
+  saving: boolean;
+  onTogglePreference: (key: keyof Preferences) => void;
 }
 
-export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
+export function SettingsDialog({
+  open,
+  onClose,
+  preferences,
+  errorText,
+  saving,
+  onTogglePreference,
+}: SettingsDialogProps) {
   const { theme, setTheme } = useTheme();
-  const { preferences, errorText, togglePreference } = usePreferences(open);
 
   return (
     <Dialog open={open} onOpenChange={(val) => !val && onClose()}>
@@ -72,21 +82,21 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               <PreferenceRow
                 title="关闭窗口时最小化到托盘"
                 checked={!!preferences?.minimizeToTrayOnClose}
-                disabled={!preferences}
-                onToggle={() => togglePreference("minimizeToTrayOnClose")}
+                disabled={!preferences || saving}
+                onToggle={() => onTogglePreference("minimizeToTrayOnClose")}
               />
               <PreferenceRow
                 title="开机自动启动"
                 checked={!!preferences?.launchOnStartup}
-                disabled={!preferences}
-                onToggle={() => togglePreference("launchOnStartup")}
+                disabled={!preferences || saving}
+                onToggle={() => onTogglePreference("launchOnStartup")}
               />
               <PreferenceRow
                 title="流量耗尽后自动切换到上一个使用的账号"
                 checked={!!preferences?.autoSwitchAccountOnTrafficExhausted}
-                disabled={!preferences}
+                disabled={!preferences || saving}
                 onToggle={() =>
-                  togglePreference("autoSwitchAccountOnTrafficExhausted")
+                  onTogglePreference("autoSwitchAccountOnTrafficExhausted")
                 }
               />
             </div>
@@ -134,7 +144,11 @@ function PreferenceRow({
           role="switch"
           aria-checked={checked}
           disabled={disabled}
-          onClick={onToggle}
+          onClick={() => {
+            if (!disabled) {
+              onToggle();
+            }
+          }}
           className={cn(
             "relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus:outline-hidden disabled:cursor-not-allowed",
             checked ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-700",

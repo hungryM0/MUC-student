@@ -27,12 +27,14 @@ use crate::infrastructure::network::network_status_service::NetworkStatusDetecto
 use crate::infrastructure::network::self_service_panel_client::SelfServicePanelClient;
 use crate::infrastructure::parsers::legacy_portal_online_info_parser::LegacyPortalOnlineInfo;
 use crate::infrastructure::persistence::account_repository::AccountRepository;
+use crate::infrastructure::persistence::account_snapshot_repository::AccountSnapshotRepository;
 use crate::infrastructure::persistence::app_state_repository::AppStateRepository;
 
 #[derive(Clone)]
 pub struct DashboardRefreshService {
     state: SharedRuntimeState,
     account_repo: AccountRepository,
+    snapshot_repo: AccountSnapshotRepository,
     app_state_repo: AppStateRepository,
     portal_status_client: LegacyPortalStatusClient,
     panel_client: SelfServicePanelClient,
@@ -44,6 +46,7 @@ impl DashboardRefreshService {
     pub fn new(
         state: SharedRuntimeState,
         account_repo: AccountRepository,
+        snapshot_repo: AccountSnapshotRepository,
         app_state_repo: AppStateRepository,
         portal_status_client: LegacyPortalStatusClient,
         panel_client: SelfServicePanelClient,
@@ -53,6 +56,7 @@ impl DashboardRefreshService {
         Self {
             state,
             account_repo,
+            snapshot_repo,
             app_state_repo,
             portal_status_client,
             panel_client,
@@ -140,7 +144,8 @@ impl DashboardRefreshService {
             &store.status_card_order_snapshot,
         );
         let cached = to_cached_snapshots(&snapshot_map);
-        self.account_repo.save_cached_traffic_snapshots(
+        self.snapshot_repo.save_cached_traffic_snapshots(
+            &store.accounts,
             cached,
             current_online_id.clone(),
             order,
