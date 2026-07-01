@@ -1,4 +1,4 @@
-import { Monitor, Moon, Sun, GitFork } from "lucide-react";
+import { Monitor, Moon, Sun, GitFork, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/components/theme-provider";
 import { usePreferences } from "@/hooks/use-preferences";
@@ -6,11 +6,14 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { getVersion } from "@tauri-apps/api/app";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { useManualUpdateCheck } from "@/components/updater-dialog";
 import appIconUrl from "../../src-tauri/icons/icon.svg?url";
 
 export function MobileSettings() {
   const { theme, setTheme } = useTheme();
   const { preferences, errorText, togglePreference } = usePreferences(true);
+  const { checkUpdate, checking, showNoUpdate, dismissNoUpdate } =
+    useManualUpdateCheck();
   const [version, setVersion] = useState("");
 
   useEffect(() => {
@@ -37,6 +40,27 @@ export function MobileSettings() {
       </div>
 
       <div className="space-y-6">
+        <section className="space-y-3">
+          <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase px-2">
+            版本更新
+          </h3>
+          <Button
+            onClick={() => {
+              dismissNoUpdate();
+              void checkUpdate();
+            }}
+            className="h-11 w-full gap-2 rounded-xl"
+            variant="outline"
+            disabled={checking}
+          >
+            <Download className={cn("h-5 w-5", checking && "animate-pulse")} />
+            {checking ? "检查中" : "检查更新"}
+          </Button>
+          {showNoUpdate && (
+            <p className="px-2 text-xs text-muted-foreground">已是最新版</p>
+          )}
+        </section>
+
         {/* 外观 */}
         <section className="space-y-3">
           <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase px-2">

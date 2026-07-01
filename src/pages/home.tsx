@@ -34,6 +34,7 @@ import { MainTitleBar } from "@/components/main-title-bar";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { AboutDialog } from "@/components/about-dialog";
 import { MobileSettings } from "@/components/mobile-settings";
+import { UpdaterDialog } from "@/components/updater-dialog";
 import {
   type AccountDto,
   type AppSnapshotDto,
@@ -797,6 +798,7 @@ export default function HomePage() {
         onClose={() => setSettingsOpen(false)}
       />
       <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
+      <UpdaterDialog />
       <DeleteConfirmDialog
         account={accountToDelete}
         deleting={!!deletingAccountId}

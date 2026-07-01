@@ -12,8 +12,8 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "__TAURI_UPDATER_PUBKEY__",
-      "endpoints": ["__TAURI_UPDATER_ENDPOINT__"],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEEwNkVGMDI0QzUwMTc0QkIKUldTN2RBSEZKUEJ1b0xOQjdWZ0RDZURKWGd0aG5uaFNsY2IvckdFKytCTWo1VzI5MTNQd3B3UUQK",
+      "endpoints": ["https://student.hungrym0.com/latest.json"],
       "windows": {
         "installMode": "passive"
       }
@@ -42,7 +42,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "createUpdaterArtifacts": false,
+    "createUpdaterArtifacts": true,
     "windows": {
       "nsis": {
         "installerIcon": "icons/icon.ico",

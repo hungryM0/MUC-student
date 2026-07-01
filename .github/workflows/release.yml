@@ -46,6 +46,9 @@ jobs:
         run: cargo test
 
       - name: Build Tauri app
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_UPDATER_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_UPDATER_PRIVATE_KEY_PASSWORD }}
         run: pnpm tauri:build
 
       - name: Prepare artifact
@@ -58,13 +61,51 @@ jobs:
           if (-not $installer) {
             throw "未找到 Tauri NSIS 安装包"
           }
-          Copy-Item -LiteralPath $installer.FullName -Destination ("dist\MUC-student_{0}_setup.exe" -f "${{ github.ref_name }}")
+          $artifactName = "MUC-student_${{ github.ref_name }}_setup.exe"
+          $artifactPath = Join-Path "dist" $artifactName
+          Copy-Item -LiteralPath $installer.FullName -Destination $artifactPath
+
+          $signature = Get-ChildItem -Path target,src-tauri\target -Recurse -Filter '*.sig' -ErrorAction SilentlyContinue |
+            Where-Object {
+              $_.DirectoryName -eq $installer.DirectoryName -and
+              (
+                $_.Name -eq "$($installer.Name).sig" -or
+                $_.BaseName -eq $installer.BaseName
+              )
+            } |
+            Select-Object -First 1
+          if (-not $signature) {
+            throw "未找到 Tauri updater 签名文件"
+          }
+
+          $signatureContent = (Get-Content -LiteralPath $signature.FullName -Raw).Trim()
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          $downloadUrl = "https://student.hungrym0.com/MUC-student_setup.exe"
+          $latest = [ordered]@{
+            version = $version
+            notes = "查看 GitHub Release 获取更新说明。"
+            pub_date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            android = [ordered]@{
+              version = $version
+              url = "https://student.hungrym0.com/MUC-student.apk"
+              notes = "查看 GitHub Release 获取更新说明。"
+            }
+            platforms = [ordered]@{
+              "windows-x86_64" = [ordered]@{
+                signature = $signatureContent
+                url = $downloadUrl
+              }
+            }
+          }
+          $latest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath "dist\latest.json" -Encoding utf8
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
           name: MUC-student_${{ github.ref_name }}_setup.exe
-          path: dist/MUC-student_${{ github.ref_name }}_setup.exe
+          path: |
+            dist/MUC-student_${{ github.ref_name }}_setup.exe
+            dist/latest.json
 
   release-android:
     runs-on: ubuntu-latest
@@ -188,6 +229,32 @@ jobs:
           name: MUC-student_${{ github.ref_name }}.apk
           path: dist
 
+      - name: Set up Python
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Install AWS CLI
+        if: startsWith(github.ref, 'refs/tags/')
+        run: python -m pip install --upgrade awscli
+
+      - name: Upload release artifacts to R2
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_EC2_METADATA_DISABLED: "true"
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          aws s3 cp "dist/MUC-student_${{ github.ref_name }}_setup.exe" "s3://${R2_BUCKET}/MUC-student_setup.exe" --endpoint-url "$endpoint" --content-type "application/vnd.microsoft.portable-executable" --cache-control "no-cache"
+          aws s3 cp "dist/MUC-student_${{ github.ref_name }}.apk" "s3://${R2_BUCKET}/MUC-student.apk" --endpoint-url "$endpoint" --content-type "application/vnd.android.package-archive" --cache-control "no-cache"
+          aws s3 cp "dist/latest.json" "s3://${R2_BUCKET}/latest.json" --endpoint-url "$endpoint" --content-type "application/json" --cache-control "no-cache"
+
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
@@ -198,4 +265,5 @@ jobs:
           name: ${{ github.ref_name }}
           files: |
             dist/MUC-student_${{ github.ref_name }}_setup.exe
+            dist/latest.json
             dist/MUC-student_${{ github.ref_name }}.apk

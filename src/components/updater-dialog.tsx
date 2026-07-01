@@ -11,10 +11,22 @@ import {
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
+import { isAndroid } from "@/lib/utils";
+import type { AndroidUpdate } from "@/lib/updater";
+import type { Update } from "@tauri-apps/plugin-updater";
 
 interface UpdaterDialogProps {
   manualCheck?: boolean;
   onCheckComplete?: () => void;
+}
+
+function getUpdateNotes(update: Update | AndroidUpdate | null) {
+  if (!update) {
+    return undefined;
+  }
+
+  const details = update as { body?: string; notes?: string };
+  return details.body ?? details.notes;
 }
 
 export function UpdaterDialog({
@@ -61,27 +73,35 @@ export function UpdaterDialog({
     if (progress.event === "Finished") return 100;
     return Math.round(((downloaded ?? 0) / contentLength) * 100);
   };
+  const android = isAndroid();
+  const installingTitle = android ? "打开更新下载" : "正在下载更新";
+  const installButtonText = android ? "下载 APK" : "立即安装";
+  const updateNotes = getUpdateNotes(update);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
-            {downloading ? "正在下载更新" : "发现新版本"}
+            {downloading ? installingTitle : "发现新版本"}
           </DialogTitle>
           <DialogDescription>
             {downloading ? (
               <div className="space-y-2">
-                <p>正在安装版本 {update?.version}...</p>
-                <Progress value={getProgressPercentage()} />
+                <p>
+                  {android
+                    ? `正在打开版本 ${update?.version} 下载。`
+                    : `正在安装版本 ${update?.version}...`}
+                </p>
+                {!android && <Progress value={getProgressPercentage()} />}
               </div>
             ) : (
               <div className="space-y-2">
                 <p>版本 {update?.version} 可用。</p>
-                {update?.body && (
+                {updateNotes && (
                   <div className="bg-muted mt-2 rounded-md p-3 text-sm">
                     <p className="font-semibold">更新说明：</p>
-                    <p className="mt-1 whitespace-pre-wrap">{update.body}</p>
+                    <p className="mt-1 whitespace-pre-wrap">{updateNotes}</p>
                   </div>
                 )}
               </div>
@@ -93,7 +113,7 @@ export function UpdaterDialog({
             <Button variant="outline" onClick={handleCancel}>
               稍后
             </Button>
-            <Button onClick={handleInstall}>立即安装</Button>
+            <Button onClick={handleInstall}>{installButtonText}</Button>
           </DialogFooter>
         )}
       </DialogContent>
@@ -102,7 +122,7 @@ export function UpdaterDialog({
 }
 
 export function useManualUpdateCheck() {
-  const { checkUpdate, checking, update } = useUpdater();
+  const { checkUpdate, checking, update, installUpdate } = useUpdater();
   const [showNoUpdate, setShowNoUpdate] = useState(false);
 
   const handleCheckUpdate = async () => {
@@ -116,6 +136,14 @@ export function useManualUpdateCheck() {
 
     if (result.status === "error") {
       toast.error("检查更新失败。");
+      return;
+    }
+
+    if (result.status === "android-available") {
+      const opened = await installUpdate(result.update);
+      if (!opened) {
+        toast.error("打开下载失败。");
+      }
     }
   };
 
