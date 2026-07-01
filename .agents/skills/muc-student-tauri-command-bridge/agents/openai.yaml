@@ -1,0 +1,4 @@
+interface:
+  display_name: "MUC Tauri 桥接"
+  short_description: "维护 command、事件、DTO、托盘和窗口桥接"
+  default_prompt: "Use $muc-student-tauri-command-bridge to inspect or change Tauri command bridge code."

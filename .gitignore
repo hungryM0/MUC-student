@@ -11,6 +11,7 @@ src-tauri/gen/schemas/
 .idea/
 .playwright-mcp/
 .codex/
+.claude/
 .claude/settings.local.json
 .env.local
 accounts.json
@@ -18,5 +19,6 @@ app_state.json
 src-tauri/gen/android/keystore.properties
 release.jks
 *.log
-desktop.ini
+AGENTS.md
+CLAUDE.md
 *.code-workspace
