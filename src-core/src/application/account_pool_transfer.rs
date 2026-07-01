@@ -106,7 +106,7 @@ pub fn decode_account_pool(code: &str, passphrase: &str) -> AppResult<AccountPoo
 
 fn require_passphrase(passphrase: &str) -> AppResult<()> {
     if passphrase.trim().is_empty() {
-        Err(AppError::Validation("号池口令不能为空".to_string()))
+        Err(AppError::Validation("加密令牌不能为空".to_string()))
     } else {
         Ok(())
     }

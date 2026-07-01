@@ -64,7 +64,7 @@ export function AccountPoolDialog({
           )}
 
           <label className="grid gap-1.5 text-sm">
-            <span className="font-medium">号池口令</span>
+            <span className="font-medium">加密令牌</span>
             <Input
               type="password"
               value={passphrase}

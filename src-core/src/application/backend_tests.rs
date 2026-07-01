@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -84,7 +85,12 @@ impl AppEventSink for RecordingEventSink {
 fn build_test_core(
     settings: AppSettings,
     local_ip: &str,
-) -> (AppCore, TempDir, Arc<RecordingEventSink>) {
+) -> (
+    AppCore,
+    TempDir,
+    Arc<RecordingEventSink>,
+    PanelSessionRepository,
+) {
     let root = tempfile::tempdir().expect("create temp dir");
     let paths = RuntimePaths::from_cwd_for_tests(root.path()).expect("create paths");
     let db = AppDatabase::open(&paths).expect("open db");
@@ -102,7 +108,8 @@ fn build_test_core(
     let auth_client = LegacyPortalAuthClient::new(settings.clone(), auth_transport);
     let portal_status_client =
         LegacyPortalStatusClient::new(settings.clone(), legacy_portal_transport);
-    let panel_client = SelfServicePanelClient::new(settings, panel_transport, panel_session_repo);
+    let panel_client =
+        SelfServicePanelClient::new(settings, panel_transport, panel_session_repo.clone());
     let network_status_service: Arc<dyn NetworkStatusDetector> =
         Arc::new(FixedNetworkStatusDetector {
             ip: local_ip.to_string(),
@@ -150,7 +157,7 @@ fn build_test_core(
         event_sink: event_sink.clone(),
         startup_controller: Arc::new(NoopStartupController),
     };
-    (core, root, event_sink)
+    (core, root, event_sink, panel_session_repo)
 }
 
 fn settings_for(server: &MockServer) -> AppSettings {
@@ -209,7 +216,8 @@ async fn login_switches_online_ip_with_login_post_without_logout() {
         .mount(&server)
         .await;
 
-    let (core, _root, event_sink) = build_test_core(settings_for(&server), local_ip);
+    let (core, _root, event_sink, _panel_session_repo) =
+        build_test_core(settings_for(&server), local_ip);
     let first_snapshot = core
         .add_account("旧号".to_string(), "20260001".to_string(), "p1".to_string())
         .await
@@ -261,6 +269,163 @@ async fn login_switches_online_ip_with_login_post_without_logout() {
 }
 
 #[tokio::test]
+async fn login_waits_for_success_page_after_portal_accepts_switch() {
+    let server = MockServer::start().await;
+    let local_ip = "10.151.119.57";
+    let success_count = Arc::new(AtomicUsize::new(0));
+    let success_count_for_mock = success_count.clone();
+    Mock::given(method("GET"))
+        .and(path("/srun_portal_pc_success.php"))
+        .respond_with(move |_request: &wiremock::Request| {
+            let count = success_count_for_mock.fetch_add(1, Ordering::SeqCst);
+            let username = if count < 4 { "20260001" } else { "20260002" };
+            ResponseTemplate::new(200).set_body_string(success_page(local_ip, username))
+        })
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/srun_portal_pc.php"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("login_ok,ok"))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/include/auth_action.php"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(format!("1073741824,60,0.00,aa:bb:cc:dd:ee:ff,0,{local_ip}")),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/site/sso"))
+        .respond_with(
+            ResponseTemplate::new(302)
+                .insert_header("set-cookie", "PHPSESSID_8800=abc; path=/; HttpOnly")
+                .insert_header("location", "/home"),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/home"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(panel_home_html(local_ip)))
+        .mount(&server)
+        .await;
+
+    let (core, _root, _event_sink, _panel_session_repo) =
+        build_test_core(settings_for(&server), local_ip);
+    core.add_account("旧号".to_string(), "20260001".to_string(), "p1".to_string())
+        .await
+        .expect("add first");
+    let second_snapshot = core
+        .add_account(
+            "目标号".to_string(),
+            "20260002".to_string(),
+            "p2".to_string(),
+        )
+        .await
+        .expect("add second");
+    let second_id = second_snapshot
+        .accounts
+        .iter()
+        .find(|account| account.username == "20260002")
+        .expect("second account")
+        .id
+        .clone();
+    core.select_account(second_id.clone())
+        .await
+        .expect("select second");
+
+    let snapshot = core.login_selected_account().await.expect("login selected");
+
+    assert_eq!(snapshot.current_online_account_id, second_id);
+    assert_eq!(snapshot.login_state.result_text, "成功");
+    let requests = server.received_requests().await.unwrap_or_default();
+    let bodies = requests
+        .iter()
+        .map(|request| String::from_utf8_lossy(&request.body).to_string())
+        .collect::<Vec<_>>();
+    assert!(bodies
+        .iter()
+        .any(|body| body.contains("action=login") && body.contains("username=20260002")));
+    assert!(!bodies.iter().any(|body| body.contains("action=logout")));
+}
+
+#[tokio::test]
+async fn login_treats_already_online_response_as_success_when_success_page_matches_target() {
+    let server = MockServer::start().await;
+    let local_ip = "10.151.119.57";
+    let success_count = Arc::new(AtomicUsize::new(0));
+    let success_count_for_mock = success_count.clone();
+    Mock::given(method("GET"))
+        .and(path("/srun_portal_pc_success.php"))
+        .respond_with(move |_request: &wiremock::Request| {
+            let count = success_count_for_mock.fetch_add(1, Ordering::SeqCst);
+            let username = if count < 3 { "20260001" } else { "20260002" };
+            ResponseTemplate::new(200).set_body_string(success_page(local_ip, username))
+        })
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/srun_portal_pc.php"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string("IP has been online, please logout."),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/include/auth_action.php"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(format!("1073741824,60,0.00,aa:bb:cc:dd:ee:ff,0,{local_ip}")),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/site/sso"))
+        .respond_with(
+            ResponseTemplate::new(302)
+                .insert_header("set-cookie", "PHPSESSID_8800=abc; path=/; HttpOnly")
+                .insert_header("location", "/home"),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/home"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(panel_home_html(local_ip)))
+        .mount(&server)
+        .await;
+
+    let (core, _root, _event_sink, _panel_session_repo) =
+        build_test_core(settings_for(&server), local_ip);
+    core.add_account("旧号".to_string(), "20260001".to_string(), "p1".to_string())
+        .await
+        .expect("add first");
+    let second_snapshot = core
+        .add_account(
+            "目标号".to_string(),
+            "20260002".to_string(),
+            "p2".to_string(),
+        )
+        .await
+        .expect("add second");
+    let second_id = second_snapshot
+        .accounts
+        .iter()
+        .find(|account| account.username == "20260002")
+        .expect("second account")
+        .id
+        .clone();
+    core.select_account(second_id.clone())
+        .await
+        .expect("select second");
+
+    let snapshot = core.login_selected_account().await.expect("login selected");
+
+    assert_eq!(snapshot.current_online_account_id, second_id);
+    assert_eq!(snapshot.login_state.result_text, "成功");
+}
+
+#[tokio::test]
 async fn login_switches_when_current_online_account_is_not_in_pool() {
     let server = MockServer::start().await;
     let local_ip = "10.151.119.57";
@@ -293,7 +458,8 @@ async fn login_switches_when_current_online_account_is_not_in_pool() {
         .mount(&server)
         .await;
 
-    let (core, _root, _event_sink) = build_test_core(settings_for(&server), local_ip);
+    let (core, _root, _event_sink, _panel_session_repo) =
+        build_test_core(settings_for(&server), local_ip);
     let account_snapshot = core
         .add_account(
             "目标号".to_string(),
@@ -352,7 +518,8 @@ async fn refresh_uses_success_page_and_sso_panel_home_for_current_account() {
         .mount(&server)
         .await;
 
-    let (core, _root, _event_sink) = build_test_core(settings_for(&server), local_ip);
+    let (core, _root, _event_sink, _panel_session_repo) =
+        build_test_core(settings_for(&server), local_ip);
     let snapshot = core
         .add_account("主号".to_string(), "20260001".to_string(), "p1".to_string())
         .await
@@ -405,7 +572,8 @@ async fn silent_refresh_does_not_emit_refresh_running_state() {
         .mount(&server)
         .await;
 
-    let (core, _root, event_sink) = build_test_core(settings_for(&server), local_ip);
+    let (core, _root, event_sink, _panel_session_repo) =
+        build_test_core(settings_for(&server), local_ip);
     core.add_account("主号".to_string(), "20260001".to_string(), "p1".to_string())
         .await
         .expect("add account");
@@ -474,7 +642,8 @@ async fn silent_refresh_auto_switches_to_most_recent_previous_account() {
         .mount(&server)
         .await;
 
-    let (core, _root, _event_sink) = build_test_core(settings_for(&server), local_ip);
+    let (core, _root, _event_sink, _panel_session_repo) =
+        build_test_core(settings_for(&server), local_ip);
     let first_snapshot = core
         .add_account(
             "上一个号".to_string(),
@@ -555,6 +724,131 @@ async fn silent_refresh_auto_switches_to_most_recent_previous_account() {
 }
 
 #[tokio::test]
+async fn login_refresh_prefers_success_page_account_over_stale_cached_panel_session() {
+    let server = MockServer::start().await;
+    let local_ip = "10.151.119.57";
+    let success_count = Arc::new(AtomicUsize::new(0));
+    let success_count_for_mock = success_count.clone();
+    Mock::given(method("GET"))
+        .and(path("/srun_portal_pc_success.php"))
+        .respond_with(move |_request: &wiremock::Request| {
+            let count = success_count_for_mock.fetch_add(1, Ordering::SeqCst);
+            let username = if count == 0 { "20260001" } else { "20260002" };
+            ResponseTemplate::new(200).set_body_string(success_page(local_ip, username))
+        })
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/include/auth_action.php"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(format!("1073741824,60,0.00,aa:bb:cc:dd:ee:ff,0,{local_ip}")),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/srun_portal_pc.php"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("login_ok,ok"))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/site/sso"))
+        .respond_with(
+            ResponseTemplate::new(302)
+                .insert_header("set-cookie", "PHPSESSID_8800=fresh; path=/; HttpOnly")
+                .insert_header("location", "/home"),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/home"))
+        .respond_with(move |request: &wiremock::Request| {
+            let cookie = request
+                .headers
+                .get("cookie")
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or_default();
+            let body = if cookie.contains("stale-session") {
+                format!(
+                    r#"
+                    <table>
+                      <tr><th>产品名称</th><th>计费策略</th><th>已用流量</th><th>产品余额</th></tr>
+                      <tr><td>校园网</td><td>免费70GB</td><td>70.00GB</td><td>70.00GB</td></tr>
+                    </table>
+                    <tr data-key="device-stale">
+                      <td data-col-seq="1">{local_ip}</td>
+                      <td><a href="/home/delete?id=device-stale">下线</a></td>
+                    </tr>
+                    "#
+                )
+            } else {
+                panel_home_html(local_ip)
+            };
+            ResponseTemplate::new(200).set_body_string(body)
+        })
+        .mount(&server)
+        .await;
+
+    let (core, _root, _event_sink, panel_session_repo) =
+        build_test_core(settings_for(&server), local_ip);
+    let first_snapshot = core
+        .add_account(
+            "上个月满了".to_string(),
+            "20260001".to_string(),
+            "p1".to_string(),
+        )
+        .await
+        .expect("add first");
+    let second_snapshot = core
+        .add_account(
+            "这个月正常".to_string(),
+            "20260002".to_string(),
+            "p2".to_string(),
+        )
+        .await
+        .expect("add second");
+    let first_id = first_snapshot
+        .accounts
+        .iter()
+        .find(|account| account.username == "20260001")
+        .expect("first account")
+        .id
+        .clone();
+    let second_id = second_snapshot
+        .accounts
+        .iter()
+        .find(|account| account.username == "20260002")
+        .expect("second account")
+        .id
+        .clone();
+
+    panel_session_repo
+        .save_session(
+            &second_id,
+            &HashMap::from([("PHPSESSID_8800".to_string(), "stale-session".to_string())]),
+        )
+        .expect("insert stale panel session");
+
+    core.select_account(second_id.clone())
+        .await
+        .expect("select second");
+
+    let snapshot = core.login_selected_account().await.expect("login selected");
+
+    assert_eq!(snapshot.current_online_account_id, second_id);
+    assert_eq!(snapshot.selected_account_id, second_id);
+    let current_account = snapshot
+        .accounts
+        .iter()
+        .find(|account| account.id == second_id)
+        .expect("current account");
+    let traffic = current_account.snapshot.as_ref().expect("traffic snapshot");
+    assert_eq!(traffic.used_traffic_text, "1.00GB");
+    assert_eq!(traffic.progress_percent, Some(1.4));
+    assert_ne!(snapshot.current_online_account_id, first_id);
+}
+
+#[tokio::test]
 async fn logout_local_device_posts_success_page_logout_and_clears_current_account() {
     let server = MockServer::start().await;
     let local_ip = "10.151.119.57";
@@ -586,7 +880,8 @@ async fn logout_local_device_posts_success_page_logout_and_clears_current_accoun
         .mount(&server)
         .await;
 
-    let (core, _root, event_sink) = build_test_core(settings_for(&server), local_ip);
+    let (core, _root, event_sink, _panel_session_repo) =
+        build_test_core(settings_for(&server), local_ip);
     let snapshot = core
         .add_account("主号".to_string(), "20260001".to_string(), "p1".to_string())
         .await
@@ -620,7 +915,8 @@ async fn login_failure_emits_settled_state() {
     let server = MockServer::start().await;
     let local_ip = "10.151.119.57";
 
-    let (core, _root, event_sink) = build_test_core(settings_for(&server), local_ip);
+    let (core, _root, event_sink, _panel_session_repo) =
+        build_test_core(settings_for(&server), local_ip);
 
     let result = core.login_selected_account().await;
 

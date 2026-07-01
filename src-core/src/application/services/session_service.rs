@@ -1,6 +1,8 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use chrono::Local;
+use tokio::time::sleep;
 
 use crate::application::error::{AppError, AppResult};
 use crate::application::runtime::SharedRuntimeState;
@@ -44,6 +46,9 @@ impl LocalOnlineAccount {
 }
 
 impl SessionService {
+    const CONFIRM_TARGET_MAX_ATTEMPTS: usize = 8;
+    const CONFIRM_TARGET_RETRY_DELAY: Duration = Duration::from_millis(500);
+
     pub fn new(
         state: SharedRuntimeState,
         account_repo: AccountRepository,
@@ -192,7 +197,14 @@ impl SessionService {
                 already_online: false,
             });
         }
-        self.auth_client.login_target_account(target).await
+        let mut login_result = self.auth_client.login_target_account(target).await?;
+        if login_result.already_online && self.confirm_target_online(target, Some(local_ip)).await {
+            login_result.success = true;
+            login_result.message =
+                format!("Portal 已确认切换到：{}", target.account.display_name());
+            login_result.already_online = false;
+        }
+        Ok(login_result)
     }
 
     fn persist_arrearage_snapshot(
@@ -273,6 +285,22 @@ impl SessionService {
     }
 
     async fn confirm_target_online(
+        &self,
+        target: &AccountWithPassword,
+        local_ip: Option<&str>,
+    ) -> bool {
+        for attempt in 0..Self::CONFIRM_TARGET_MAX_ATTEMPTS {
+            if self.confirm_target_online_once(target, local_ip).await {
+                return true;
+            }
+            if attempt + 1 < Self::CONFIRM_TARGET_MAX_ATTEMPTS {
+                sleep(Self::CONFIRM_TARGET_RETRY_DELAY).await;
+            }
+        }
+        false
+    }
+
+    async fn confirm_target_online_once(
         &self,
         target: &AccountWithPassword,
         local_ip: Option<&str>,

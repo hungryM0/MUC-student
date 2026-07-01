@@ -83,19 +83,20 @@ impl DashboardRefreshService {
 
         let online_probe = self.check_local_online(local_ip).await;
         let mut current_online_id = String::new();
+        let mut cached_online_id = String::new();
         let mut refreshed_account_ids = HashSet::new();
         if !online_probe.is_offline() {
             for (account_id, snapshot) in self.refresh_cached_panel_sessions(&store, local_ip).await
             {
-                if current_online_id.is_empty() && snapshot.matched_local_ip_device.is_some() {
-                    current_online_id = account_id.clone();
+                if cached_online_id.is_empty() && snapshot.matched_local_ip_device.is_some() {
+                    cached_online_id = account_id.clone();
                 }
                 refreshed_account_ids.insert(account_id.clone());
                 snapshot_map.insert(account_id, snapshot);
             }
         }
 
-        if current_online_id.is_empty() && online_probe.is_online() {
+        if online_probe.is_online() {
             if let Ok(info) = self.portal_status_client.fetch_success_info().await {
                 let success_account =
                     local_ip
@@ -126,8 +127,15 @@ impl DashboardRefreshService {
                     snapshot_map.insert(account.id.clone(), snapshot);
                 }
             }
-        } else if current_online_id.is_empty() && online_probe.is_unknown() {
-            current_online_id = store.current_online_account_id.clone();
+            if current_online_id.is_empty() {
+                current_online_id = cached_online_id;
+            }
+        } else if online_probe.is_unknown() {
+            current_online_id = if cached_online_id.is_empty() {
+                store.current_online_account_id.clone()
+            } else {
+                cached_online_id
+            };
         }
         if !online_probe.is_offline() {
             mark_unrefreshed_non_current_accounts_failed(
