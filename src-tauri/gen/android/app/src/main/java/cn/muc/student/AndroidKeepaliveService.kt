@@ -20,6 +20,7 @@ class AndroidKeepaliveService : Service() {
 
   override fun onCreate() {
     super.onCreate()
+    WifiNetworkBinder.start(applicationContext)
     stateFile = File(applicationContext.dataDir, "android_keepalive_state.json")
     startForeground(NOTIFICATION_ID, buildNotification(loadNotificationSummary()))
     worker =

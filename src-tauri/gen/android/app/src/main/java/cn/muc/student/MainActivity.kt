@@ -20,6 +20,7 @@ class MainActivity : TauriActivity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     Keyring.initializeNdkContext(applicationContext)
+    WifiNetworkBinder.start(applicationContext)
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
     ensureKeepalivePermission()
