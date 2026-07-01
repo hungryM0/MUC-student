@@ -1,16 +1,26 @@
+import { useState, useEffect } from "react";
 import {
   Activity,
   CheckCircle2,
-  Download,
   LogIn,
   Pencil,
   Plus,
   RefreshCw,
   Trash2,
-  Upload,
+  ArrowDownWideNarrow,
+  Clock,
+  ArrowDownAZ,
+  ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { FREE_PRODUCT_QUOTA_GB, type AccountDto, type AppSnapshotDto } from "@/lib/muc";
 import { cn } from "@/lib/utils";
 import type {
@@ -21,6 +31,7 @@ import {
   buildAccountUsage,
   formatSnapshotSyncText,
   formatTrafficAmount,
+  parseTrafficValue,
   trafficProgressClasses,
 } from "./utils";
 
@@ -32,14 +43,14 @@ interface AccountPoolSectionProps {
   loginAccountId: string;
   deletingAccountId: string;
   runningAction: RunningAction | null;
-  onOpenImport: () => void;
-  onOpenExport: () => void;
   onOpenAddAccount: () => void;
   onRefresh: () => void;
   onEditAccount: AccountAction;
   onDeleteAccount: AccountAction;
   onLoginAccount: AccountAction;
 }
+
+export type SortOption = "remaining" | "recent" | "name";
 
 export function AccountPoolSection({
   snapshot,
@@ -49,14 +60,132 @@ export function AccountPoolSection({
   loginAccountId,
   deletingAccountId,
   runningAction,
-  onOpenImport,
-  onOpenExport,
   onOpenAddAccount,
   onRefresh,
   onEditAccount,
   onDeleteAccount,
   onLoginAccount,
 }: AccountPoolSectionProps) {
+  const [sortBy, setSortBy] = useState<SortOption>(() => {
+    try {
+      const saved = localStorage.getItem("muc_account_sort_by");
+      return (saved as SortOption) || "remaining";
+    } catch {
+      return "remaining";
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem("muc_account_sort_by", sortBy);
+  }, [sortBy]);
+
+  const [lastSelectedMap, setLastSelectedMap] = useState<Record<string, number>>(() => {
+    try {
+      const saved = localStorage.getItem("muc_last_selected_accounts");
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    if (snapshot?.selectedAccountId) {
+      setLastSelectedMap((prev) => {
+        const next = { ...prev, [snapshot.selectedAccountId]: Date.now() };
+        localStorage.setItem("muc_last_selected_accounts", JSON.stringify(next));
+        return next;
+      });
+    }
+  }, [snapshot?.selectedAccountId]);
+
+  const [displayAccounts, setDisplayAccounts] = useState<AccountDto[]>(() => {
+    const rawAccounts = snapshot?.accounts || [];
+    return [...rawAccounts].sort((a, b) => {
+      if (sortBy === "remaining") {
+        const getRemaining = (acc: AccountDto) => {
+          if (!acc.snapshot) return -1;
+          const { freeUsed, freeQuota } = buildAccountUsage(acc);
+          const packageAvailable = parseTrafficValue(acc.snapshot.packageAvailableText);
+          const freeRemaining = Math.max(0, freeQuota - freeUsed);
+          return freeRemaining + packageAvailable;
+        };
+        const remA = getRemaining(a);
+        const remB = getRemaining(b);
+        if (remA !== remB) {
+          return remB - remA;
+        }
+      } else if (sortBy === "recent") {
+        const timeA = lastSelectedMap[a.id] || 0;
+        const timeB = lastSelectedMap[b.id] || 0;
+        if (timeA !== timeB) {
+          return timeB - timeA;
+        }
+      } else if (sortBy === "name") {
+        const nameA = a.remarkName || "";
+        const nameB = b.remarkName || "";
+        const cmp = nameA.localeCompare(nameB, "zh-CN");
+        if (cmp !== 0) {
+          return cmp;
+        }
+      }
+
+      if (a.isCurrentOnline !== b.isCurrentOnline) {
+        return a.isCurrentOnline ? -1 : 1;
+      }
+      if (a.id === snapshot?.selectedAccountId) return -1;
+      if (b.id === snapshot?.selectedAccountId) return 1;
+      return a.id.localeCompare(b.id);
+    });
+  });
+
+  useEffect(() => {
+    const rawAccounts = snapshot?.accounts || [];
+    const sorted = [...rawAccounts].sort((a, b) => {
+      if (sortBy === "remaining") {
+        const getRemaining = (acc: AccountDto) => {
+          if (!acc.snapshot) return -1;
+          const { freeUsed, freeQuota } = buildAccountUsage(acc);
+          const packageAvailable = parseTrafficValue(acc.snapshot.packageAvailableText);
+          const freeRemaining = Math.max(0, freeQuota - freeUsed);
+          return freeRemaining + packageAvailable;
+        };
+        const remA = getRemaining(a);
+        const remB = getRemaining(b);
+        if (remA !== remB) {
+          return remB - remA;
+        }
+      } else if (sortBy === "recent") {
+        const timeA = lastSelectedMap[a.id] || 0;
+        const timeB = lastSelectedMap[b.id] || 0;
+        if (timeA !== timeB) {
+          return timeB - timeA;
+        }
+      } else if (sortBy === "name") {
+        const nameA = a.remarkName || "";
+        const nameB = b.remarkName || "";
+        const cmp = nameA.localeCompare(nameB, "zh-CN");
+        if (cmp !== 0) {
+          return cmp;
+        }
+      }
+
+      if (a.isCurrentOnline !== b.isCurrentOnline) {
+        return a.isCurrentOnline ? -1 : 1;
+      }
+      if (a.id === snapshot?.selectedAccountId) return -1;
+      if (b.id === snapshot?.selectedAccountId) return 1;
+      return a.id.localeCompare(b.id);
+    });
+
+    if (document.startViewTransition) {
+      document.startViewTransition(() => {
+        setDisplayAccounts(sorted);
+      });
+    } else {
+      setDisplayAccounts(sorted);
+    }
+  }, [snapshot?.accounts, snapshot?.selectedAccountId, sortBy, lastSelectedMap]);
+
   return (
     <Card className="border-border bg-background/95 flex h-full flex-col overflow-hidden rounded-xl backdrop-blur-sm">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b border-border/40 pb-4">
@@ -69,27 +198,7 @@ export function AccountPoolSection({
             管理和切换校园网计费账号
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onOpenImport}
-            disabled={isBusy}
-            className="h-8 w-8 px-0 md:w-auto md:px-3 md:gap-1.5"
-          >
-            <Upload className="h-4 w-4" />
-            <span className="hidden md:inline">导入</span>
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onOpenExport}
-            disabled={isBusy || !snapshot?.accounts.length}
-            className="h-8 w-8 px-0 md:w-auto md:px-3 md:gap-1.5"
-          >
-            <Download className="h-4 w-4" />
-            <span className="hidden md:inline">导出</span>
-          </Button>
+        <div className="flex items-center gap-2">
           <Button
             variant="outline"
             size="sm"
@@ -100,6 +209,44 @@ export function AccountPoolSection({
             <Plus className="h-4 w-4" />
             <span className="hidden md:inline">添加账号</span>
           </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 px-2 text-xs"
+                disabled={isBusy}
+              >
+                {sortBy === "remaining" && <ArrowDownWideNarrow className="h-3.5 w-3.5 text-amber-500" />}
+                {sortBy === "recent" && <Clock className="h-3.5 w-3.5 text-blue-500" />}
+                {sortBy === "name" && <ArrowDownAZ className="h-3.5 w-3.5 text-emerald-500" />}
+                <span className="hidden md:inline">
+                  {sortBy === "remaining" && "剩余量"}
+                  {sortBy === "recent" && "最近"}
+                  {sortBy === "name" && "备注"}
+                </span>
+                <ChevronDown className="h-3 w-3 opacity-50" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-36">
+              <DropdownMenuRadioGroup value={sortBy} onValueChange={(val) => setSortBy(val as SortOption)}>
+                <DropdownMenuRadioItem value="remaining" className="gap-2">
+                  <ArrowDownWideNarrow className="h-3.5 w-3.5 text-amber-500" />
+                  <span>剩余量</span>
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="recent" className="gap-2">
+                  <Clock className="h-3.5 w-3.5 text-blue-500" />
+                  <span>最近选择</span>
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="name" className="gap-2">
+                  <ArrowDownAZ className="h-3.5 w-3.5 text-emerald-500" />
+                  <span>备注名 A-Z</span>
+                </DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <Button
             variant="outline"
             size="sm"
@@ -120,8 +267,8 @@ export function AccountPoolSection({
       <CardContent className="p-4 md:p-6">
         <div className="max-h-[calc(100vh-240px)] min-h-[300px] overflow-y-auto pr-1">
           <div className="grid grid-cols-1 gap-3 md:gap-4 xl:grid-cols-2 2xl:grid-cols-3">
-            {snapshot?.accounts.length ? (
-              snapshot.accounts.map((account) => (
+            {displayAccounts.length ? (
+              displayAccounts.map((account) => (
                 <AccountCard
                   key={account.id}
                   account={account}
@@ -176,17 +323,20 @@ function AccountCard({
 }: AccountCardProps) {
   const snapshot = account.snapshot;
   const {
+    freeUsed,
     totalUsed,
+    totalQuota,
     packageTotal,
     packageUsed,
-    freeQuota,
     freeProgress,
     packageProgress,
+    totalProgress,
   } = buildAccountUsage(account);
   const accountState = account.isCurrentOnline ? "online" : "idle";
 
   return (
     <div
+      style={{ viewTransitionName: `account-card-${account.id}` } as React.CSSProperties & { viewTransitionName: string }}
       className={cn(
         "grid min-h-20 grid-cols-[1fr_148px] gap-x-4 gap-y-3 rounded-lg border p-4 text-left transition-all duration-300 ease-out animate-slide-in-up",
         accountState === "online"
@@ -215,13 +365,13 @@ function AccountCard({
           <div
             className={cn(
               "font-semibold",
-              trafficProgressClasses(Math.round(freeProgress)).text,
+              trafficProgressClasses(Math.round(totalProgress)).text,
             )}
           >
-            {Math.round(freeProgress)}%
+            {Math.round(totalProgress)}%
           </div>
           <div className="mt-1 truncate text-xs text-muted-foreground">
-            {formatTrafficAmount(totalUsed)} / {formatTrafficAmount(freeQuota)}
+            {formatTrafficAmount(totalUsed)} / {formatTrafficAmount(totalQuota)}
           </div>
         </div>
 
@@ -300,7 +450,7 @@ function AccountCard({
               />
             </div>
             <div className="flex justify-between text-[11px] text-muted-foreground">
-              <span>{snapshot?.usedTrafficText ?? "-"}</span>
+              <span>{formatTrafficAmount(freeUsed)}</span>
               <span>{formatTrafficAmount(FREE_PRODUCT_QUOTA_GB)}</span>
             </div>
           </div>

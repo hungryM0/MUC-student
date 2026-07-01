@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CircleGauge, Settings as SettingsIcon, Users } from "lucide-react";
+import { CircleGauge, Settings as SettingsIcon, Users, Upload, Download } from "lucide-react";
 import { WindowFrame } from "@/components/window-frame";
 import { MainTitleBar } from "@/components/main-title-bar";
 import { SettingsDialog } from "@/components/settings-dialog";
@@ -15,6 +15,7 @@ import { ErrorBanner } from "@/components/home/error-banner";
 import { OverviewSection } from "@/components/home/overview-section";
 import type { HomeTab } from "@/components/home/types";
 import { useHomePageController } from "@/hooks/use-home-page-controller";
+import { Button } from "@/components/ui/button";
 import { cn, isAndroid } from "@/lib/utils";
 import appIconUrl from "../../src-tauri/icons/icon.svg?url";
 
@@ -47,7 +48,7 @@ export default function HomePage() {
           )}
         >
           <div className="mx-auto w-full max-w-5xl xl:max-w-7xl 2xl:max-w-[1440px]">
-            <header className="flex flex-col justify-between gap-2 border-b border-border/40 pb-3 sm:flex-row sm:items-center sm:gap-0 md:pb-4">
+            <header className="flex items-center justify-between border-b border-border/40 pb-3 md:pb-4">
               <div className="flex items-center gap-3 md:gap-4">
                 <h1 className="flex items-center gap-2.5 text-xl font-bold tracking-tight text-foreground">
                   <img
@@ -59,19 +60,40 @@ export default function HomePage() {
                 </h1>
                 <div className="bg-border/60 hidden h-4 w-px sm:block" />
               </div>
-              <span className="text-xs text-muted-foreground md:hidden">
-                IP:{" "}
-                {controller.snapshot?.network.ip &&
-                controller.snapshot.network.ip !== "unknown"
-                  ? controller.snapshot.network.ip
-                  : "未知"}
-              </span>
-              <span className="hidden font-mono text-xs text-muted-foreground sm:inline">
-                {controller.snapshot?.network.ip &&
-                controller.snapshot.network.ip !== "unknown"
-                  ? controller.snapshot.network.ip
-                  : "IP 未识别"}
-              </span>
+              <div className="flex items-center gap-2 sm:gap-3">
+                <span className="font-mono text-xs text-muted-foreground">
+                  IP:{" "}
+                  {controller.snapshot?.network.ip &&
+                  controller.snapshot.network.ip !== "unknown"
+                    ? controller.snapshot.network.ip
+                    : "未识别"}
+                </span>
+                <div className="bg-border/40 h-3 w-px" />
+                <div className="flex items-center gap-0.5 sm:gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => controller.openAccountPoolDialog("import")}
+                    disabled={controller.isBusy}
+                    className="h-7 w-7 p-0 md:w-auto md:h-7 md:px-2 md:gap-1 text-xs border-border bg-background shadow-none text-foreground hover:bg-accent hover:text-accent-foreground"
+                    title="导入号池"
+                  >
+                    <Upload className="h-3.5 w-3.5" />
+                    <span className="hidden md:inline">导入</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => controller.openAccountPoolDialog("export")}
+                    disabled={controller.isBusy || !controller.snapshot?.accounts.length}
+                    className="h-7 w-7 p-0 md:w-auto md:h-7 md:px-2 md:gap-1 text-xs border-border bg-background shadow-none text-foreground hover:bg-accent hover:text-accent-foreground"
+                    title="导出号池"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span className="hidden md:inline">导出</span>
+                  </Button>
+                </div>
+              </div>
             </header>
           </div>
         </div>
@@ -98,8 +120,6 @@ export default function HomePage() {
                   loginAccountId={controller.loginAccountId}
                   deletingAccountId={controller.deletingAccountId}
                   runningAction={controller.runningAction}
-                  onOpenImport={() => controller.openAccountPoolDialog("import")}
-                  onOpenExport={() => controller.openAccountPoolDialog("export")}
                   onOpenAddAccount={controller.openAddAccountForm}
                   onRefresh={controller.refreshDashboard}
                   onEditAccount={controller.openEditAccountForm}

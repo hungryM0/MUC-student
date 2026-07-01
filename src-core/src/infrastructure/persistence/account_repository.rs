@@ -387,7 +387,7 @@ impl AccountRepository {
             .any(|account| account.id != exclude_account_id && account.username == username)
         {
             Err(AppError::Validation(
-                "这个账号已经存在了，别重复加".to_string(),
+                "该账号已经存在，请勿重复添加".to_string(),
             ))
         } else {
             Ok(())

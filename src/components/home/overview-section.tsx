@@ -3,7 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { AppSnapshotDto } from "@/lib/muc";
 import { cn } from "@/lib/utils";
-import { formatLocalLoginTime, trafficProgressClasses } from "./utils";
+import {
+  buildPoolUsage,
+  formatLocalLoginTime,
+  formatTrafficAmount,
+  trafficProgressClasses,
+} from "./utils";
 
 interface OverviewSectionProps {
   snapshot: AppSnapshotDto | null;
@@ -18,7 +23,8 @@ export function OverviewSection({
   isBusy,
   onLogoutLocalDevice,
 }: OverviewSectionProps) {
-  const progressPercent = Math.round(snapshot?.poolQuota.progressPercent ?? 0);
+  const poolUsage = buildPoolUsage(snapshot?.accounts ?? []);
+  const progressPercent = Math.round(poolUsage.totalProgress);
   const safeProgress = Math.min(100, Math.max(0, progressPercent));
   const currentOnlineRemark = snapshot?.currentOnlineAccountId
     ? snapshot.accounts.find(
@@ -62,7 +68,9 @@ export function OverviewSection({
           </div>
           <div className="mt-2 flex flex-col gap-1">
             <div className="text-xl font-bold tracking-tight">
-              {snapshot?.poolQuota.usedTrafficText ?? "-"}
+              {poolUsage.hasSnapshot
+                ? `${formatTrafficAmount(poolUsage.totalUsed)} / ${formatTrafficAmount(poolUsage.totalQuota)}`
+                : "-"}
             </div>
             <div className="truncate text-xs text-muted-foreground">
               {snapshot?.poolQuota.productBalanceText ?? "-"}

@@ -105,25 +105,67 @@ export function formatSnapshotSyncText(snapshot: AccountDto["snapshot"]) {
 
 export function buildAccountUsage(account: AccountDto) {
   const snapshot = account.snapshot;
-  const totalUsed = parseTrafficValue(snapshot?.usedTrafficText);
+  const freeUsed = parseTrafficValue(snapshot?.usedTrafficText);
   const packageTotal = parseTrafficValue(snapshot?.packageTotalText);
   const packageAvailable = parseTrafficValue(snapshot?.packageAvailableText);
   const packageUsed = Math.max(0, packageTotal - packageAvailable);
+  const totalUsed = freeUsed + packageUsed;
+  const totalQuota = FREE_PRODUCT_QUOTA_GB + packageTotal;
   const freeProgress =
     FREE_PRODUCT_QUOTA_GB > 0
-      ? Math.min(100, Math.max(0, (totalUsed / FREE_PRODUCT_QUOTA_GB) * 100))
+      ? Math.min(100, Math.max(0, (freeUsed / FREE_PRODUCT_QUOTA_GB) * 100))
       : 0;
   const packageProgress =
     packageTotal > 0
       ? Math.min(100, Math.max(0, (packageUsed / packageTotal) * 100))
       : 0;
+  const totalProgress =
+    totalQuota > 0
+      ? Math.min(100, Math.max(0, (totalUsed / totalQuota) * 100))
+      : 0;
 
   return {
+    freeUsed,
     totalUsed,
+    totalQuota,
     packageTotal,
     packageUsed,
     freeQuota: FREE_PRODUCT_QUOTA_GB,
     freeProgress,
     packageProgress,
+    totalProgress,
+  };
+}
+
+export function buildPoolUsage(accounts: AccountDto[]) {
+  const initial = {
+    freeUsed: 0,
+    totalUsed: 0,
+    totalQuota: 0,
+    hasSnapshot: false,
+  };
+
+  const usage = accounts.reduce((acc, account) => {
+    if (!account.snapshot) {
+      return acc;
+    }
+
+    const accountUsage = buildAccountUsage(account);
+    return {
+      freeUsed: acc.freeUsed + accountUsage.freeUsed,
+      totalUsed: acc.totalUsed + accountUsage.totalUsed,
+      totalQuota: acc.totalQuota + accountUsage.totalQuota,
+      hasSnapshot: true,
+    };
+  }, initial);
+
+  const totalProgress =
+    usage.totalQuota > 0
+      ? Math.min(100, Math.max(0, (usage.totalUsed / usage.totalQuota) * 100))
+      : 0;
+
+  return {
+    ...usage,
+    totalProgress,
   };
 }
