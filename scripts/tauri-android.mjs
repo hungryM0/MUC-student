@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
@@ -14,6 +14,8 @@ if (!command || !["dev", "check", "build"].includes(command)) {
   console.error("用法：node scripts/tauri-android.mjs <dev|check|build>");
   process.exit(1);
 }
+
+loadDotEnvFiles([".env.local", ".env"]);
 
 const env = { ...process.env };
 const androidSdk = findAndroidSdk();
@@ -33,6 +35,9 @@ prependToPath(env, ndkBin);
 env.ORG_GRADLE_PROJECT_abiList = "arm64-v8a";
 env.ORG_GRADLE_PROJECT_archList = "arm64";
 env.ORG_GRADLE_PROJECT_targetList = "aarch64";
+if (command === "build") {
+  applyAndroidSigningEnv(env);
+}
 
 for (const [target, triple] of [
   ["aarch64_linux_android", "aarch64-linux-android"],
@@ -68,7 +73,7 @@ const result =
           "android",
           command,
           ...tauriArgs(command),
-          ...passthroughArgs,
+          ...runnerPassthroughArgs(command),
         ],
         {
           cwd: rootDir,
@@ -105,12 +110,157 @@ function tauriArgs(command) {
     return [];
   }
 
-  if (passthroughArgs.includes("--host") || passthroughArgs.includes("--open")) {
+  if (
+    passthroughArgs.includes("--host") ||
+    passthroughArgs.includes("--open")
+  ) {
     return [];
   }
 
   setupAdbReverse();
   return ["--host", "127.0.0.1"];
+}
+
+function runnerPassthroughArgs(command) {
+  if (command !== "build") {
+    return passthroughArgs;
+  }
+
+  return passthroughArgs.filter(
+    (arg) => arg !== "--" && !arg.startsWith("-Pmuc.android.signing."),
+  );
+}
+
+function loadDotEnvFiles(fileNames) {
+  for (const fileName of fileNames) {
+    const filePath = path.join(rootDir, fileName);
+    if (!existsSync(filePath)) {
+      continue;
+    }
+
+    for (const [key, value] of Object.entries(readPropertiesFile(filePath))) {
+      process.env[key] ??= value;
+    }
+  }
+}
+
+function applyAndroidSigningEnv(targetEnv) {
+  const signing = readAndroidSigningConfig();
+  if (!signing) {
+    throw new Error(
+      [
+        "缺少 Android 签名配置，拒绝构建 unsigned release APK。",
+        "请设置环境变量 MUC_ANDROID_SIGNING_KEYSTORE_PATH、MUC_ANDROID_SIGNING_STORE_PASSWORD、MUC_ANDROID_SIGNING_KEY_ALIAS，",
+        "或创建本机文件 .env.local / src-tauri/gen/android/keystore.properties。",
+      ].join(""),
+    );
+  }
+
+  targetEnv["ORG_GRADLE_PROJECT_muc.android.signing.keystorePath"] =
+    signing.keystorePath;
+  targetEnv["ORG_GRADLE_PROJECT_muc.android.signing.storePassword"] =
+    signing.storePassword;
+  targetEnv["ORG_GRADLE_PROJECT_muc.android.signing.keyAlias"] =
+    signing.keyAlias;
+}
+
+function readAndroidSigningConfig() {
+  const passthroughSigning = parseSigningPassthroughArgs();
+  if (isCompleteSigningConfig(passthroughSigning)) {
+    return passthroughSigning;
+  }
+
+  const envSigning = {
+    keystorePath: process.env.MUC_ANDROID_SIGNING_KEYSTORE_PATH,
+    storePassword: process.env.MUC_ANDROID_SIGNING_STORE_PASSWORD,
+    keyAlias: process.env.MUC_ANDROID_SIGNING_KEY_ALIAS,
+  };
+  if (isCompleteSigningConfig(envSigning)) {
+    return envSigning;
+  }
+
+  const propertiesPath = path.join(
+    rootDir,
+    "src-tauri",
+    "gen",
+    "android",
+    "keystore.properties",
+  );
+  const props = readPropertiesFile(propertiesPath);
+  const fileSigning = {
+    keystorePath: resolveSigningPath(
+      props.storeFile,
+      path.dirname(propertiesPath),
+    ),
+    storePassword: props.password,
+    keyAlias: props.keyAlias,
+  };
+  if (isCompleteSigningConfig(fileSigning)) {
+    return fileSigning;
+  }
+
+  return null;
+}
+
+function parseSigningPassthroughArgs() {
+  const signing = {};
+  for (const arg of passthroughArgs) {
+    const match = arg.match(/^-Pmuc\.android\.signing\.([^=]+)=(.*)$/);
+    if (!match) {
+      continue;
+    }
+
+    const [, key, value] = match;
+    if (key === "keystorePath") {
+      signing.keystorePath = value;
+    }
+    if (key === "storePassword") {
+      signing.storePassword = value;
+    }
+    if (key === "keyAlias") {
+      signing.keyAlias = value;
+    }
+  }
+  return signing;
+}
+
+function resolveSigningPath(value, baseDir) {
+  if (!value?.trim()) {
+    return value;
+  }
+
+  return path.isAbsolute(value) ? value : path.resolve(baseDir, value);
+}
+
+function isCompleteSigningConfig(signing) {
+  return (
+    signing.keystorePath?.trim() &&
+    signing.storePassword?.trim() &&
+    signing.keyAlias?.trim()
+  );
+}
+
+function readPropertiesFile(filePath) {
+  if (!existsSync(filePath)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    readFileSync(filePath, "utf8")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("#"))
+      .map((line) => {
+        const separatorIndex = line.indexOf("=");
+        if (separatorIndex === -1) {
+          return [line, ""];
+        }
+        return [
+          line.slice(0, separatorIndex).trim(),
+          line.slice(separatorIndex + 1).trim(),
+        ];
+      }),
+  );
 }
 
 function findAndroidNdk(androidSdk) {
@@ -144,7 +294,9 @@ function findJavaHome() {
     ...defaultJavaHomeCandidates(),
   ].filter(Boolean);
 
-  const javaHome = candidates.find((item) => hasJavaExecutable(path.join(item, "bin")));
+  const javaHome = candidates.find((item) =>
+    hasJavaExecutable(path.join(item, "bin")),
+  );
   if (!javaHome) {
     throw new Error("找不到 Java。请安装 JDK 17+，或设置 JAVA_HOME。");
   }

@@ -94,7 +94,13 @@ jobs:
         shell: bash
         env:
           ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
+          if [ -z "$ANDROID_KEYSTORE_B64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_KEY_ALIAS" ]; then
+            echo "::error::缺少 Android 签名配置。请设置 ANDROID_KEYSTORE_B64、ANDROID_KEYSTORE_PASSWORD 和 ANDROID_KEY_ALIAS。"
+            exit 1
+          fi
           mkdir -p "$RUNNER_TEMP/android-signing"
           echo "$ANDROID_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/android-signing/release.jks"
 
@@ -129,19 +135,28 @@ jobs:
         run: cargo test
 
       - name: Build Android app
-        run: >
-          pnpm tauri:android:build
-          -- -Pmuc.android.signing.keystorePath=$RUNNER_TEMP/android-signing/release.jks
-          -Pmuc.android.signing.storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          -Pmuc.android.signing.keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+        env:
+          MUC_ANDROID_SIGNING_KEYSTORE_PATH: ${{ runner.temp }}/android-signing/release.jks
+          MUC_ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          MUC_ANDROID_SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: pnpm tauri:android:build
 
       - name: Prepare artifact
         shell: bash
         run: |
           mkdir -p dist
-          apk="$(find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' | head -n 1)"
+          apk="$(
+            find src-tauri/gen/android/app/build/outputs/apk \
+              -type f \
+              -path '*/release/*' \
+              -name '*-release.apk' \
+              ! -name '*-unsigned.apk' \
+              | sort \
+              | head -n 1
+          )"
           if [ -z "$apk" ]; then
-            echo "未找到 Android APK"
+            echo "::error::未找到已签名 Android release APK"
+            find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' -print || true
             exit 1
           fi
           cp "$apk" "dist/MUC-student_${{ github.ref_name }}.apk"
