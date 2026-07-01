@@ -270,7 +270,7 @@ impl SessionService {
         local_ip: &str,
     ) -> Option<LocalOnlineAccount> {
         let success_info = self.portal_status_client.fetch_success_info().await.ok()?;
-        if success_info.ip.trim() != local_ip.trim() {
+        if !local_ip.trim().is_empty() && success_info.ip.trim().is_empty() {
             return None;
         }
 
@@ -303,16 +303,11 @@ impl SessionService {
     async fn confirm_target_online_once(
         &self,
         target: &AccountWithPassword,
-        local_ip: Option<&str>,
+        _local_ip: Option<&str>,
     ) -> bool {
         let Ok(info) = self.portal_status_client.fetch_success_info().await else {
             return false;
         };
-        if let Some(local_ip) = local_ip {
-            if info.ip.trim() != local_ip.trim() {
-                return false;
-            }
-        }
         username_matches(&target.account.username, &info.username)
     }
 

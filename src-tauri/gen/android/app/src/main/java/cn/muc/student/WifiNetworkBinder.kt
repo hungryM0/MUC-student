@@ -52,12 +52,13 @@ object WifiNetworkBinder {
       val request =
         NetworkRequest.Builder()
           .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+          .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
           .build()
       try {
-        manager.registerNetworkCallback(request, callback)
+        manager.requestNetwork(request, callback)
         started = true
       } catch (error: RuntimeException) {
-        Log.w(TAG, "register WiFi network callback failed", error)
+        Log.w(TAG, "request WiFi network failed", error)
       }
     }
   }

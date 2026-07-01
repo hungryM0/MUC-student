@@ -269,6 +269,86 @@ async fn login_switches_online_ip_with_login_post_without_logout() {
 }
 
 #[tokio::test]
+async fn login_accepts_portal_success_when_detected_local_ip_differs() {
+    let server = MockServer::start().await;
+    let detected_ip = "10.0.0.8";
+    let portal_ip = "10.151.119.57";
+    let success_count = Arc::new(AtomicUsize::new(0));
+    let success_count_for_mock = success_count.clone();
+    Mock::given(method("GET"))
+        .and(path("/srun_portal_pc_success.php"))
+        .respond_with(move |_request: &wiremock::Request| {
+            let count = success_count_for_mock.fetch_add(1, Ordering::SeqCst);
+            let username = if count == 0 { "20260001" } else { "20260002" };
+            ResponseTemplate::new(200).set_body_string(success_page(portal_ip, username))
+        })
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/srun_portal_pc.php"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("login_ok,ok"))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/include/auth_action.php"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(format!(
+            "1073741824,60,0.00,aa:bb:cc:dd:ee:ff,0,{portal_ip}"
+        )))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/site/sso"))
+        .respond_with(
+            ResponseTemplate::new(302)
+                .insert_header("set-cookie", "PHPSESSID_8800=abc; path=/; HttpOnly")
+                .insert_header("location", "/home"),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/home"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(panel_home_html(portal_ip)))
+        .mount(&server)
+        .await;
+
+    let (core, _root, _event_sink, _panel_session_repo) =
+        build_test_core(settings_for(&server), detected_ip);
+    core.add_account("旧号".to_string(), "20260001".to_string(), "p1".to_string())
+        .await
+        .expect("add first");
+    let second_snapshot = core
+        .add_account(
+            "目标号".to_string(),
+            "20260002".to_string(),
+            "p2".to_string(),
+        )
+        .await
+        .expect("add second");
+    let second_id = second_snapshot
+        .accounts
+        .iter()
+        .find(|account| account.username == "20260002")
+        .expect("second account")
+        .id
+        .clone();
+    core.select_account(second_id.clone())
+        .await
+        .expect("select second");
+
+    let snapshot = core.login_selected_account().await.expect("login selected");
+
+    assert_eq!(snapshot.current_online_account_id, second_id);
+    assert_eq!(snapshot.login_state.result_text, "成功");
+    let current = snapshot
+        .accounts
+        .iter()
+        .find(|account| account.id == second_id)
+        .expect("current account");
+    assert!(current.is_current_online);
+    assert!(current.can_logout_local_device);
+}
+
+#[tokio::test]
 async fn login_waits_for_success_page_after_portal_accepts_switch() {
     let server = MockServer::start().await;
     let local_ip = "10.151.119.57";

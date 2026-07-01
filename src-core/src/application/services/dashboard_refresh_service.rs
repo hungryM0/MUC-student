@@ -98,23 +98,25 @@ impl DashboardRefreshService {
 
         if online_probe.is_online() {
             if let Ok(info) = self.portal_status_client.fetch_success_info().await {
-                let success_account =
-                    local_ip
-                        .filter(|ip| info.ip.trim() == ip.trim())
-                        .and_then(|_| {
-                            store
-                                .accounts
-                                .iter()
-                                .find(|account| username_matches(&account.username, &info.username))
-                        });
+                let success_account = store
+                    .accounts
+                    .iter()
+                    .find(|account| username_matches(&account.username, &info.username));
                 if let Some(account) = success_account {
+                    let portal_ip = info.ip.trim();
+                    let effective_local_ip = if portal_ip.is_empty() {
+                        local_ip
+                    } else {
+                        Some(portal_ip)
+                    };
                     current_online_id = account.id.clone();
                     let snapshot = match self
                         .panel_client
                         .fetch_sso_html(&account.id, &info.username, "/home")
                         .await
-                        .and_then(|html| snapshot_from_panel_home(account, &html, local_ip))
-                    {
+                        .and_then(|html| {
+                            snapshot_from_panel_home(account, &html, effective_local_ip)
+                        }) {
                         Ok(snapshot) => snapshot,
                         Err(_) => build_single_success_snapshot_with_online_info(
                             account,
@@ -208,12 +210,13 @@ impl DashboardRefreshService {
     }
 
     async fn check_local_online(&self, local_ip: Option<&str>) -> LocalOnlineProbe {
-        let Some(local_ip) = local_ip else {
+        let Some(_local_ip) = local_ip else {
             return LocalOnlineProbe::Unknown;
         };
         match self.portal_status_client.fetch_online_info().await {
-            Ok(info) if info.ip.trim() == local_ip.trim() => LocalOnlineProbe::Online(info),
-            Ok(_) | Err(AppError::NotFound(_)) => LocalOnlineProbe::Offline,
+            Ok(info) if info.ip.trim().is_empty() => LocalOnlineProbe::Offline,
+            Ok(info) => LocalOnlineProbe::Online(info),
+            Err(AppError::NotFound(_)) => LocalOnlineProbe::Offline,
             Err(_) => LocalOnlineProbe::Unknown,
         }
     }

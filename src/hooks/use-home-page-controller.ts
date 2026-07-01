@@ -158,7 +158,7 @@ export function useHomePageController() {
     try {
       if (account.id !== snapshot?.selectedAccountId) {
         setSelectingId(account.id);
-        await selectAccount(account.id);
+        setSnapshot(await selectAccount(account.id));
         setSelectingId("");
       }
       setSnapshot(await loginSelectedAccount());
