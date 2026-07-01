@@ -1,3 +1,11 @@
 [alias]
 coverage = "llvm-cov --workspace --all-features --html --output-dir target/llvm-cov/html"
 coverage-summary = "llvm-cov --workspace --all-features --summary-only"
+
+[target.aarch64-linux-android]
+rustflags = [
+    "-C",
+    "link-arg=-Wl,-z,max-page-size=16384",
+    "-C",
+    "link-arg=-Wl,-z,common-page-size=16384",
+]
