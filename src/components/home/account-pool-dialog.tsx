@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { isAndroid } from "@/lib/utils";
 import type { AccountPoolDialogMode } from "./types";
 
 interface AccountPoolDialogProps {
@@ -43,10 +44,18 @@ export function AccountPoolDialog({
 
   const isExport = mode === "export";
   const canSubmit = !!passphrase.trim() && (isExport || !!code.trim()) && !busy;
+  const shouldAutoFocusPassphrase = !isAndroid();
 
   return (
     <Dialog open={!!mode} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-xl">
+      <DialogContent
+        className="max-w-xl"
+        onOpenAutoFocus={(event) => {
+          if (!shouldAutoFocusPassphrase) {
+            event.preventDefault();
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>{isExport ? "导出号池" : "导入号池"}</DialogTitle>
         </DialogHeader>
@@ -69,7 +78,7 @@ export function AccountPoolDialog({
               type="password"
               value={passphrase}
               onChange={(event) => onPassphraseChange(event.target.value)}
-              autoFocus
+              autoFocus={shouldAutoFocusPassphrase}
             />
           </label>
 
