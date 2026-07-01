@@ -21,7 +21,7 @@ class AndroidKeepaliveService : Service() {
   override fun onCreate() {
     super.onCreate()
     stateFile = File(applicationContext.dataDir, "android_keepalive_state.json")
-    startForeground(NOTIFICATION_ID, buildNotification(loadSummary()))
+    startForeground(NOTIFICATION_ID, buildNotification(loadNotificationSummary()))
     worker =
       thread(isDaemon = true, name = "muc-keepalive") {
         while (!Thread.currentThread().isInterrupted) {
@@ -53,10 +53,10 @@ class AndroidKeepaliveService : Service() {
     if (!manager.areNotificationsEnabled()) {
       return
     }
-    manager.notify(NOTIFICATION_ID, buildNotification(loadSummary()))
+    manager.notify(NOTIFICATION_ID, buildNotification(loadNotificationSummary()))
   }
 
-  private fun buildNotification(summary: String): Notification {
+  private fun buildNotification(summary: KeepaliveSummary): Notification {
     ensureChannel()
     val contentIntent = PendingIntent.getActivity(
       this,
@@ -69,18 +69,18 @@ class AndroidKeepaliveService : Service() {
     return NotificationCompat.Builder(this, CHANNEL_ID)
       .setSmallIcon(R.mipmap.ic_launcher)
       .setContentTitle(getString(R.string.main_activity_title))
-      .setContentText(summary)
-      .setStyle(NotificationCompat.BigTextStyle().bigText(summary))
+      .setContentText(summary.text)
+      .setStyle(NotificationCompat.BigTextStyle().bigText(summary.text))
       .setOngoing(true)
       .setOnlyAlertOnce(true)
       .setContentIntent(contentIntent)
       .build()
   }
 
-  private fun loadSummary(): String {
+  private fun loadNotificationSummary(): KeepaliveSummary {
     return try {
       if (!stateFile.exists()) {
-        "正在同步数据"
+        KeepaliveSummary("正在同步数据")
       } else {
         val text = stateFile.readText()
         val used =
@@ -90,12 +90,20 @@ class AndroidKeepaliveService : Service() {
         val account =
           Regex(""""currentAccountName"\s*:\s*"([^"]*)"""").find(text)?.groupValues?.get(1).orEmpty()
         val accountText = if (account.isBlank()) "当前账号：未登录" else "当前账号：$account"
-        val trafficText = listOf(used, total).filter { it.isNotBlank() }.joinToString("/")
-          .ifBlank { "已用流量/总量：未知" }
-        listOf(accountText, trafficText).joinToString(" · ")
+        val trafficValue = if (used.isBlank() && total.isBlank()) {
+          "未知"
+        } else {
+          "${used.ifBlank { "-" }}/${total.ifBlank { "-" }}"
+        }
+        KeepaliveSummary(
+          listOf(
+            accountText,
+            "流量配额：号池总流量 $trafficValue",
+          ).joinToString("\n")
+        )
       }
     } catch (_: Exception) {
-      "正在同步数据"
+      KeepaliveSummary("正在同步数据")
     }
   }
 
@@ -128,4 +136,6 @@ class AndroidKeepaliveService : Service() {
     private const val CHANNEL_ID = "muc_student_keepalive"
     private const val NOTIFICATION_ID = 8800
   }
+
+  private data class KeepaliveSummary(val text: String)
 }
