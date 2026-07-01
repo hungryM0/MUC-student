@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { CircleGauge, Settings as SettingsIcon, Users, Upload, Download } from "lucide-react";
+import {
+  CircleGauge,
+  Settings as SettingsIcon,
+  Users,
+  Upload,
+  Download,
+} from "lucide-react";
 import { WindowFrame } from "@/components/window-frame";
 import { MainTitleBar } from "@/components/main-title-bar";
 import { SettingsDialog } from "@/components/settings-dialog";
@@ -85,7 +91,9 @@ export default function HomePage() {
                     variant="outline"
                     size="sm"
                     onClick={() => controller.openAccountPoolDialog("export")}
-                    disabled={controller.isBusy || !controller.snapshot?.accounts.length}
+                    disabled={
+                      controller.isBusy || !controller.snapshot?.accounts.length
+                    }
                     className="h-7 w-7 p-0 md:w-auto md:h-7 md:px-2 md:gap-1 text-xs border-border bg-background shadow-none text-foreground hover:bg-accent hover:text-accent-foreground"
                     title="导出号池"
                   >
@@ -234,7 +242,10 @@ export default function HomePage() {
         saving={controller.preferencesSaving}
         onTogglePreference={controller.togglePreference}
       />
-      <AboutDialog open={controller.aboutOpen} onClose={controller.closeAbout} />
+      <AboutDialog
+        open={controller.aboutOpen}
+        onClose={controller.closeAbout}
+      />
       <UpdaterDialog />
       <DeleteConfirmDialog
         account={controller.accountToDelete}

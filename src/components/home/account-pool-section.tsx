@@ -21,12 +21,13 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { FREE_PRODUCT_QUOTA_GB, type AccountDto, type AppSnapshotDto } from "@/lib/muc";
+import {
+  FREE_PRODUCT_QUOTA_GB,
+  type AccountDto,
+  type AppSnapshotDto,
+} from "@/lib/muc";
 import { cn } from "@/lib/utils";
-import type {
-  AccountAction,
-  RunningAction,
-} from "./types";
+import type { AccountAction, RunningAction } from "./types";
 import {
   buildAccountUsage,
   formatSnapshotSyncText,
@@ -79,7 +80,9 @@ export function AccountPoolSection({
     localStorage.setItem("muc_account_sort_by", sortBy);
   }, [sortBy]);
 
-  const [lastSelectedMap, setLastSelectedMap] = useState<Record<string, number>>(() => {
+  const [lastSelectedMap, setLastSelectedMap] = useState<
+    Record<string, number>
+  >(() => {
     try {
       const saved = localStorage.getItem("muc_last_selected_accounts");
       return saved ? JSON.parse(saved) : {};
@@ -92,7 +95,10 @@ export function AccountPoolSection({
     if (snapshot?.selectedAccountId) {
       setLastSelectedMap((prev) => {
         const next = { ...prev, [snapshot.selectedAccountId]: Date.now() };
-        localStorage.setItem("muc_last_selected_accounts", JSON.stringify(next));
+        localStorage.setItem(
+          "muc_last_selected_accounts",
+          JSON.stringify(next),
+        );
         return next;
       });
     }
@@ -105,7 +111,9 @@ export function AccountPoolSection({
         const getRemaining = (acc: AccountDto) => {
           if (!acc.snapshot) return -1;
           const { freeUsed, freeQuota } = buildAccountUsage(acc);
-          const packageAvailable = parseTrafficValue(acc.snapshot.packageAvailableText);
+          const packageAvailable = parseTrafficValue(
+            acc.snapshot.packageAvailableText,
+          );
           const freeRemaining = Math.max(0, freeQuota - freeUsed);
           return freeRemaining + packageAvailable;
         };
@@ -145,7 +153,9 @@ export function AccountPoolSection({
         const getRemaining = (acc: AccountDto) => {
           if (!acc.snapshot) return -1;
           const { freeUsed, freeQuota } = buildAccountUsage(acc);
-          const packageAvailable = parseTrafficValue(acc.snapshot.packageAvailableText);
+          const packageAvailable = parseTrafficValue(
+            acc.snapshot.packageAvailableText,
+          );
           const freeRemaining = Math.max(0, freeQuota - freeUsed);
           return freeRemaining + packageAvailable;
         };
@@ -189,7 +199,12 @@ export function AccountPoolSection({
       setDisplayAccounts(sorted);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snapshot?.accounts, snapshot?.selectedAccountId, sortBy, lastSelectedMap]);
+  }, [
+    snapshot?.accounts,
+    snapshot?.selectedAccountId,
+    sortBy,
+    lastSelectedMap,
+  ]);
 
   return (
     <Card className="border-border bg-background/95 flex h-full flex-col overflow-hidden rounded-xl backdrop-blur-sm">
@@ -223,9 +238,15 @@ export function AccountPoolSection({
                 className="h-8 gap-1.5 px-2 text-xs"
                 disabled={isBusy}
               >
-                {sortBy === "remaining" && <ArrowDownWideNarrow className="h-3.5 w-3.5 text-amber-500" />}
-                {sortBy === "recent" && <Clock className="h-3.5 w-3.5 text-blue-500" />}
-                {sortBy === "name" && <ArrowDownAZ className="h-3.5 w-3.5 text-emerald-500" />}
+                {sortBy === "remaining" && (
+                  <ArrowDownWideNarrow className="h-3.5 w-3.5 text-amber-500" />
+                )}
+                {sortBy === "recent" && (
+                  <Clock className="h-3.5 w-3.5 text-blue-500" />
+                )}
+                {sortBy === "name" && (
+                  <ArrowDownAZ className="h-3.5 w-3.5 text-emerald-500" />
+                )}
                 <span className="hidden md:inline">
                   {sortBy === "remaining" && "剩余量"}
                   {sortBy === "recent" && "最近"}
@@ -235,7 +256,10 @@ export function AccountPoolSection({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-36">
-              <DropdownMenuRadioGroup value={sortBy} onValueChange={(val) => setSortBy(val as SortOption)}>
+              <DropdownMenuRadioGroup
+                value={sortBy}
+                onValueChange={(val) => setSortBy(val as SortOption)}
+              >
                 <DropdownMenuRadioItem value="remaining" className="gap-2">
                   <ArrowDownWideNarrow className="h-3.5 w-3.5 text-amber-500" />
                   <span>剩余量</span>
@@ -341,7 +365,11 @@ function AccountCard({
 
   return (
     <div
-      style={{ viewTransitionName: `account-card-${account.id}` } as React.CSSProperties & { viewTransitionName: string }}
+      style={
+        {
+          viewTransitionName: `account-card-${account.id}`,
+        } as React.CSSProperties & { viewTransitionName: string }
+      }
       className={cn(
         "grid min-h-20 grid-cols-[1fr_148px] gap-x-4 gap-y-3 rounded-lg border p-4 text-left transition-all duration-300 ease-out animate-slide-in-up",
         accountState === "online"

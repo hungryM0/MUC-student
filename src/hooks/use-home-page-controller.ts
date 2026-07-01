@@ -31,10 +31,14 @@ export function useHomePageController() {
   const [errorText, setErrorText] = useState("");
   const [selectingId, setSelectingId] = useState("");
   const [loginAccountId, setLoginAccountId] = useState("");
-  const [runningAction, setRunningAction] = useState<RunningAction | null>(null);
+  const [runningAction, setRunningAction] = useState<RunningAction | null>(
+    null,
+  );
   const [savingAccount, setSavingAccount] = useState(false);
   const [deletingAccountId, setDeletingAccountId] = useState("");
-  const [accountToDelete, setAccountToDelete] = useState<AccountDto | null>(null);
+  const [accountToDelete, setAccountToDelete] = useState<AccountDto | null>(
+    null,
+  );
   const [accountForm, setAccountForm] = useState<AccountFormState | null>(null);
   const [accountPoolMode, setAccountPoolMode] =
     useState<AccountPoolDialogMode | null>(null);

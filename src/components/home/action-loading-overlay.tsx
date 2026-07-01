@@ -18,7 +18,9 @@ export function ActionLoadingOverlay({
     return null;
   }
 
-  const targetAccount = accounts.find((account) => account.id === loginAccountId);
+  const targetAccount = accounts.find(
+    (account) => account.id === loginAccountId,
+  );
   const remarkName = targetAccount?.remarkName || targetAccount?.username;
 
   let config = {
