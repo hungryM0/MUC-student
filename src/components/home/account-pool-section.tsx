@@ -177,13 +177,18 @@ export function AccountPoolSection({
       return a.id.localeCompare(b.id);
     });
 
-    if (document.startViewTransition) {
+    const currentIds = displayAccounts.map((a) => a.id).join(",");
+    const newIds = sorted.map((a) => a.id).join(",");
+    const hasOrderChanged = currentIds !== newIds;
+
+    if (hasOrderChanged && document.startViewTransition) {
       document.startViewTransition(() => {
         setDisplayAccounts(sorted);
       });
     } else {
       setDisplayAccounts(sorted);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshot?.accounts, snapshot?.selectedAccountId, sortBy, lastSelectedMap]);
 
   return (

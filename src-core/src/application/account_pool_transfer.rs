@@ -141,7 +141,11 @@ fn derive_key(passphrase: &str, salt: &[u8]) -> AppResult<[u8; KEY_LEN]> {
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_account_pool, encode_account_pool, AccountPoolEntry};
+    use super::{
+        decode_account_pool, encode_account_pool, AccountPoolEntry, AccountPoolPlaintext,
+        AccountPoolState,
+    };
+    use crate::domain::models::CachedTrafficSnapshot;
 
     #[test]
     fn roundtrips_encrypted_pool_code() {
@@ -149,19 +153,48 @@ mod tests {
             remark_name: "主号".to_string(),
             username: "20260001".to_string(),
             password: "secret-1".to_string(),
-            cached_traffic_snapshot: None,
+            cached_traffic_snapshot: Some(CachedTrafficSnapshot {
+                used_traffic_text: "1.00GB".to_string(),
+                status_text: "已同步".to_string(),
+                ..Default::default()
+            }),
         }];
+        let state = AccountPoolState {
+            current_online_username: Some("20260001".to_string()),
+            status_card_order_usernames: vec!["20260001".to_string()],
+        };
 
         let code =
-            encode_account_pool(accounts.clone(), Default::default(), "share-pass").expect("encode");
+            encode_account_pool(accounts.clone(), state.clone(), "share-pass").expect("encode");
         assert!(code.starts_with("MUCPOOL1."));
         assert!(!code.contains("20260001"));
         assert!(!code.contains("secret-1"));
+        assert!(!code.contains("1.00GB"));
 
         let decoded = decode_account_pool(&code, "share-pass").expect("decode");
         assert_eq!(decoded.version, 1);
         assert_eq!(decoded.accounts, accounts);
+        assert_eq!(decoded.state, state);
+    }
+
+    #[test]
+    fn defaults_optional_state_for_old_plaintext_shape() {
+        let decoded: AccountPoolPlaintext = serde_json::from_str(
+            r#"{
+                "version": 1,
+                "accounts": [
+                    {
+                        "remarkName": "主号",
+                        "username": "20260001",
+                        "password": "secret-1"
+                    }
+                ]
+            }"#,
+        )
+        .expect("decode old plaintext");
+
         assert_eq!(decoded.state, Default::default());
+        assert_eq!(decoded.accounts[0].cached_traffic_snapshot, None);
     }
 
     #[test]

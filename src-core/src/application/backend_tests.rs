@@ -927,3 +927,116 @@ async fn login_failure_emits_settled_state() {
     assert!(events.contains(&"finish:login".to_string()));
     assert_eq!(events.last(), Some(&"state:running=false".to_string()));
 }
+
+#[tokio::test]
+async fn account_pool_import_restores_snapshots_and_order_by_username() {
+    let server = MockServer::start().await;
+    let local_ip = "10.151.119.57";
+    let (source_core, _source_root, _source_events, _source_panel_session_repo) =
+        build_test_core(settings_for(&server), local_ip);
+    let source_first = source_core
+        .add_account("一号".to_string(), "20260001".to_string(), "p1".to_string())
+        .await
+        .expect("add source first");
+    let source_second = source_core
+        .add_account("二号".to_string(), "20260002".to_string(), "p2".to_string())
+        .await
+        .expect("add source second");
+    let source_first_id = source_first
+        .accounts
+        .iter()
+        .find(|account| account.username == "20260001")
+        .expect("source first account")
+        .id
+        .clone();
+    let source_second_id = source_second
+        .accounts
+        .iter()
+        .find(|account| account.username == "20260002")
+        .expect("source second account")
+        .id
+        .clone();
+    let mut source_store = source_core
+        .account_repo
+        .load_store()
+        .expect("load source store");
+    source_store.current_online_account_id = source_second_id.clone();
+    source_store.status_card_order_snapshot = vec![source_second_id.clone(), source_first_id];
+    source_store.cached_traffic_snapshots.insert(
+        source_second_id,
+        CachedTrafficSnapshot {
+            used_traffic_text: "2.00GB".to_string(),
+            product_balance_text: "70.00GB".to_string(),
+            included_package_text: "含30.00GB套餐流量".to_string(),
+            package_total_text: "30.00GB".to_string(),
+            package_available_text: "28.00GB".to_string(),
+            online_device_count_text: "1".to_string(),
+            package_text: "校园网".to_string(),
+            status_text: "已同步".to_string(),
+            detail_text: "源设备缓存".to_string(),
+            queried_at: Some(Local::now()),
+            progress_percent: Some(6.7),
+        },
+    );
+    source_core
+        .account_repo
+        .save_store(&source_store)
+        .expect("save source store");
+
+    let code = source_core
+        .export_account_pool("share-pass".to_string())
+        .await
+        .expect("export pool");
+
+    let (target_core, _target_root, _target_events, _target_panel_session_repo) =
+        build_test_core(settings_for(&server), local_ip);
+    target_core
+        .add_account(
+            "额外号".to_string(),
+            "20260003".to_string(),
+            "p3".to_string(),
+        )
+        .await
+        .expect("add extra target account");
+    target_core
+        .add_account(
+            "旧二号".to_string(),
+            "20260002".to_string(),
+            "old-p2".to_string(),
+        )
+        .await
+        .expect("add existing target account");
+
+    let imported = target_core
+        .import_account_pool(code, "share-pass".to_string())
+        .await
+        .expect("import pool");
+
+    assert_eq!(imported.imported_count, 1);
+    assert_eq!(imported.overwritten_count, 1);
+    let target_store = target_core
+        .account_repo
+        .load_store()
+        .expect("load target store");
+    let usernames = target_store
+        .accounts
+        .iter()
+        .map(|account| account.username.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(usernames, vec!["20260001", "20260002", "20260003"]);
+    let target_first_id = target_store.accounts[0].id.clone();
+    let target_second_id = target_store.accounts[1].id.clone();
+    assert_eq!(target_store.current_online_account_id, target_second_id);
+    let target_extra_id = target_store.accounts[2].id.clone();
+    assert_eq!(
+        target_store.status_card_order_snapshot,
+        vec![target_second_id.clone(), target_first_id, target_extra_id]
+    );
+    let imported_snapshot = target_store
+        .cached_traffic_snapshots
+        .get(&target_second_id)
+        .expect("imported snapshot");
+    assert_eq!(imported_snapshot.used_traffic_text, "2.00GB");
+    assert_eq!(imported_snapshot.detail_text, "源设备缓存");
+    assert_eq!(imported_snapshot.progress_percent, Some(6.7));
+}

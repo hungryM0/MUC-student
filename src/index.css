@@ -379,6 +379,18 @@ button {
   mix-blend-mode: normal;
 }
 
+/* 隐藏旧状态快照，消除重排或更新时卡片的半透明重影与渐变 */
+::view-transition-old(*) {
+  display: none !important;
+}
+
+/* 让新状态内容瞬间完全显示，不经历交叉淡入淡出 */
+::view-transition-new(*) {
+  animation: none !important;
+  mix-blend-mode: normal !important;
+  opacity: 1 !important;
+}
+
 /* 定义卡片的平移过渡时间和缓动函数 */
 ::view-transition-group(*) {
   animation-duration: 350ms;
