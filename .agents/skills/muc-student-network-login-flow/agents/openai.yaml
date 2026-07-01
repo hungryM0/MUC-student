@@ -1,4 +1,0 @@
-interface:
-  display_name: "MUC 登录链路"
-  short_description: "处理登录、切号、流量、在线设备和下线"
-  default_prompt: "Use $muc-student-network-login-flow to trace or change the campus network login flow."
