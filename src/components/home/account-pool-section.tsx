@@ -26,7 +26,7 @@ import {
   type AccountDto,
   type AppSnapshotDto,
 } from "@/lib/muc";
-import { cn } from "@/lib/utils";
+import { cn, isAndroid } from "@/lib/utils";
 import type { AccountAction, RunningAction } from "./types";
 import {
   buildAccountUsage,
@@ -191,10 +191,11 @@ export function AccountPoolSection({
     const newIds = sorted.map((a) => a.id).join(",");
     const hasOrderChanged = currentIds !== newIds;
 
-    if (hasOrderChanged && document.startViewTransition) {
-      document.startViewTransition(() => {
+    if (hasOrderChanged && document.startViewTransition && !isAndroid()) {
+      const transition = document.startViewTransition(() => {
         setDisplayAccounts(sorted);
       });
+      transition.ready.catch(() => undefined);
     } else {
       setDisplayAccounts(sorted);
     }
