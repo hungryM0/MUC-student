@@ -6,6 +6,8 @@ import {
   Activity,
   CheckCircle2,
   CircleGauge,
+  Copy,
+  Download,
   LogIn,
   Pencil,
   Power,
@@ -15,6 +17,7 @@ import {
   X,
   Users,
   Settings as SettingsIcon,
+  Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,6 +40,8 @@ import {
   addAccount,
   bootstrapApp,
   deleteAccount,
+  exportAccountPool,
+  importAccountPool,
   loginSelectedAccount,
   logoutLocalDevice,
   readErrorMessage,
@@ -91,6 +96,7 @@ type AccountFormState = {
   username: string;
   password: string;
 };
+type AccountPoolDialogMode = "export" | "import";
 
 export default function HomePage() {
   const [snapshot, setSnapshot] = useState<AppSnapshotDto | null>(null);
@@ -126,6 +132,12 @@ export default function HomePage() {
     null,
   );
   const [accountForm, setAccountForm] = useState<AccountFormState | null>(null);
+  const [accountPoolMode, setAccountPoolMode] =
+    useState<AccountPoolDialogMode | null>(null);
+  const [accountPoolCode, setAccountPoolCode] = useState("");
+  const [accountPoolPassphrase, setAccountPoolPassphrase] = useState("");
+  const [accountPoolBusy, setAccountPoolBusy] = useState(false);
+  const [accountPoolResult, setAccountPoolResult] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
 
@@ -192,6 +204,7 @@ export default function HomePage() {
     !!runningAction ||
     savingAccount ||
     !!deletingAccountId ||
+    accountPoolBusy ||
     !!snapshot?.loginState.running ||
     !!snapshot?.refreshState.running;
   const canLogoutLocalDevice = !!snapshot?.accounts.some(
@@ -256,6 +269,73 @@ export default function HomePage() {
       username: "",
       password: "",
     });
+  }
+
+  function openAccountPoolDialog(mode: AccountPoolDialogMode) {
+    setErrorText("");
+    setAccountPoolMode(mode);
+    setAccountPoolCode("");
+    setAccountPoolPassphrase("");
+    setAccountPoolResult("");
+  }
+
+  function closeAccountPoolDialog() {
+    if (accountPoolBusy) {
+      return;
+    }
+    setAccountPoolMode(null);
+  }
+
+  async function handleExportAccountPool() {
+    if (accountPoolBusy) {
+      return;
+    }
+    setAccountPoolBusy(true);
+    setErrorText("");
+    setAccountPoolResult("");
+    try {
+      setAccountPoolCode(await exportAccountPool(accountPoolPassphrase));
+      setAccountPoolResult("已生成号池码");
+    } catch (error) {
+      setErrorText(readErrorMessage(error));
+    } finally {
+      setAccountPoolBusy(false);
+    }
+  }
+
+  async function handleImportAccountPool() {
+    if (accountPoolBusy) {
+      return;
+    }
+    setAccountPoolBusy(true);
+    setErrorText("");
+    setAccountPoolResult("");
+    try {
+      const result = await importAccountPool(
+        accountPoolCode,
+        accountPoolPassphrase,
+      );
+      setSnapshot(result.snapshot);
+      setAccountPoolResult(
+        `导入 ${result.importedCount} 个，覆盖 ${result.overwrittenCount} 个`,
+      );
+    } catch (error) {
+      setErrorText(readErrorMessage(error));
+    } finally {
+      setAccountPoolBusy(false);
+    }
+  }
+
+  async function copyAccountPoolCode() {
+    if (!accountPoolCode.trim()) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(accountPoolCode);
+      setAccountPoolResult("已复制");
+    } catch {
+      setErrorText("复制号池码失败");
+    }
   }
 
   function openEditAccountForm(account: AccountDto) {
@@ -430,6 +510,26 @@ export default function HomePage() {
                       </p>
                     </div>
                     <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openAccountPoolDialog("import")}
+                        disabled={isBusy}
+                        className="h-8 w-8 px-0 md:w-auto md:px-3 md:gap-1.5"
+                      >
+                        <Upload className="h-4 w-4" />
+                        <span className="hidden md:inline">导入</span>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openAccountPoolDialog("export")}
+                        disabled={isBusy || !snapshot?.accounts.length}
+                        className="h-8 w-8 px-0 md:w-auto md:px-3 md:gap-1.5"
+                      >
+                        <Download className="h-4 w-4" />
+                        <span className="hidden md:inline">导出</span>
+                      </Button>
                       <Button
                         variant="outline"
                         size="sm"
@@ -678,6 +778,19 @@ export default function HomePage() {
         onChange={setAccountForm}
         onClose={() => setAccountForm(null)}
         onSave={handleSaveAccount}
+      />
+      <AccountPoolDialog
+        mode={accountPoolMode}
+        code={accountPoolCode}
+        passphrase={accountPoolPassphrase}
+        busy={accountPoolBusy}
+        resultText={accountPoolResult}
+        onCodeChange={setAccountPoolCode}
+        onPassphraseChange={setAccountPoolPassphrase}
+        onClose={closeAccountPoolDialog}
+        onExport={handleExportAccountPool}
+        onImport={handleImportAccountPool}
+        onCopy={copyAccountPoolCode}
       />
       <SettingsDialog
         open={settingsOpen}
@@ -1041,6 +1154,114 @@ function AccountDialog({
           </Button>
           <Button onClick={onSave} disabled={saving || !canSave}>
             {saving ? "保存中" : "保存"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AccountPoolDialog({
+  mode,
+  code,
+  passphrase,
+  busy,
+  resultText,
+  onCodeChange,
+  onPassphraseChange,
+  onClose,
+  onExport,
+  onImport,
+  onCopy,
+}: {
+  mode: AccountPoolDialogMode | null;
+  code: string;
+  passphrase: string;
+  busy: boolean;
+  resultText: string;
+  onCodeChange: (value: string) => void;
+  onPassphraseChange: (value: string) => void;
+  onClose: () => void;
+  onExport: () => void;
+  onImport: () => void;
+  onCopy: () => void;
+}) {
+  if (!mode) {
+    return null;
+  }
+
+  const isExport = mode === "export";
+  const canSubmit = !!passphrase.trim() && (isExport || !!code.trim()) && !busy;
+
+  return (
+    <Dialog open={!!mode} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader>
+          <DialogTitle>{isExport ? "导出号池" : "导入号池"}</DialogTitle>
+        </DialogHeader>
+
+        <div className="grid gap-3 py-1">
+          {!isExport && (
+            <label className="grid gap-1.5 text-sm">
+              <span className="font-medium">号池码</span>
+              <textarea
+                value={code}
+                onChange={(event) => onCodeChange(event.target.value)}
+                className="min-h-28 w-full resize-none rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none transition-[color,box-shadow] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30"
+              />
+            </label>
+          )}
+
+          <label className="grid gap-1.5 text-sm">
+            <span className="font-medium">号池口令</span>
+            <Input
+              type="password"
+              value={passphrase}
+              onChange={(event) => onPassphraseChange(event.target.value)}
+              autoFocus
+            />
+          </label>
+
+          {isExport && (
+            <label className="grid gap-1.5 text-sm">
+              <span className="font-medium">号池码</span>
+              <div className="grid grid-cols-[1fr_36px] gap-2">
+                <textarea
+                  value={code}
+                  readOnly
+                  className="min-h-28 w-full resize-none rounded-md border border-input bg-muted/30 px-3 py-2 text-sm shadow-xs outline-none"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon-sm"
+                  disabled={!code.trim()}
+                  onClick={onCopy}
+                  aria-label="复制号池码"
+                  className="h-9 w-9"
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+            </label>
+          )}
+
+          {resultText && (
+            <div className="rounded-md border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">
+              {resultText}
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={busy}>
+            关闭
+          </Button>
+          <Button
+            onClick={isExport ? onExport : onImport}
+            disabled={!canSubmit}
+          >
+            {busy ? "处理中" : isExport ? "生成" : "导入"}
           </Button>
         </DialogFooter>
       </DialogContent>

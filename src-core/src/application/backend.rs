@@ -5,7 +5,10 @@ use chrono::Local;
 use tokio::sync::Mutex;
 use tokio::time::sleep;
 
-use crate::application::dto::AppSnapshotDto;
+use crate::application::account_pool_transfer::{
+    decode_account_pool, encode_account_pool, AccountPoolEntry,
+};
+use crate::application::dto::{AccountPoolImportResultDto, AppSnapshotDto};
 use crate::application::error::{AppError, AppResult};
 use crate::application::platform::{AppEventSink, RuntimePathProvider, StartupController};
 use crate::application::runtime::{AppRuntimeState, SharedRuntimeState};
@@ -22,7 +25,9 @@ use crate::infrastructure::network::{
     network_status_service::NetworkStatusService,
     self_service_panel_client::SelfServicePanelClient,
 };
-use crate::infrastructure::persistence::account_repository::AccountRepository;
+use crate::infrastructure::persistence::account_repository::{
+    AccountImportRecord, AccountRepository,
+};
 use crate::infrastructure::persistence::app_state_repository::AppStateRepository;
 use crate::infrastructure::persistence::database::AppDatabase;
 use crate::infrastructure::persistence::panel_session_repository::PanelSessionRepository;
@@ -193,6 +198,48 @@ impl AppCore {
         self.app_state_repo.prune_recent_account_ids(&valid_ids)?;
         self.refresh_runtime_from_disk()?;
         self.emit_state()
+    }
+
+    pub async fn export_account_pool(&self, passphrase: String) -> AppResult<String> {
+        let accounts = self
+            .account_repo
+            .load_accounts_with_passwords()?
+            .into_iter()
+            .map(|item| AccountPoolEntry {
+                remark_name: item.account.remark_name,
+                username: item.account.username,
+                password: item.password,
+            })
+            .collect::<Vec<_>>();
+        if accounts.is_empty() {
+            return Err(AppError::Validation("没有可导出的账号".to_string()));
+        }
+        encode_account_pool(accounts, &passphrase)
+    }
+
+    pub async fn import_account_pool(
+        &self,
+        code: String,
+        passphrase: String,
+    ) -> AppResult<AccountPoolImportResultDto> {
+        let pool = decode_account_pool(&code, &passphrase)?;
+        let records = pool
+            .accounts
+            .into_iter()
+            .map(|item| AccountImportRecord {
+                remark_name: item.remark_name,
+                username: item.username,
+                password: item.password,
+            })
+            .collect();
+        let stats = self.account_repo.import_accounts(records)?;
+        self.refresh_runtime_from_disk()?;
+        let snapshot = self.emit_state()?;
+        Ok(AccountPoolImportResultDto {
+            snapshot,
+            imported_count: stats.imported_count,
+            overwritten_count: stats.overwritten_count,
+        })
     }
 
     pub async fn update_preferences(

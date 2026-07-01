@@ -63,6 +63,14 @@ pub struct AppSnapshotDto {
     pub preferences: PreferenceDto,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountPoolImportResultDto {
+    pub snapshot: AppSnapshotDto,
+    pub imported_count: usize,
+    pub overwritten_count: usize,
+}
+
 impl From<&UserPreferences> for PreferenceDto {
     fn from(value: &UserPreferences) -> Self {
         Self {

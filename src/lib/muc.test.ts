@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import {
   addAccount,
+  exportAccountPool,
+  importAccountPool,
   readErrorMessage,
   refreshDashboard,
   updateAccount,
@@ -62,6 +64,19 @@ describe("muc invoke bridge", () => {
     await refreshDashboard();
 
     expect(invokeMock).toHaveBeenCalledWith("refresh_dashboard");
+  });
+
+  it("passes account pool transfer payloads to Tauri commands", async () => {
+    await exportAccountPool("share-pass");
+    await importAccountPool("MUCPOOL1.payload", "share-pass");
+
+    expect(invokeMock).toHaveBeenNthCalledWith(1, "export_account_pool", {
+      passphrase: "share-pass",
+    });
+    expect(invokeMock).toHaveBeenNthCalledWith(2, "import_account_pool", {
+      code: "MUCPOOL1.payload",
+      passphrase: "share-pass",
+    });
   });
 
   it("reads structured command errors before falling back to string conversion", () => {

@@ -61,6 +61,12 @@ export type AppSnapshotDto = {
   };
 };
 
+export type AccountPoolImportResultDto = {
+  snapshot: AppSnapshotDto;
+  importedCount: number;
+  overwrittenCount: number;
+};
+
 export type AppErrorDto = {
   code: string;
   message: string;
@@ -107,6 +113,17 @@ export async function updateAccount(
 
 export async function deleteAccount(accountId: string) {
   return invoke<AppSnapshotDto>("delete_account", { accountId });
+}
+
+export async function exportAccountPool(passphrase: string) {
+  return invoke<string>("export_account_pool", { passphrase });
+}
+
+export async function importAccountPool(code: string, passphrase: string) {
+  return invoke<AccountPoolImportResultDto>("import_account_pool", {
+    code,
+    passphrase,
+  });
 }
 
 export async function loginSelectedAccount() {

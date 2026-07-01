@@ -23,6 +23,19 @@ pub struct AccountWithPassword {
     pub password: String,
 }
 
+#[derive(Clone, Debug)]
+pub struct AccountImportRecord {
+    pub remark_name: String,
+    pub username: String,
+    pub password: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct AccountImportStats {
+    pub imported_count: usize,
+    pub overwritten_count: usize,
+}
+
 impl AccountRepository {
     pub fn new(db: AppDatabase, vault: Arc<dyn CredentialVault>) -> Self {
         Self { db, vault }
@@ -139,6 +152,14 @@ impl AccountRepository {
         })
     }
 
+    pub fn load_accounts_with_passwords(&self) -> AppResult<Vec<AccountWithPassword>> {
+        self.load_store()?
+            .accounts
+            .iter()
+            .map(|account| self.load_account_with_password(account))
+            .collect()
+    }
+
     pub fn add_account(
         &self,
         remark_name: &str,
@@ -163,6 +184,77 @@ impl AccountRepository {
             return Err(err);
         }
         Ok(account)
+    }
+
+    pub fn import_accounts(
+        &self,
+        records: Vec<AccountImportRecord>,
+    ) -> AppResult<AccountImportStats> {
+        if records.is_empty() {
+            return Err(AppError::Validation("号池里没有账号".to_string()));
+        }
+
+        let mut seen_usernames = HashSet::new();
+        let records = records
+            .into_iter()
+            .map(|record| {
+                let remark_name = Self::require_text(&record.remark_name, "备注名")?;
+                let username = Self::require_text(&record.username, "账号")?;
+                let password = Self::require_text(&record.password, "密码")?;
+                if !seen_usernames.insert(username.clone()) {
+                    return Err(AppError::Validation(format!(
+                        "号池里有重复账号：{username}"
+                    )));
+                }
+                Ok(AccountImportRecord {
+                    remark_name,
+                    username,
+                    password,
+                })
+            })
+            .collect::<AppResult<Vec<_>>>()?;
+
+        let mut store = self.load_store()?;
+        let mut stats = AccountImportStats::default();
+        let mut created_ids = Vec::new();
+        let mut overwritten_passwords = Vec::new();
+
+        for record in records {
+            if let Some(existing) = store
+                .accounts
+                .iter_mut()
+                .find(|account| account.username == record.username)
+            {
+                let old_password = self.vault.get_password(&existing.id)?;
+                overwritten_passwords.push((existing.id.clone(), old_password));
+                existing.remark_name = record.remark_name;
+                self.vault.set_password(&existing.id, &record.password)?;
+                stats.overwritten_count += 1;
+                continue;
+            }
+
+            let account = PortalAccount {
+                id: Uuid::new_v4().simple().to_string(),
+                remark_name: record.remark_name,
+                username: record.username,
+            };
+            self.vault.set_password(&account.id, &record.password)?;
+            created_ids.push(account.id.clone());
+            store.accounts.push(account);
+            stats.imported_count += 1;
+        }
+
+        if let Err(err) = self.save_store(&store) {
+            for account_id in created_ids {
+                let _ = self.vault.delete_password(&account_id);
+            }
+            for (account_id, password) in overwritten_passwords {
+                let _ = self.vault.set_password(&account_id, &password);
+            }
+            return Err(err);
+        }
+
+        Ok(stats)
     }
 
     pub fn update_account(
@@ -481,7 +573,7 @@ mod tests {
 
     use tempfile::tempdir;
 
-    use super::AccountRepository;
+    use super::{AccountImportRecord, AccountRepository};
     use crate::domain::models::CachedTrafficSnapshot;
     use crate::infrastructure::persistence::database::AppDatabase;
     use crate::infrastructure::persistence::runtime_paths::RuntimePaths;
@@ -545,5 +637,76 @@ mod tests {
             "1G"
         );
         assert_eq!(store.status_card_order_snapshot, vec![account.id]);
+    }
+
+    #[test]
+    fn imports_accounts_and_overwrites_existing_usernames() {
+        let root = tempdir().expect("create temp dir");
+        let paths = RuntimePaths::from_cwd_for_tests(root.path()).expect("create paths");
+        let db = AppDatabase::open(&paths).expect("open db");
+        let vault: Arc<dyn CredentialVault> = Arc::new(MemoryCredentialVault::default());
+        let repo = AccountRepository::new(db, vault);
+        let existing = repo
+            .add_account("旧号", "20260001", "old-secret")
+            .expect("add account");
+
+        let stats = repo
+            .import_accounts(vec![
+                AccountImportRecord {
+                    remark_name: "重复号".to_string(),
+                    username: "20260001".to_string(),
+                    password: "new-secret".to_string(),
+                },
+                AccountImportRecord {
+                    remark_name: "新号".to_string(),
+                    username: "20260002".to_string(),
+                    password: "secret-2".to_string(),
+                },
+            ])
+            .expect("import accounts");
+
+        assert_eq!(stats.imported_count, 1);
+        assert_eq!(stats.overwritten_count, 1);
+        let store = repo.load_store().expect("load store");
+        assert_eq!(store.accounts.len(), 2);
+        assert_eq!(store.accounts[0].remark_name, "重复号");
+        assert_eq!(
+            repo.load_account_with_password(&existing)
+                .expect("load existing")
+                .password,
+            "new-secret"
+        );
+    }
+
+    #[test]
+    fn import_can_overwrite_existing_passwords() {
+        let root = tempdir().expect("create temp dir");
+        let paths = RuntimePaths::from_cwd_for_tests(root.path()).expect("create paths");
+        let db = AppDatabase::open(&paths).expect("open db");
+        let vault: Arc<dyn CredentialVault> = Arc::new(MemoryCredentialVault::default());
+        let repo = AccountRepository::new(db, vault);
+        let existing = repo
+            .add_account("旧号", "20260001", "old-secret")
+            .expect("add account");
+
+        let stats = repo
+            .import_accounts(vec![AccountImportRecord {
+                remark_name: "新备注".to_string(),
+                username: "20260001".to_string(),
+                password: "new-secret".to_string(),
+            }])
+            .expect("import accounts");
+
+        assert_eq!(stats.imported_count, 0);
+        assert_eq!(stats.overwritten_count, 1);
+        let store = repo.load_store().expect("load store");
+        assert_eq!(store.accounts.len(), 1);
+        assert_eq!(store.accounts[0].remark_name, "新备注");
+        assert_eq!(
+            repo.load_account_with_password(&existing)
+                .expect("load existing")
+                .password,
+            "new-secret"
+        );
     }
 }

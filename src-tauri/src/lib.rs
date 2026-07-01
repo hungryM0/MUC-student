@@ -4,7 +4,8 @@ mod plugins;
 use std::sync::Arc;
 
 use muc_student_core::application::{
-    AppCore, AppError, AppErrorDto, AppEventSink, AppResult, AppSnapshotDto, IntoCommandResult,
+    AccountPoolImportResultDto, AppCore, AppError, AppErrorDto, AppEventSink, AppResult,
+    AppSnapshotDto, IntoCommandResult,
 };
 use platform::{RunKeyStartupController, TauriRuntimePathProvider};
 use tauri::{Emitter, Manager};
@@ -107,6 +108,29 @@ async fn delete_account(
 }
 
 #[tauri::command]
+async fn export_account_pool(
+    core: tauri::State<'_, ManagedAppCore>,
+    passphrase: String,
+) -> Result<String, AppErrorDto> {
+    core.core
+        .export_account_pool(passphrase)
+        .await
+        .into_command_result()
+}
+
+#[tauri::command]
+async fn import_account_pool(
+    core: tauri::State<'_, ManagedAppCore>,
+    code: String,
+    passphrase: String,
+) -> Result<AccountPoolImportResultDto, AppErrorDto> {
+    core.core
+        .import_account_pool(code, passphrase)
+        .await
+        .into_command_result()
+}
+
+#[tauri::command]
 async fn login_selected_account(
     core: tauri::State<'_, ManagedAppCore>,
 ) -> Result<AppSnapshotDto, AppErrorDto> {
@@ -199,6 +223,8 @@ pub fn run() {
         add_account,
         update_account,
         delete_account,
+        export_account_pool,
+        import_account_pool,
         login_selected_account,
         refresh_dashboard,
         logout_local_device,
@@ -214,6 +240,8 @@ pub fn run() {
         add_account,
         update_account,
         delete_account,
+        export_account_pool,
+        import_account_pool,
         login_selected_account,
         refresh_dashboard,
         logout_local_device,
