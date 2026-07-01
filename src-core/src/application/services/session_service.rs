@@ -27,6 +27,20 @@ pub struct SessionService {
     network_status_service: Arc<dyn NetworkStatusDetector>,
 }
 
+enum LocalOnlineAccount {
+    Known(PortalAccount),
+    Unknown,
+}
+
+impl LocalOnlineAccount {
+    fn known_account_id(&self) -> Option<String> {
+        match self {
+            Self::Known(account) => Some(account.id.clone()),
+            Self::Unknown => None,
+        }
+    }
+}
+
 impl SessionService {
     pub fn new(
         state: SharedRuntimeState,
@@ -68,13 +82,19 @@ impl SessionService {
         let mut current_online_account = None;
         if let Some(local_ip) = local_ip {
             let current_online = self
-                .detect_current_online_account(&store.accounts, local_ip)
+                .detect_local_online_account(&store.accounts, local_ip)
                 .await;
             if let Some(current) = current_online {
-                {
+                if let LocalOnlineAccount::Known(account) = &current {
+                    {
+                        let mut state = self.state.write();
+                        state.current_online_account_id = account.id.clone();
+                        state.account_store.current_online_account_id = account.id.clone();
+                    }
+                } else {
                     let mut state = self.state.write();
-                    state.current_online_account_id = current.id.clone();
-                    state.account_store.current_online_account_id = current.id.clone();
+                    state.current_online_account_id.clear();
+                    state.account_store.current_online_account_id.clear();
                 }
                 current_online_account = Some(current);
             }
@@ -82,10 +102,10 @@ impl SessionService {
 
         let detected_current_id = current_online_account
             .as_ref()
-            .map(|account| account.id.clone())
+            .and_then(|account| account.known_account_id())
             .unwrap_or_default();
-        let mut login_result = if let Some(current) = current_online_account {
-            if current.id == target.account.id {
+        let mut login_result = match current_online_account {
+            Some(LocalOnlineAccount::Known(current)) if current.id == target.account.id => {
                 LoginResult {
                     success: true,
                     message: format!(
@@ -98,11 +118,11 @@ impl SessionService {
                     checked_at: Local::now(),
                     already_online: false,
                 }
-            } else {
+            }
+            Some(LocalOnlineAccount::Known(_)) | Some(LocalOnlineAccount::Unknown) => {
                 self.auth_client.login_target_account(&target).await?
             }
-        } else {
-            self.auth_client.verify_login(&target).await?
+            None => self.auth_client.verify_login(&target).await?,
         };
         if login_result.already_online {
             if detected_current_id == target.account.id
@@ -150,10 +170,11 @@ impl SessionService {
         let Some(local_ip) = local_ip else {
             return self.auth_client.login_target_account(target).await;
         };
-        let Some(current) = self.detect_current_online_account(accounts, local_ip).await else {
+        let Some(current) = self.detect_local_online_account(accounts, local_ip).await else {
             return self.auth_client.login_target_account(target).await;
         };
-        if current.id == target.account.id {
+        if matches!(&current, LocalOnlineAccount::Known(account) if account.id == target.account.id)
+        {
             return Ok(LoginResult {
                 success: true,
                 message: format!(
@@ -229,20 +250,24 @@ impl SessionService {
         Ok(())
     }
 
-    async fn detect_current_online_account(
+    async fn detect_local_online_account(
         &self,
         accounts: &[PortalAccount],
         local_ip: &str,
-    ) -> Option<PortalAccount> {
+    ) -> Option<LocalOnlineAccount> {
         let success_info = self.portal_status_client.fetch_success_info().await.ok()?;
         if success_info.ip.trim() != local_ip.trim() {
             return None;
         }
 
-        accounts
+        let account = accounts
             .iter()
             .find(|account| username_matches(&account.username, &success_info.username))
-            .cloned()
+            .cloned();
+        Some(match account {
+            Some(account) => LocalOnlineAccount::Known(account),
+            None => LocalOnlineAccount::Unknown,
+        })
     }
 
     async fn confirm_target_online(

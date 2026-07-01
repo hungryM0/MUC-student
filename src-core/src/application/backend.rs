@@ -703,6 +703,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn login_switches_when_current_online_account_is_not_in_pool() {
+        let server = MockServer::start().await;
+        let local_ip = "10.151.119.57";
+        let success_count = Arc::new(AtomicUsize::new(0));
+        let success_count_for_mock = success_count.clone();
+        Mock::given(method("GET"))
+            .and(path("/srun_portal_pc_success.php"))
+            .respond_with(move |_request: &wiremock::Request| {
+                let count = success_count_for_mock.fetch_add(1, Ordering::SeqCst);
+                let username = if count == 0 {
+                    "external-user"
+                } else {
+                    "20260002"
+                };
+                ResponseTemplate::new(200).set_body_string(success_page(local_ip, username))
+            })
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/srun_portal_pc.php"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("login_ok,ok"))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/include/auth_action.php"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(format!("1073741824,60,0.00,aa:bb:cc:dd:ee:ff,0,{local_ip}")),
+            )
+            .mount(&server)
+            .await;
+
+        let (core, _root, _event_sink) = build_test_core(settings_for(&server), local_ip);
+        let account_snapshot = core
+            .add_account(
+                "目标号".to_string(),
+                "20260002".to_string(),
+                "p2".to_string(),
+            )
+            .await
+            .expect("add target");
+        let target_id = account_snapshot.selected_account_id;
+
+        let snapshot = core.login_selected_account().await.expect("login selected");
+
+        assert_eq!(snapshot.current_online_account_id, target_id);
+        let requests = server.received_requests().await.unwrap_or_default();
+        let bodies = requests
+            .iter()
+            .map(|request| String::from_utf8_lossy(&request.body).to_string())
+            .collect::<Vec<_>>();
+        assert!(bodies
+            .iter()
+            .any(|body| body.contains("action=login") && body.contains("username=20260002")));
+        assert!(!bodies.iter().any(|body| body.contains("action=logout")));
+    }
+
+    #[tokio::test]
     async fn refresh_uses_success_page_and_sso_panel_home_for_current_account() {
         let server = MockServer::start().await;
         let local_ip = "10.151.119.57";
