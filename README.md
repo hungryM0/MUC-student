@@ -16,11 +16,9 @@
 
 ## 界面截图
 
-| 平台 | 截图 |
-| --- | --- |
-| **Windows** | <img src="assets/screenshot.png" width="400" height="260" alt="界面截图" /> |
-| **Android** | <div align="center"><img src="assets/Android.jpg" width="130" height="260" alt="Android 界面截图" /></div> |
-
+| 平台 | **Windows** | **Android** |
+| --- | --- | --- |
+| 截图 | <img src="assets/screenshot.png" width="400" height="260" alt="界面截图" /> | <div align="center"><img src="assets/Android.jpg" width="130" height="260" alt="Android 界面截图" /></div> |
 
 ## 功能
 
