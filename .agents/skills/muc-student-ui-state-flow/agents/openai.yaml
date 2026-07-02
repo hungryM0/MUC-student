@@ -1,0 +1,4 @@
+interface:
+  display_name: "MUC React 状态流"
+  short_description: "处理页面、组件、hook、invoke 和前端状态"
+  default_prompt: "Use $muc-student-ui-state-flow to adjust React UI state or Tauri invoke wiring."

@@ -1,0 +1,465 @@
+@import "tailwindcss";
+
+html.platform-android {
+  font-size: 14px;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --radius: 0.625rem;
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.145 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.145 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.985 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.396 0.141 25.723);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.269 0 0);
+  --input: oklch(0.269 0 0);
+  --ring: oklch(0.439 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100vh;
+    height: 100dvh;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  body {
+    @apply text-foreground bg-transparent;
+  }
+}
+
+@layer utilities {
+  .title-bar-btn {
+    @apply hover:bg-accent hover:text-accent-foreground flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-slate-400 transition-colors outline-none;
+  }
+
+  .title-bar-control {
+    @apply hover:bg-accent hover:text-accent-foreground flex h-8 w-9 cursor-pointer items-center justify-center text-slate-400 outline-none;
+  }
+
+  .scrollbar-none {
+    &::-webkit-scrollbar {
+      display: none;
+    }
+    & {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  }
+}
+
+/* Global scrollbar styles with theme support */
+::-webkit-scrollbar {
+  width: 0.5rem;
+  height: 0.5rem;
+}
+
+::-webkit-scrollbar-track {
+  border-radius: calc(var(--radius) - 4px);
+  background-color: var(--muted);
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: calc(var(--radius) - 4px);
+  background-color: color-mix(
+    in oklch,
+    var(--muted-foreground) 30%,
+    transparent
+  );
+}
+
+::-webkit-scrollbar-corner {
+  background-color: transparent;
+}
+
+button {
+  user-select: none;
+}
+
+/* ==========================================
+   Smooth Animations
+   ========================================== */
+
+/* Radix Dialog 弹出与遮罩动画 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: translateY(-0.5rem) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes scaleOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-0.5rem) scale(0.96);
+  }
+}
+
+/* 匹配 radix dialog classes 并用 CSS 关键帧提供极致缓动 */
+[data-slot="dialog-overlay"][data-state="open"] {
+  animation: fadeIn 200ms cubic-bezier(0.215, 0.61, 0.355, 1) forwards;
+}
+
+[data-slot="dialog-overlay"][data-state="closed"] {
+  animation: fadeOut 150ms cubic-bezier(0.215, 0.61, 0.355, 1) forwards;
+}
+
+[data-slot="dialog-content"][data-state="open"] {
+  animation: scaleIn 250ms cubic-bezier(0.215, 0.61, 0.355, 1) forwards;
+}
+
+[data-slot="dialog-content"][data-state="closed"] {
+  animation: scaleOut 180ms cubic-bezier(0.215, 0.61, 0.355, 1) forwards;
+}
+
+/* 在线卡片的温和呼吸灯（呼吸投影）效果 */
+@keyframes onlinePulse {
+  0% {
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.1);
+    border-color: rgba(16, 185, 129, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(16, 185, 129, 0.22);
+    border-color: rgba(16, 185, 129, 0.45);
+  }
+  100% {
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.1);
+    border-color: rgba(16, 185, 129, 0.3);
+  }
+}
+
+.account-card-online {
+  animation: onlinePulse 3.5s infinite ease-in-out;
+}
+
+/* 添加账号 (入场) 和 删除账号 (退场) 动画 */
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-slide-in-up {
+  animation: slideInUp 350ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes slideOutRight {
+  from {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+    max-height: 150px;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(24px) scale(0.95);
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-top: 0;
+    margin-bottom: 0;
+    border-width: 0;
+  }
+}
+
+.animate-slide-out-right {
+  animation: slideOutRight 300ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* 左右滑页 (入场) 动画 */
+@keyframes slideInFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.animate-slide-from-right {
+  animation: slideInFromRight 320ms cubic-bezier(0.1, 0.9, 0.2, 1) forwards;
+}
+
+@keyframes slideInFromLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.animate-slide-from-left {
+  animation: slideInFromLeft 320ms cubic-bezier(0.1, 0.9, 0.2, 1) forwards;
+}
+
+/* ==========================================
+   Advanced Loading & Shimmer Animations
+   ========================================== */
+
+/* 逆时针旋转 */
+@keyframes spinReverse {
+  from {
+    transform: rotate(360deg);
+  }
+  to {
+    transform: rotate(0deg);
+  }
+}
+
+.animate-spin-reverse {
+  animation: spinReverse 1.5s linear infinite;
+}
+
+/* 呼吸心跳效果 */
+@keyframes heartBeat {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.12);
+  }
+}
+
+.animate-heart-beat {
+  animation: heartBeat 2s infinite ease-in-out;
+}
+
+/* 雷达脉冲扩散波纹 */
+@keyframes radarRipple {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+.animate-radar-ripple {
+  animation: radarRipple 2s cubic-bezier(0.1, 0.8, 0.3, 1) infinite;
+}
+
+/* 流光文字 */
+.text-shimmer {
+  background: linear-gradient(
+    to right,
+    #0f172a 20%,
+    #64748b 40%,
+    #0f172a 60%,
+    #0f172a 80%
+  );
+  background-size: 200% auto;
+  color: transparent;
+  background-clip: text;
+  -webkit-background-clip: text;
+  animation: textShimmer 3s linear infinite;
+}
+
+.dark .text-shimmer {
+  background: linear-gradient(
+    to right,
+    #f8fafc 20%,
+    #94a3b8 40%,
+    #f8fafc 60%,
+    #f8fafc 80%
+  );
+  background-size: 200% auto;
+  color: transparent;
+  background-clip: text;
+  -webkit-background-clip: text;
+  animation: textShimmer 3s linear infinite;
+}
+
+@keyframes textShimmer {
+  0% {
+    background-position: 200% center;
+  }
+  100% {
+    background-position: -200% center;
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 300ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes scaleInSimple {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-scale-in-simple {
+  animation: scaleInSimple 300ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ==========================================
+   DropdownMenu & View Transition Animations
+   ========================================== */
+
+/* 只有具备 view-transition-name 的元素才进行动画过渡，防止页面其它无关部分闪烁 */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* 隐藏旧状态快照，消除重排或更新时卡片的半透明重影与渐变 */
+::view-transition-old(*) {
+  display: none !important;
+}
+
+/* 让新状态内容瞬间完全显示，不经历交叉淡入淡出 */
+::view-transition-new(*) {
+  animation: none !important;
+  mix-blend-mode: normal !important;
+  opacity: 1 !important;
+}
+
+/* 定义卡片的平移过渡时间和缓动函数 */
+::view-transition-group(*) {
+  animation-duration: 350ms;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 下拉菜单动画 */
+@keyframes dropdownSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes dropdownSlideOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.96);
+  }
+}
+
+[data-slot="dropdown-menu-content"][data-state="open"] {
+  animation: dropdownSlideIn 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+[data-slot="dropdown-menu-content"][data-state="closed"] {
+  animation: dropdownSlideOut 120ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}

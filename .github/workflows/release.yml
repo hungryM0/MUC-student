@@ -1,0 +1,287 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "*"
+  workflow_dispatch:
+
+jobs:
+  release-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Pull repository
+        uses: actions/checkout@v5
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check frontend format
+        run: pnpm format:check
+
+      - name: Lint frontend
+        run: pnpm lint
+
+      - name: Test frontend
+        run: pnpm test
+
+      - name: Restore Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+
+      - name: Format workspace
+        run: cargo fmt --check
+
+      - name: Test workspace
+        run: cargo test
+
+      - name: Build Tauri app
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_UPDATER_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_UPDATER_PRIVATE_KEY_PASSWORD }}
+        run: pnpm tauri:build
+
+      - name: Prepare artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $installer = Get-ChildItem -Path target,src-tauri\target -Recurse -Filter '*.exe' -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match '\\bundle\\nsis\\' } |
+            Select-Object -First 1
+          if (-not $installer) {
+            throw "未找到 Tauri NSIS 安装包"
+          }
+          $artifactName = "MUC-student_${{ github.ref_name }}_setup.exe"
+          $artifactPath = Join-Path "dist" $artifactName
+          Copy-Item -LiteralPath $installer.FullName -Destination $artifactPath
+
+          $signature = Get-ChildItem -Path target,src-tauri\target -Recurse -Filter '*.sig' -ErrorAction SilentlyContinue |
+            Where-Object {
+              $_.DirectoryName -eq $installer.DirectoryName -and
+              (
+                $_.Name -eq "$($installer.Name).sig" -or
+                $_.BaseName -eq $installer.BaseName
+              )
+            } |
+            Select-Object -First 1
+          if (-not $signature) {
+            throw "未找到 Tauri updater 签名文件"
+          }
+
+          $signatureContent = (Get-Content -LiteralPath $signature.FullName -Raw).Trim()
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          $downloadUrl = "https://student.hungrym0.com/MUC-student_setup.exe"
+          $latest = [ordered]@{
+            version = $version
+            notes = "查看 GitHub Release 获取更新说明。"
+            pub_date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            android = [ordered]@{
+              version = $version
+              url = "https://student.hungrym0.com/MUC-student.apk"
+              notes = "查看 GitHub Release 获取更新说明。"
+            }
+            platforms = [ordered]@{
+              "windows-x86_64" = [ordered]@{
+                signature = $signatureContent
+                url = $downloadUrl
+              }
+            }
+          }
+          $latest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath "dist\latest.json" -Encoding utf8
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: MUC-student_${{ github.ref_name }}_setup.exe
+          path: |
+            dist/MUC-student_${{ github.ref_name }}_setup.exe
+            dist/latest.json
+
+  release-android:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Pull repository
+        uses: actions/checkout@v5
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Restore signing keystore
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_B64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_KEY_ALIAS" ]; then
+            echo "::error::缺少 Android 签名配置。请设置 ANDROID_KEYSTORE_B64、ANDROID_KEYSTORE_PASSWORD 和 ANDROID_KEY_ALIAS。"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/android-signing"
+          echo "$ANDROID_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/android-signing/release.jks"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Set up Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r28c
+          link-to-sdk: true
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add Android target
+        run: rustup target add aarch64-linux-android
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check frontend format
+        run: pnpm format:check
+
+      - name: Lint frontend
+        run: pnpm lint
+
+      - name: Test frontend
+        run: pnpm test
+
+      - name: Restore Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+
+      - name: Format workspace
+        run: cargo fmt --check
+
+      - name: Test core workspace
+        run: cargo test -p muc-student-core
+
+      - name: Build Android app
+        env:
+          MUC_ANDROID_SIGNING_KEYSTORE_PATH: ${{ runner.temp }}/android-signing/release.jks
+          MUC_ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          MUC_ANDROID_SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: pnpm tauri:android:build
+
+      - name: Prepare artifact
+        shell: bash
+        run: |
+          mkdir -p dist
+          apk="$(
+            find src-tauri/gen/android/app/build/outputs/apk \
+              -type f \
+              -path '*/release/*' \
+              -name '*-release.apk' \
+              ! -name '*-unsigned.apk' \
+              | sort \
+              | head -n 1
+          )"
+          if [ -z "$apk" ]; then
+            echo "::error::未找到已签名 Android release APK"
+            find src-tauri/gen/android/app/build/outputs/apk -type f -name '*.apk' -print || true
+            exit 1
+          fi
+          cp "$apk" "dist/MUC-student_${{ github.ref_name }}.apk"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: MUC-student_${{ github.ref_name }}.apk
+          path: dist/MUC-student_${{ github.ref_name }}.apk
+
+  publish-release:
+    runs-on: ubuntu-latest
+    needs:
+      - release-windows
+      - release-android
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: MUC-student_${{ github.ref_name }}_setup.exe
+          path: dist
+
+      - name: Download Android artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: MUC-student_${{ github.ref_name }}.apk
+          path: dist
+
+      - name: Set up Python
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Install AWS CLI
+        if: startsWith(github.ref, 'refs/tags/')
+        run: python -m pip install --upgrade awscli
+
+      - name: Upload release artifacts to R2
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_EC2_METADATA_DISABLED: "true"
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          aws s3 cp "dist/MUC-student_${{ github.ref_name }}_setup.exe" "s3://${R2_BUCKET}/MUC-student_setup.exe" --endpoint-url "$endpoint" --content-type "application/vnd.microsoft.portable-executable" --cache-control "no-cache"
+          aws s3 cp "dist/MUC-student_${{ github.ref_name }}.apk" "s3://${R2_BUCKET}/MUC-student.apk" --endpoint-url "$endpoint" --content-type "application/vnd.android.package-archive" --cache-control "no-cache"
+          aws s3 cp "dist/latest.json" "s3://${R2_BUCKET}/latest.json" --endpoint-url "$endpoint" --content-type "application/json" --cache-control "no-cache"
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          files: |
+            dist/MUC-student_${{ github.ref_name }}_setup.exe
+            dist/latest.json
+            dist/MUC-student_${{ github.ref_name }}.apk

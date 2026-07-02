@@ -1,0 +1,60 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "MUC-student",
+  "mainBinaryName": "MUC-student",
+  "version": "2.0.0",
+  "identifier": "cn.muc.student",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEEwNkVGMDI0QzUwMTc0QkIKUldTN2RBSEZKUEJ1b0xOQjdWZ0RDZURKWGd0aG5uaFNsY2IvckdFKytCTWo1VzI5MTNQd3B3UUQK",
+      "endpoints": ["https://student.hungrym0.com/latest.json"],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "MUC-student",
+        "width": 1040,
+        "height": 680,
+        "minWidth": 920,
+        "minHeight": 600,
+        "decorations": false,
+        "transparent": false,
+        "center": true,
+        "shadow": true,
+        "visible": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "createUpdaterArtifacts": true,
+    "windows": {
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "languages": ["SimpChinese"]
+      }
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

@@ -1,0 +1,36 @@
+[package]
+name = "muc-student-core"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lib]
+name = "muc_student_core"
+path = "src/lib.rs"
+
+[dependencies]
+aes-gcm = "0.11.0"
+argon2 = "0.5"
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "6"
+keyring = "=4.1.2"
+keyring-core = "=1.0.0"
+regex = "1"
+reqwest = { version = "0.13.4", features = ["charset", "cookies", "json", "rustls", "form"], default-features = false }
+getrandom = "0.4.3"
+rusqlite = { version = "0.39.0", features = ["bundled", "chrono"] }
+scraper = "0.27"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "process", "rt-multi-thread", "sync", "time"] }
+url = "2"
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+android-native-keyring-store = "1.0.0"
+
+[dev-dependencies]
+tempfile = "3"
+wiremock = "0.6"
