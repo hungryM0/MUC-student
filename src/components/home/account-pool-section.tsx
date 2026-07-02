@@ -256,22 +256,22 @@ export function AccountPoolSection({
                 <ChevronDown className="h-3 w-3 opacity-50" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-36">
+            <DropdownMenuContent align="end" className="w-44">
               <DropdownMenuRadioGroup
                 value={sortBy}
                 onValueChange={(val) => setSortBy(val as SortOption)}
               >
                 <DropdownMenuRadioItem value="remaining" className="gap-2">
                   <ArrowDownWideNarrow className="h-3.5 w-3.5 text-amber-500" />
-                  <span>剩余量</span>
+                  <span className="whitespace-nowrap">剩余量</span>
                 </DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="recent" className="gap-2">
                   <Clock className="h-3.5 w-3.5 text-blue-500" />
-                  <span>最近选择</span>
+                  <span className="whitespace-nowrap">最近选择</span>
                 </DropdownMenuRadioItem>
                 <DropdownMenuRadioItem value="name" className="gap-2">
                   <ArrowDownAZ className="h-3.5 w-3.5 text-emerald-500" />
-                  <span>备注名 A-Z</span>
+                  <span className="whitespace-nowrap">备注名 A-Z</span>
                 </DropdownMenuRadioItem>
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
@@ -295,7 +295,14 @@ export function AccountPoolSection({
         </div>
       </CardHeader>
       <CardContent className="p-4 md:p-6">
-        <div className="max-h-[calc(100vh-240px)] min-h-[300px] overflow-y-auto pr-1">
+        <div
+          className={cn(
+            "min-h-[300px] pr-1",
+            isAndroid()
+              ? "max-h-none"
+              : "max-h-[calc(100vh-240px)] overflow-y-auto",
+          )}
+        >
           <div className="grid grid-cols-1 gap-3 md:gap-4 xl:grid-cols-2 2xl:grid-cols-3">
             {displayAccounts.length ? (
               displayAccounts.map((account) => (
@@ -372,7 +379,10 @@ function AccountCard({
         } as React.CSSProperties & { viewTransitionName: string }
       }
       className={cn(
-        "grid min-h-20 grid-cols-[1fr_148px] gap-x-4 gap-y-3 rounded-lg border p-4 text-left transition-all duration-300 ease-out animate-slide-in-up",
+        "grid min-h-20 gap-y-3 rounded-lg border text-left transition-all duration-300 ease-out animate-slide-in-up",
+        isAndroid()
+          ? "grid-cols-[1fr_132px] gap-x-2.5 p-3"
+          : "grid-cols-[1fr_148px] gap-x-4 p-4",
         accountState === "online"
           ? "border-emerald-500/40 bg-emerald-500/10 shadow-[0_0_12px_rgba(16,185,129,0.15)] ring-1 ring-emerald-500/20 account-card-online"
           : "border-border hover:bg-muted/50 hover:border-muted-foreground/20 hover:shadow-xs",
@@ -387,7 +397,12 @@ function AccountCard({
         <div className="truncate text-sm text-muted-foreground">
           {account.username}
         </div>
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        <div
+          className={cn(
+            "flex flex-wrap gap-y-1 text-muted-foreground",
+            isAndroid() ? "gap-x-2 text-[10px]" : "gap-x-4 text-xs",
+          )}
+        >
           <span>{snapshot?.usedTrafficText ?? "-"}</span>
           <span>{snapshot?.onlineDeviceCountText ?? "0"} 设备</span>
           <span>{formatSnapshotSyncText(snapshot)}</span>
@@ -404,7 +419,12 @@ function AccountCard({
           >
             {Math.round(totalProgress)}%
           </div>
-          <div className="mt-1 truncate text-xs text-muted-foreground">
+          <div
+            className={cn(
+              "mt-0.5 truncate text-muted-foreground",
+              isAndroid() ? "text-[10px]" : "text-xs",
+            )}
+          >
             {formatTrafficAmount(totalUsed)} / {formatTrafficAmount(totalQuota)}
           </div>
         </div>
@@ -417,17 +437,20 @@ function AccountCard({
             onClick={onLogin}
             className={cn(
               "relative h-8 w-full overflow-hidden transition-all duration-300",
+              isAndroid() ? "px-1 text-xs" : "px-3",
               (loggingIn || selecting) &&
                 "bg-emerald-600 text-white hover:bg-emerald-600",
             )}
           >
-            <span className="flex items-center justify-center gap-1.5 transition-all duration-300">
+            <span className="flex items-center justify-center gap-1 transition-all duration-300 whitespace-nowrap">
               {loggingIn || selecting ? (
-                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin" />
               ) : (
-                <LogIn className="h-3.5 w-3.5" />
+                <LogIn className="h-3.5 w-3.5 shrink-0" />
               )}
-              {loggingIn || selecting ? "登录中" : "登录"}
+              <span className="shrink-0">
+                {loggingIn || selecting ? "登录中" : "登录"}
+              </span>
             </span>
           </Button>
           <Button

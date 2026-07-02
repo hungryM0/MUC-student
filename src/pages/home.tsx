@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   CircleGauge,
   Settings as SettingsIcon,
@@ -27,6 +27,38 @@ import appIconUrl from "../../src-tauri/icons/icon.svg?url";
 
 export default function HomePage() {
   const [activeTab, setActiveTab] = useState<HomeTab>("accounts");
+  const [slideDirection, setSlideDirection] = useState<"left" | "right">("right");
+  const [navScaleX, setNavScaleX] = useState(1);
+  const scaleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const TAB_INDEX = {
+    accounts: 0,
+    overview: 1,
+    settings: 2,
+  };
+
+  const handleTabChange = (tab: HomeTab) => {
+    if (tab === activeTab) return;
+
+    const currentIdx = TAB_INDEX[tab];
+    const prevIdx = TAB_INDEX[activeTab];
+    setSlideDirection(currentIdx > prevIdx ? "right" : "left");
+
+    setNavScaleX(1.25);
+    setActiveTab(tab);
+
+    if (scaleTimeoutRef.current) {
+      clearTimeout(scaleTimeoutRef.current);
+    }
+
+    scaleTimeoutRef.current = setTimeout(() => {
+      setNavScaleX(0.95);
+      scaleTimeoutRef.current = setTimeout(() => {
+        setNavScaleX(1);
+      }, 80);
+    }, 180);
+  };
+
   const controller = useHomePageController();
 
   return (
@@ -55,26 +87,60 @@ export default function HomePage() {
         >
           <div className="mx-auto w-full max-w-5xl xl:max-w-7xl 2xl:max-w-[1440px]">
             <header className="flex items-center justify-between border-b border-border/40 pb-3 md:pb-4">
-              <div className="flex items-center gap-3 md:gap-4">
-                <h1 className="flex items-center gap-2.5 text-xl font-bold tracking-tight text-foreground">
-                  <img
-                    src={appIconUrl}
-                    alt=""
-                    className="h-7 w-7 shrink-0 rounded-md"
-                  />
-                  MUC 校园网拼车
-                </h1>
-                <div className="bg-border/60 hidden h-4 w-px sm:block" />
+              <div
+                className={cn(
+                  "flex gap-3",
+                  isAndroid() ? "flex-row items-start" : "items-center md:gap-4",
+                )}
+              >
+                <img
+                  src={appIconUrl}
+                  alt=""
+                  className={cn(
+                    "shrink-0 rounded-md",
+                    isAndroid() ? "h-9 w-9 mt-0.5" : "h-7 w-7",
+                  )}
+                />
+                <div className="flex flex-col min-w-0">
+                  <h1 className="text-lg sm:text-xl font-bold tracking-tight text-foreground whitespace-nowrap shrink-0">
+                    MUC 校园网拼车
+                  </h1>
+                  {isAndroid() && (
+                    <span className="font-mono text-[10px] text-muted-foreground whitespace-nowrap shrink-0 mt-0.5 flex items-center gap-1.5">
+                      <span
+                        className={cn(
+                          "h-1.5 w-1.5 rounded-full",
+                          controller.snapshot?.network.ip &&
+                            controller.snapshot.network.ip !== "unknown"
+                            ? "bg-emerald-500 animate-pulse"
+                            : "bg-amber-500",
+                        )}
+                      />
+                      IP:{" "}
+                      {controller.snapshot?.network.ip &&
+                      controller.snapshot.network.ip !== "unknown"
+                        ? controller.snapshot.network.ip
+                        : "未识别"}
+                    </span>
+                  )}
+                </div>
+                {!isAndroid() && (
+                  <div className="bg-border/60 hidden h-4 w-px sm:block" />
+                )}
               </div>
               <div className="flex items-center gap-2 sm:gap-3">
-                <span className="font-mono text-xs text-muted-foreground">
-                  IP:{" "}
-                  {controller.snapshot?.network.ip &&
-                  controller.snapshot.network.ip !== "unknown"
-                    ? controller.snapshot.network.ip
-                    : "未识别"}
-                </span>
-                <div className="bg-border/40 h-3 w-px" />
+                {!isAndroid() && (
+                  <>
+                    <span className="font-mono text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                      IP:{" "}
+                      {controller.snapshot?.network.ip &&
+                      controller.snapshot.network.ip !== "unknown"
+                        ? controller.snapshot.network.ip
+                        : "未识别"}
+                    </span>
+                    <div className="bg-border/40 h-3 w-px" />
+                  </>
+                )}
                 <div className="flex items-center gap-0.5 sm:gap-1">
                   <Button
                     variant="outline"
@@ -109,56 +175,82 @@ export default function HomePage() {
         <main
           className={cn(
             "min-w-0 flex-1 overflow-y-auto p-4 md:p-6",
-            isAndroid() && "pb-24",
+            isAndroid() && "pb-[calc(env(safe-area-inset-bottom)+5.5rem)]",
           )}
         >
           <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 md:gap-6 xl:max-w-7xl 2xl:max-w-[1440px]">
             <div className="flex flex-col gap-4 md:flex-row md:gap-6">
-              <div
-                className={cn(
-                  "min-w-0 flex-1",
-                  isAndroid() && activeTab !== "accounts" && "hidden md:block",
-                )}
-              >
-                <AccountPoolSection
-                  snapshot={controller.snapshot}
-                  loading={controller.loading}
-                  isBusy={controller.isBusy}
-                  selectingId={controller.selectingId}
-                  loginAccountId={controller.loginAccountId}
-                  deletingAccountId={controller.deletingAccountId}
-                  runningAction={controller.runningAction}
-                  onOpenAddAccount={controller.openAddAccountForm}
-                  onRefresh={controller.refreshDashboard}
-                  onEditAccount={controller.openEditAccountForm}
-                  onDeleteAccount={controller.requestDeleteAccount}
-                  onLoginAccount={controller.handleLoginAccount}
-                />
-              </div>
-
-              <div
-                className={cn(
-                  "flex w-full shrink-0 flex-col gap-6 md:w-80",
-                  isAndroid() && activeTab !== "overview" && "hidden md:flex",
-                )}
-              >
-                <OverviewSection
-                  snapshot={controller.snapshot}
-                  canLogoutLocalDevice={controller.canLogoutLocalDevice}
-                  isBusy={controller.isBusy}
-                  onLogoutLocalDevice={controller.logoutLocalDevice}
-                />
-              </div>
-
-              {isAndroid() && activeTab === "settings" && (
-                <div className="w-full flex-1 md:hidden">
-                  <MobileSettings
-                    preferences={controller.snapshot?.preferences ?? null}
-                    errorText={controller.preferencesErrorText}
-                    saving={controller.preferencesSaving}
-                    onTogglePreference={controller.togglePreference}
-                  />
+              {isAndroid() ? (
+                <div
+                  key={activeTab}
+                  className={cn(
+                    "w-full min-w-0 flex-1",
+                    slideDirection === "right"
+                      ? "animate-slide-from-right"
+                      : "animate-slide-from-left",
+                  )}
+                >
+                  {activeTab === "accounts" && (
+                    <AccountPoolSection
+                      snapshot={controller.snapshot}
+                      loading={controller.loading}
+                      isBusy={controller.isBusy}
+                      selectingId={controller.selectingId}
+                      loginAccountId={controller.loginAccountId}
+                      deletingAccountId={controller.deletingAccountId}
+                      runningAction={controller.runningAction}
+                      onOpenAddAccount={controller.openAddAccountForm}
+                      onRefresh={controller.refreshDashboard}
+                      onEditAccount={controller.openEditAccountForm}
+                      onDeleteAccount={controller.requestDeleteAccount}
+                      onLoginAccount={controller.handleLoginAccount}
+                    />
+                  )}
+                  {activeTab === "overview" && (
+                    <OverviewSection
+                      snapshot={controller.snapshot}
+                      canLogoutLocalDevice={controller.canLogoutLocalDevice}
+                      isBusy={controller.isBusy}
+                      onLogoutLocalDevice={controller.logoutLocalDevice}
+                    />
+                  )}
+                  {activeTab === "settings" && (
+                    <MobileSettings
+                      preferences={controller.snapshot?.preferences ?? null}
+                      errorText={controller.preferencesErrorText}
+                      saving={controller.preferencesSaving}
+                      onTogglePreference={controller.togglePreference}
+                    />
+                  )}
                 </div>
+              ) : (
+                <>
+                  <div className="min-w-0 flex-1">
+                    <AccountPoolSection
+                      snapshot={controller.snapshot}
+                      loading={controller.loading}
+                      isBusy={controller.isBusy}
+                      selectingId={controller.selectingId}
+                      loginAccountId={controller.loginAccountId}
+                      deletingAccountId={controller.deletingAccountId}
+                      runningAction={controller.runningAction}
+                      onOpenAddAccount={controller.openAddAccountForm}
+                      onRefresh={controller.refreshDashboard}
+                      onEditAccount={controller.openEditAccountForm}
+                      onDeleteAccount={controller.requestDeleteAccount}
+                      onLoginAccount={controller.handleLoginAccount}
+                    />
+                  </div>
+
+                  <div className="flex w-full shrink-0 flex-col gap-6 md:w-80">
+                    <OverviewSection
+                      snapshot={controller.snapshot}
+                      canLogoutLocalDevice={controller.canLogoutLocalDevice}
+                      isBusy={controller.isBusy}
+                      onLogoutLocalDevice={controller.logoutLocalDevice}
+                    />
+                  </div>
+                </>
               )}
             </div>
           </div>
@@ -166,43 +258,100 @@ export default function HomePage() {
 
         {isAndroid() && (
           <div className="absolute right-0 bottom-0 left-0 z-40 border-t border-border/40 bg-background/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_rgba(0,0,0,0.05)] backdrop-blur-md">
-            <div className="flex h-16 items-center justify-around px-2">
-              <button
-                onClick={() => setActiveTab("accounts")}
-                className={cn(
-                  "flex h-full w-full flex-col items-center justify-center gap-1 transition-colors",
-                  activeTab === "accounts"
-                    ? "text-emerald-500"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <Users className="h-6 w-6" />
-                <span className="text-[10px] font-medium">账号池</span>
-              </button>
-              <button
-                onClick={() => setActiveTab("overview")}
-                className={cn(
-                  "flex h-full w-full flex-col items-center justify-center gap-1 transition-colors",
-                  activeTab === "overview"
-                    ? "text-emerald-500"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <CircleGauge className="h-6 w-6" />
-                <span className="text-[10px] font-medium">概览</span>
-              </button>
-              <button
-                onClick={() => setActiveTab("settings")}
-                className={cn(
-                  "flex h-full w-full flex-col items-center justify-center gap-1 transition-colors",
-                  activeTab === "settings"
-                    ? "text-emerald-500"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <SettingsIcon className="h-6 w-6" />
-                <span className="text-[10px] font-medium">设置</span>
-              </button>
+            <div className="mx-auto flex h-16 max-w-md items-center px-6">
+              <div className="relative flex w-full h-full items-center justify-around">
+                {/* Fluent Design Slide Indicator (绿色小胶囊) */}
+                <div
+                  className="absolute top-[7px] h-8 w-16 rounded-full bg-emerald-500/8 dark:bg-emerald-500/15 pointer-events-none transition-[left,transform] duration-300 ease-[cubic-bezier(0.1,0.9,0.2,1)]"
+                  style={{
+                    left:
+                      activeTab === "accounts"
+                        ? "16.67%"
+                        : activeTab === "overview"
+                        ? "50%"
+                        : "83.33%",
+                    transform: `translateX(-50%) scaleX(${navScaleX})`
+                  }}
+                />
+
+                <button
+                  onClick={() => handleTabChange("accounts")}
+                  className="flex h-full w-full flex-col items-center justify-center gap-1 outline-none"
+                >
+                  <div className="relative flex h-8 w-16 items-center justify-center rounded-full">
+                    <Users
+                      className={cn(
+                        "h-5 w-5 transition-all duration-300 ease-[cubic-bezier(0.1,0.9,0.2,1)]",
+                        activeTab === "accounts"
+                          ? "text-emerald-600 dark:text-emerald-400 scale-110"
+                          : "text-muted-foreground scale-100"
+                      )}
+                    />
+                  </div>
+                  <span
+                    className={cn(
+                      "text-[10px] font-medium transition-colors duration-300 ease-[cubic-bezier(0.1,0.9,0.2,1)]",
+                      activeTab === "accounts"
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-muted-foreground"
+                    )}
+                  >
+                    账号池
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => handleTabChange("overview")}
+                  className="flex h-full w-full flex-col items-center justify-center gap-1 outline-none"
+                >
+                  <div className="relative flex h-8 w-16 items-center justify-center rounded-full">
+                    <CircleGauge
+                      className={cn(
+                        "h-5 w-5 transition-all duration-300 ease-[cubic-bezier(0.1,0.9,0.2,1)]",
+                        activeTab === "overview"
+                          ? "text-emerald-600 dark:text-emerald-400 scale-110"
+                          : "text-muted-foreground scale-100"
+                      )}
+                    />
+                  </div>
+                  <span
+                    className={cn(
+                      "text-[10px] font-medium transition-colors duration-300 ease-[cubic-bezier(0.1,0.9,0.2,1)]",
+                      activeTab === "overview"
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-muted-foreground"
+                    )}
+                  >
+                    概览
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => handleTabChange("settings")}
+                  className="flex h-full w-full flex-col items-center justify-center gap-1 outline-none"
+                >
+                  <div className="relative flex h-8 w-16 items-center justify-center rounded-full">
+                    <SettingsIcon
+                      className={cn(
+                        "h-5 w-5 transition-all duration-300 ease-[cubic-bezier(0.1,0.9,0.2,1)]",
+                        activeTab === "settings"
+                          ? "text-emerald-600 dark:text-emerald-400 scale-110"
+                          : "text-muted-foreground scale-100"
+                      )}
+                    />
+                  </div>
+                  <span
+                    className={cn(
+                      "text-[10px] font-medium transition-colors duration-300 ease-[cubic-bezier(0.1,0.9,0.2,1)]",
+                      activeTab === "settings"
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-muted-foreground"
+                    )}
+                  >
+                    设置
+                  </span>
+                </button>
+              </div>
             </div>
           </div>
         )}

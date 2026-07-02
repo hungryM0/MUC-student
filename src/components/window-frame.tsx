@@ -31,7 +31,7 @@ export function WindowFrame({
     <ThemeProvider defaultTheme="system" storageKey="tauri-ui-theme">
       <div
         className={cn(
-          "bg-background text-foreground flex h-screen w-screen flex-col overflow-hidden",
+          "bg-background text-foreground flex h-[100dvh] w-screen flex-col overflow-hidden",
           isAndroid()
             ? "border-none pt-[env(safe-area-inset-top)]"
             : isMain
