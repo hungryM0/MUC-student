@@ -151,7 +151,7 @@ jobs:
       - name: Set up Android NDK
         uses: nttld/setup-ndk@v1
         with:
-          ndk-version: 28.2.13676358
+          ndk-version: r28c
           link-to-sdk: true
 
       - name: Set up Rust

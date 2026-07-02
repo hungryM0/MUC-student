@@ -81,7 +81,10 @@ async fn run() -> AppResult<()> {
     );
 
     let (csrf_param, csrf_token) = extract_csrf_meta(&home_response.text);
-    let logout_url = join_url(&home_response.final_url, &decode_basic_html_entities(&device.logout_path));
+    let logout_url = join_url(
+        &home_response.final_url,
+        &decode_basic_html_entities(&device.logout_path),
+    );
     let mut headers = build_form_headers(&home_response.final_url);
     if !csrf_token.trim().is_empty() {
         headers.insert("X-CSRF-Token".to_string(), csrf_token.clone());

@@ -27,7 +27,9 @@ import appIconUrl from "../../src-tauri/icons/icon.svg?url";
 
 export default function HomePage() {
   const [activeTab, setActiveTab] = useState<HomeTab>("accounts");
-  const [slideDirection, setSlideDirection] = useState<"left" | "right">("right");
+  const [slideDirection, setSlideDirection] = useState<"left" | "right">(
+    "right",
+  );
   const [navScaleX, setNavScaleX] = useState(1);
   const scaleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -90,7 +92,9 @@ export default function HomePage() {
               <div
                 className={cn(
                   "flex gap-3",
-                  isAndroid() ? "flex-row items-start" : "items-center md:gap-4",
+                  isAndroid()
+                    ? "flex-row items-start"
+                    : "items-center md:gap-4",
                 )}
               >
                 <img
@@ -268,9 +272,9 @@ export default function HomePage() {
                       activeTab === "accounts"
                         ? "16.67%"
                         : activeTab === "overview"
-                        ? "50%"
-                        : "83.33%",
-                    transform: `translateX(-50%) scaleX(${navScaleX})`
+                          ? "50%"
+                          : "83.33%",
+                    transform: `translateX(-50%) scaleX(${navScaleX})`,
                   }}
                 />
 
@@ -284,7 +288,7 @@ export default function HomePage() {
                         "h-5 w-5 transition-all duration-300 ease-[cubic-bezier(0.1,0.9,0.2,1)]",
                         activeTab === "accounts"
                           ? "text-emerald-600 dark:text-emerald-400 scale-110"
-                          : "text-muted-foreground scale-100"
+                          : "text-muted-foreground scale-100",
                       )}
                     />
                   </div>
@@ -293,7 +297,7 @@ export default function HomePage() {
                       "text-[10px] font-medium transition-colors duration-300 ease-[cubic-bezier(0.1,0.9,0.2,1)]",
                       activeTab === "accounts"
                         ? "text-emerald-600 dark:text-emerald-400"
-                        : "text-muted-foreground"
+                        : "text-muted-foreground",
                     )}
                   >
                     账号池
@@ -310,7 +314,7 @@ export default function HomePage() {
                         "h-5 w-5 transition-all duration-300 ease-[cubic-bezier(0.1,0.9,0.2,1)]",
                         activeTab === "overview"
                           ? "text-emerald-600 dark:text-emerald-400 scale-110"
-                          : "text-muted-foreground scale-100"
+                          : "text-muted-foreground scale-100",
                       )}
                     />
                   </div>
@@ -319,7 +323,7 @@ export default function HomePage() {
                       "text-[10px] font-medium transition-colors duration-300 ease-[cubic-bezier(0.1,0.9,0.2,1)]",
                       activeTab === "overview"
                         ? "text-emerald-600 dark:text-emerald-400"
-                        : "text-muted-foreground"
+                        : "text-muted-foreground",
                     )}
                   >
                     概览
@@ -336,7 +340,7 @@ export default function HomePage() {
                         "h-5 w-5 transition-all duration-300 ease-[cubic-bezier(0.1,0.9,0.2,1)]",
                         activeTab === "settings"
                           ? "text-emerald-600 dark:text-emerald-400 scale-110"
-                          : "text-muted-foreground scale-100"
+                          : "text-muted-foreground scale-100",
                       )}
                     />
                   </div>
@@ -345,7 +349,7 @@ export default function HomePage() {
                       "text-[10px] font-medium transition-colors duration-300 ease-[cubic-bezier(0.1,0.9,0.2,1)]",
                       activeTab === "settings"
                         ? "text-emerald-600 dark:text-emerald-400"
-                        : "text-muted-foreground"
+                        : "text-muted-foreground",
                     )}
                   >
                     设置
