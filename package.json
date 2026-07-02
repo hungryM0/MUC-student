@@ -14,12 +14,12 @@
     "tauri:android:dev": "node scripts/tauri-android.mjs dev",
     "tauri:android:check": "node scripts/tauri-android.mjs check",
     "tauri:android:build": "node scripts/tauri-android.mjs build",
-    "format": "prettier --write \"src/**/*.{ts,tsx,css,json}\"",
-    "format:check": "prettier --check \"src/**/*.{ts,tsx,css,json}\"",
+    "format": "prettier --write \"*.{json,ts,tsx,css,mjs}\" \"src/**/*.{ts,tsx,css,json}\" \"scripts/**/*.mjs\" \".github/workflows/*.{yml,yaml}\" \"src-tauri/tauri.conf.json\"",
+    "format:check": "prettier --check \"*.{json,ts,tsx,css,mjs}\" \"src/**/*.{ts,tsx,css,json}\" \"scripts/**/*.mjs\" \".github/workflows/*.{yml,yaml}\" \"src-tauri/tauri.conf.json\"",
     "lint": "eslint src/**/*.{ts,tsx} vite.config.ts",
     "lint:fix": "eslint src/**/*.{ts,tsx} vite.config.ts --fix",
     "test": "vitest run",
-    "check": "pnpm format:check && pnpm lint && pnpm build"
+    "check": "pnpm format:check && pnpm lint && pnpm test && pnpm build"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.1",

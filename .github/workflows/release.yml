@@ -33,6 +33,15 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Check frontend format
+        run: pnpm format:check
+
+      - name: Lint frontend
+        run: pnpm lint
+
+      - name: Test frontend
+        run: pnpm test
+
       - name: Restore Rust cache
         uses: swatinem/rust-cache@v2
         with:
@@ -162,6 +171,15 @@ jobs:
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Check frontend format
+        run: pnpm format:check
+
+      - name: Lint frontend
+        run: pnpm lint
+
+      - name: Test frontend
+        run: pnpm test
 
       - name: Restore Rust cache
         uses: swatinem/rust-cache@v2

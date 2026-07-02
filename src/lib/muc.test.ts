@@ -6,6 +6,7 @@ import {
   importAccountPool,
   readErrorMessage,
   refreshDashboard,
+  fetchAndroidUpdateFeed,
   updateAccount,
   updatePreferences,
 } from "./muc";
@@ -77,6 +78,12 @@ describe("muc invoke bridge", () => {
       code: "MUCPOOL1.payload",
       passphrase: "share-pass",
     });
+  });
+
+  it("keeps Android update feed command stable", async () => {
+    await fetchAndroidUpdateFeed();
+
+    expect(invokeMock).toHaveBeenCalledWith("fetch_android_update_feed");
   });
 
   it("reads structured command errors before falling back to string conversion", () => {
