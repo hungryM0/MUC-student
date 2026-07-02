@@ -162,6 +162,11 @@ function applyAndroidSigningEnv(targetEnv) {
     signing.storePassword;
   targetEnv["ORG_GRADLE_PROJECT_muc.android.signing.keyAlias"] =
     signing.keyAlias;
+  targetEnv["ORG_GRADLE_PROJECT_mucAndroidSigningKeystorePath"] =
+    signing.keystorePath;
+  targetEnv["ORG_GRADLE_PROJECT_mucAndroidSigningStorePassword"] =
+    signing.storePassword;
+  targetEnv["ORG_GRADLE_PROJECT_mucAndroidSigningKeyAlias"] = signing.keyAlias;
 }
 
 function readAndroidSigningConfig() {

@@ -13,13 +13,47 @@ val tauriProperties = Properties().apply {
     }
 }
 
-val signingKeystorePath = providers.gradleProperty("muc.android.signing.keystorePath").orNull
-val signingStorePassword = providers.gradleProperty("muc.android.signing.storePassword").orNull
-val signingKeyAlias = providers.gradleProperty("muc.android.signing.keyAlias").orNull
+val keystoreProperties = Properties().apply {
+    val propFile = rootProject.file("keystore.properties")
+    if (propFile.exists()) {
+        propFile.inputStream().use { load(it) }
+    }
+}
+
+fun firstPresent(vararg values: String?): String? =
+    values.firstOrNull { !it.isNullOrBlank() }
+
+val signingKeystorePath = firstPresent(
+    providers.gradleProperty("mucAndroidSigningKeystorePath").orNull,
+    providers.gradleProperty("muc.android.signing.keystorePath").orNull,
+    System.getenv("MUC_ANDROID_SIGNING_KEYSTORE_PATH"),
+    keystoreProperties.getProperty("storeFile"),
+)
+val signingStorePassword = firstPresent(
+    providers.gradleProperty("mucAndroidSigningStorePassword").orNull,
+    providers.gradleProperty("muc.android.signing.storePassword").orNull,
+    System.getenv("MUC_ANDROID_SIGNING_STORE_PASSWORD"),
+    keystoreProperties.getProperty("password"),
+)
+val signingKeyAlias = firstPresent(
+    providers.gradleProperty("mucAndroidSigningKeyAlias").orNull,
+    providers.gradleProperty("muc.android.signing.keyAlias").orNull,
+    System.getenv("MUC_ANDROID_SIGNING_KEY_ALIAS"),
+    keystoreProperties.getProperty("keyAlias"),
+)
 val hasReleaseSigning =
     !signingKeystorePath.isNullOrBlank() &&
         !signingStorePassword.isNullOrBlank() &&
         !signingKeyAlias.isNullOrBlank()
+val requestsReleaseBuild = gradle.startParameter.taskNames.any {
+    it.contains("Release", ignoreCase = false)
+}
+
+if (requestsReleaseBuild && !hasReleaseSigning) {
+    throw GradleException(
+        "缺少 Android release 签名配置，拒绝生成 unsigned release APK。请设置 MUC_ANDROID_SIGNING_KEYSTORE_PATH、MUC_ANDROID_SIGNING_STORE_PASSWORD 和 MUC_ANDROID_SIGNING_KEY_ALIAS。"
+    )
+}
 
 android {
     compileSdk = 36
