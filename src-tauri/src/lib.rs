@@ -1,5 +1,6 @@
 mod platform;
 mod plugins;
+mod update_feed;
 
 use std::sync::Arc;
 
@@ -228,7 +229,8 @@ pub fn run() {
         refresh_dashboard,
         logout_local_device,
         update_preferences,
-        update_tray_menu
+        update_tray_menu,
+        update_feed::fetch_android_update_feed
     ]);
 
     #[cfg(all(desktop, not(debug_assertions)))]

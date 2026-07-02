@@ -67,6 +67,16 @@ export type AccountPoolImportResultDto = {
   overwrittenCount: number;
 };
 
+export interface UpdateFeedDto {
+  version?: string;
+  notes?: string;
+  android?: {
+    version?: string;
+    url?: string;
+    notes?: string;
+  };
+}
+
 export type AppErrorDto = {
   code: string;
   message: string;
@@ -147,6 +157,10 @@ export async function updatePreferences(
     autoSwitchAccountOnTrafficExhausted:
       preferences.autoSwitchAccountOnTrafficExhausted,
   });
+}
+
+export async function fetchAndroidUpdateFeed() {
+  return invoke<UpdateFeedDto>("fetch_android_update_feed");
 }
 
 export function readErrorMessage(error: unknown) {

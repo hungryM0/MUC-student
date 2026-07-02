@@ -2576,6 +2576,7 @@ dependencies = [
  "keyring",
  "keyring-core",
  "muc-student-core",
+ "reqwest",
  "serde",
  "serde_json",
  "tauri",

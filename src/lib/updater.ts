@@ -4,8 +4,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { isAndroid } from "@/lib/utils";
-
-const UPDATE_FEED_URL = "https://student.hungrym0.com/latest.json";
+import { fetchAndroidUpdateFeed } from "@/lib/muc";
 
 export interface UpdateProgress {
   event: "Started" | "Progress" | "Finished";
@@ -79,11 +78,7 @@ async function checkAndroidUpdate(): Promise<AndroidUpdate | null> {
 }
 
 async function fetchUpdateFeed(): Promise<UpdateFeed> {
-  const response = await fetch(UPDATE_FEED_URL, { cache: "no-store" });
-  if (!response.ok) {
-    throw new Error(`检查更新失败：${response.status}`);
-  }
-  return (await response.json()) as UpdateFeed;
+  return fetchAndroidUpdateFeed();
 }
 
 function compareVersions(left: string, right: string) {
