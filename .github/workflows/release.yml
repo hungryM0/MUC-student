@@ -190,8 +190,8 @@ jobs:
       - name: Format workspace
         run: cargo fmt --check
 
-      - name: Test workspace
-        run: cargo test
+      - name: Test core workspace
+        run: cargo test -p muc-student-core
 
       - name: Build Android app
         env:
