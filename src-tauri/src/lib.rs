@@ -212,6 +212,7 @@ pub fn run() {
     }));
 
     let builder = builder.plugin(tauri_plugin_opener::init());
+    let builder = builder.plugin(tauri_plugin_process::init());
 
     #[cfg(desktop)]
     let builder = builder.plugin(plugins::system_tray::init());

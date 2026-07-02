@@ -28,6 +28,7 @@
     "core:window:allow-center",
     "core:event:allow-emit",
     "core:event:allow-listen",
-    "opener:default"
+    "opener:default",
+    "process:default"
   ]
 }

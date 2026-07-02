@@ -1,9 +1,8 @@
-use aes_gcm::aead::{Aead, KeyInit, Payload};
+use aes_gcm::aead::{Aead, AeadCore, KeyInit, Payload};
 use aes_gcm::{Aes256Gcm, Nonce};
 use argon2::Argon2;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
-use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 
 use crate::application::error::{AppError, AppResult};
@@ -61,15 +60,15 @@ pub fn encode_account_pool(
 
     let mut salt = [0u8; SALT_LEN];
     let mut nonce = [0u8; NONCE_LEN];
-    OsRng.fill_bytes(&mut salt);
-    OsRng.fill_bytes(&mut nonce);
+    fill_random(&mut salt)?;
+    fill_random(&mut nonce)?;
 
     let key = derive_key(passphrase, &salt)?;
     let cipher = Aes256Gcm::new_from_slice(&key)
         .map_err(|err| AppError::Internal(format!("初始化号池加密失败：{err}")))?;
     let ciphertext = cipher
         .encrypt(
-            Nonce::from_slice(&nonce),
+            nonce_from_slice(&nonce)?,
             Payload {
                 msg: &plaintext,
                 aad: ASSOCIATED_DATA,
@@ -107,7 +106,7 @@ pub fn decode_account_pool(code: &str, passphrase: &str) -> AppResult<AccountPoo
         .map_err(|err| AppError::Internal(format!("初始化号池解密失败：{err}")))?;
     let plaintext = cipher
         .decrypt(
-            Nonce::from_slice(nonce),
+            nonce_from_slice(nonce)?,
             Payload {
                 msg: ciphertext,
                 aad: ASSOCIATED_DATA,
@@ -137,6 +136,16 @@ fn derive_key(passphrase: &str, salt: &[u8]) -> AppResult<[u8; KEY_LEN]> {
         .hash_password_into(passphrase.trim().as_bytes(), salt, &mut key)
         .map_err(|err| AppError::Internal(format!("派生号池密钥失败：{err}")))?;
     Ok(key)
+}
+
+fn fill_random(target: &mut [u8]) -> AppResult<()> {
+    getrandom::fill(target).map_err(|err| AppError::Internal(format!("生成号池随机数失败：{err}")))
+}
+
+fn nonce_from_slice(nonce: &[u8]) -> AppResult<&Nonce<<Aes256Gcm as AeadCore>::NonceSize>> {
+    nonce
+        .try_into()
+        .map_err(|_| AppError::Internal("号池随机数长度不对".to_string()))
 }
 
 #[cfg(test)]
