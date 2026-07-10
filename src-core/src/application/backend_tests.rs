@@ -619,6 +619,113 @@ async fn refresh_uses_success_page_and_sso_panel_home_for_current_account() {
 }
 
 #[tokio::test]
+async fn refresh_preserves_non_current_unlimited_snapshot() {
+    let server = MockServer::start().await;
+    let local_ip = "10.151.119.57";
+    Mock::given(method("GET"))
+        .and(path("/include/auth_action.php"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string(format!("1073741824,60,0.00,aa:bb:cc:dd:ee:ff,0,{local_ip}")),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/srun_portal_pc_success.php"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string(success_page(local_ip, "20260002")),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/site/sso"))
+        .respond_with(
+            ResponseTemplate::new(302)
+                .insert_header("set-cookie", "PHPSESSID_8800=current; path=/; HttpOnly")
+                .insert_header("location", "/home"),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/home"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(panel_home_html(local_ip)))
+        .mount(&server)
+        .await;
+
+    let (core, _root, _event_sink, panel_session_repo) =
+        build_test_core(settings_for(&server), local_ip);
+    let unlimited_snapshot = core
+        .add_account(
+            "不限号".to_string(),
+            "20260001".to_string(),
+            "p1".to_string(),
+        )
+        .await
+        .expect("add unlimited account");
+    let current_snapshot = core
+        .add_account(
+            "当前号".to_string(),
+            "20260002".to_string(),
+            "p2".to_string(),
+        )
+        .await
+        .expect("add current account");
+    let unlimited_id = unlimited_snapshot
+        .accounts
+        .iter()
+        .find(|account| account.username == "20260001")
+        .expect("unlimited account")
+        .id
+        .clone();
+    let current_id = current_snapshot
+        .accounts
+        .iter()
+        .find(|account| account.username == "20260002")
+        .expect("current account")
+        .id
+        .clone();
+
+    let mut store = core.account_repo.load_store().expect("load store");
+    store.cached_traffic_snapshots.insert(
+        unlimited_id.clone(),
+        CachedTrafficSnapshot {
+            used_traffic_text: "79.78GB".to_string(),
+            product_balance_text: "不限流量".to_string(),
+            status_text: "已同步".to_string(),
+            detail_text: "计费策略：50元不限流量".to_string(),
+            is_unlimited_plan: true,
+            queried_at: Some(Local::now()),
+            ..Default::default()
+        },
+    );
+    core.account_repo.save_store(&store).expect("save store");
+    panel_session_repo
+        .save_session(
+            &unlimited_id,
+            &HashMap::from([("PHPSESSID_8800".to_string(), "stale-session".to_string())]),
+        )
+        .expect("save stale panel session");
+    core.refresh_runtime_from_disk().expect("refresh runtime");
+
+    let refreshed = core.refresh_dashboard().await.expect("refresh dashboard");
+
+    assert_eq!(refreshed.current_online_account_id, current_id);
+    let unlimited_account = refreshed
+        .accounts
+        .iter()
+        .find(|account| account.id == unlimited_id)
+        .expect("unlimited account");
+    assert!(
+        unlimited_account
+            .snapshot
+            .as_ref()
+            .expect("unlimited snapshot")
+            .is_unlimited_plan
+    );
+    assert_eq!(refreshed.pool_quota.included_package_text, "含不限流量账号");
+}
+
+#[tokio::test]
 async fn silent_refresh_does_not_emit_refresh_running_state() {
     let server = MockServer::start().await;
     let local_ip = "10.151.119.57";

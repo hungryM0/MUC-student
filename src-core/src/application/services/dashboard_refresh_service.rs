@@ -2,17 +2,13 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use chrono::Local;
-use tokio::sync::Semaphore;
-use tokio::task::JoinSet;
 
 use crate::application::dto::AppSnapshotDto;
 use crate::application::error::{AppError, AppResult};
 use crate::application::platform::AppEventSink;
 use crate::application::runtime::SharedRuntimeState;
 use crate::application::runtime_refresh::refresh_runtime_from_disk;
-use crate::application::services::account_traffic_service::{
-    snapshot_from_panel_home, DEFAULT_PANEL_QUERY_CONCURRENCY,
-};
+use crate::application::services::account_traffic_service::snapshot_from_panel_home;
 use crate::application::services::portal_snapshot_service::{
     apply_success_page_unlimited_plan, build_single_success_snapshot_with_online_info,
     username_matches,
@@ -84,18 +80,7 @@ impl DashboardRefreshService {
 
         let online_probe = self.check_local_online(local_ip).await;
         let mut current_online_id = String::new();
-        let mut cached_online_id = String::new();
         let mut refreshed_account_ids = HashSet::new();
-        if !online_probe.is_offline() {
-            for (account_id, snapshot) in self.refresh_cached_panel_sessions(&store, local_ip).await
-            {
-                if cached_online_id.is_empty() && snapshot.matched_local_ip_device.is_some() {
-                    cached_online_id = account_id.clone();
-                }
-                refreshed_account_ids.insert(account_id.clone());
-                snapshot_map.insert(account_id, snapshot);
-            }
-        }
 
         if online_probe.is_online() {
             if let Ok(info) = self.portal_status_client.fetch_success_info().await {
@@ -131,15 +116,8 @@ impl DashboardRefreshService {
                     snapshot_map.insert(account.id.clone(), snapshot);
                 }
             }
-            if current_online_id.is_empty() {
-                current_online_id = cached_online_id;
-            }
         } else if online_probe.is_unknown() {
-            current_online_id = if cached_online_id.is_empty() {
-                store.current_online_account_id.clone()
-            } else {
-                cached_online_id
-            };
+            current_online_id = store.current_online_account_id.clone();
         }
         if !online_probe.is_offline() {
             mark_unrefreshed_non_current_accounts_failed(
@@ -173,42 +151,6 @@ impl DashboardRefreshService {
             state.account_store.current_online_account_id = current_online_id;
         }
         Ok(())
-    }
-
-    async fn refresh_cached_panel_sessions(
-        &self,
-        store: &AccountStore,
-        local_ip: Option<&str>,
-    ) -> Vec<(String, AccountTrafficSnapshot)> {
-        let semaphore = Arc::new(Semaphore::new(DEFAULT_PANEL_QUERY_CONCURRENCY));
-        let mut join_set = JoinSet::new();
-        let local_ip = local_ip.map(str::to_string);
-        for account in store.accounts.iter().cloned() {
-            let panel_client = self.panel_client.clone();
-            let local_ip = local_ip.clone();
-            let sem = semaphore.clone();
-            join_set.spawn(async move {
-                let _permit = sem.acquire_owned().await.ok()?;
-                let html = match panel_client
-                    .fetch_cached_session_html(&account.id, "/home")
-                    .await
-                {
-                    Ok(Some(html)) => html,
-                    _ => return None,
-                };
-                snapshot_from_panel_home(&account, &html, local_ip.as_deref())
-                    .ok()
-                    .map(|snapshot| (account.id.clone(), snapshot))
-            });
-        }
-
-        let mut snapshots = Vec::new();
-        while let Some(result) = join_set.join_next().await {
-            if let Ok(Some(snapshot)) = result {
-                snapshots.push(snapshot);
-            }
-        }
-        snapshots
     }
 
     async fn check_local_online(&self, local_ip: Option<&str>) -> LocalOnlineProbe {

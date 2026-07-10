@@ -239,7 +239,9 @@ button {
         #14b8a6 100%
       )
       border-box;
-  background-size: 100% 100%, 280% 100%;
+  background-size:
+    100% 100%,
+    280% 100%;
   box-shadow:
     0 0 0 1px rgb(45 212 191 / 12%),
     0 8px 24px -18px rgb(13 148 136 / 45%);

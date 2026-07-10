@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use chrono::Local;
+use chrono::{DateTime, Datelike, Local};
 
 use crate::application::dto::{
     AccountDto, AppSnapshotDto, LoginStateDto, PoolQuotaDto, PreferenceDto, RefreshStateDto,
@@ -51,6 +51,7 @@ pub fn build_app_snapshot(state: &AppRuntimeState) -> AppSnapshotDto {
 pub fn restore_cached_snapshots(
     cached: &BTreeMap<String, CachedTrafficSnapshot>,
 ) -> BTreeMap<String, AccountTrafficSnapshot> {
+    let now = Local::now();
     cached
         .iter()
         .map(|(account_id, snapshot)| {
@@ -69,7 +70,8 @@ pub fn restore_cached_snapshots(
                     package_text: snapshot.package_text.clone(),
                     status_text: snapshot.status_text.clone(),
                     detail_text: snapshot.detail_text.clone(),
-                    is_unlimited_plan: snapshot.is_unlimited_plan,
+                    is_unlimited_plan: snapshot.is_unlimited_plan
+                        && is_in_same_month(snapshot.queried_at.as_ref(), &now),
                     queried_at: snapshot.queried_at.unwrap_or_else(Local::now),
                     online_devices: Vec::new(),
                     matched_local_ip_device: None,
@@ -78,6 +80,11 @@ pub fn restore_cached_snapshots(
             )
         })
         .collect()
+}
+
+fn is_in_same_month(value: Option<&DateTime<Local>>, reference: &DateTime<Local>) -> bool {
+    value
+        .is_some_and(|value| value.year() == reference.year() && value.month() == reference.month())
 }
 
 pub fn to_cached_snapshots(
@@ -115,6 +122,8 @@ pub fn to_cached_snapshots(
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
+
+    use chrono::{Duration, Local};
 
     use super::restore_cached_snapshots;
     use crate::domain::models::CachedTrafficSnapshot;
@@ -156,6 +165,43 @@ mod tests {
                 .expect("snapshot")
                 .included_package_text,
             "含30.00GB套餐流量"
+        );
+    }
+
+    #[test]
+    fn restore_cached_snapshots_only_keeps_unlimited_status_for_the_current_month() {
+        let now = Local::now();
+        let mut cached = BTreeMap::new();
+        cached.insert(
+            "current".to_string(),
+            CachedTrafficSnapshot {
+                is_unlimited_plan: true,
+                queried_at: Some(now),
+                ..Default::default()
+            },
+        );
+        cached.insert(
+            "expired".to_string(),
+            CachedTrafficSnapshot {
+                is_unlimited_plan: true,
+                queried_at: Some(now - Duration::days(32)),
+                ..Default::default()
+            },
+        );
+
+        let snapshots = restore_cached_snapshots(&cached);
+
+        assert!(
+            snapshots
+                .get("current")
+                .expect("current snapshot")
+                .is_unlimited_plan
+        );
+        assert!(
+            !snapshots
+                .get("expired")
+                .expect("expired snapshot")
+                .is_unlimited_plan
         );
     }
 }
