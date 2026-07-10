@@ -15,7 +15,7 @@ pub fn build_auto_switch_candidate(
         .find(|account| account.id == account_store.selected_account_id)?;
 
     let current_snapshot = snapshots.get(&current_account.id)?;
-    if current_snapshot.progress_percent? < 100.0 {
+    if !is_traffic_exhausted(current_snapshot) {
         return None;
     }
 
@@ -26,8 +26,7 @@ pub fn build_auto_switch_candidate(
         .filter(|account| {
             snapshots
                 .get(&account.id)
-                .and_then(|snapshot| snapshot.progress_percent)
-                .is_some_and(|percent| percent < 100.0)
+                .is_some_and(|snapshot| !is_traffic_exhausted(snapshot))
         })
         .collect();
 
@@ -53,6 +52,13 @@ pub fn build_auto_switch_candidate(
     });
 
     candidates.into_iter().next().cloned()
+}
+
+fn is_traffic_exhausted(snapshot: &AccountTrafficSnapshot) -> bool {
+    !snapshot.is_unlimited_plan
+        && snapshot
+            .progress_percent
+            .is_some_and(|percent| percent >= 100.0)
 }
 
 pub fn build_status_card_order(
@@ -131,6 +137,7 @@ pub fn build_pool_quota_summary(
     let mut included_package_total_mb = 0.0;
     let mut has_used_value = false;
     let mut has_total_value = false;
+    let mut has_unlimited_plan = false;
 
     for account in &account_store.accounts {
         let used_text = snapshots
@@ -161,6 +168,14 @@ pub fn build_pool_quota_summary(
                     .map(|item| item.included_package_text.as_str())
             });
 
+        if snapshots
+            .get(&account.id)
+            .map(|item| item.is_unlimited_plan)
+            .unwrap_or(false)
+        {
+            has_unlimited_plan = true;
+        }
+
         if let Some(used_mb) = used_text.and_then(parse_traffic_text_to_mb) {
             used_total_mb += used_mb;
             has_used_value = true;
@@ -179,25 +194,30 @@ pub fn build_pool_quota_summary(
     } else {
         "-".to_string()
     };
-    let total_text = if has_total_value {
+    let total_text = if has_unlimited_plan {
+        "不限流量".to_string()
+    } else if has_total_value {
         format!("{total_balance_gb:.2}GB")
     } else {
         "-".to_string()
     };
-    let included_text = if has_total_value && included_package_total_mb > 0.0 {
+    let included_text = if has_unlimited_plan {
+        "含不限流量账号".to_string()
+    } else if has_total_value && included_package_total_mb > 0.0 {
         format!("含{:.2}GB套餐流量", included_package_total_mb / 1024.0)
     } else {
         String::new()
     };
 
-    let progress = if has_total_value && has_used_value && total_balance_gb > 0.0 {
-        Some(round_to(
-            ((used_total_mb / (total_balance_gb * 1024.0)) * 100.0).clamp(0.0, 100.0),
-            1,
-        ))
-    } else {
-        None
-    };
+    let progress =
+        if !has_unlimited_plan && has_total_value && has_used_value && total_balance_gb > 0.0 {
+            Some(round_to(
+                ((used_total_mb / (total_balance_gb * 1024.0)) * 100.0).clamp(0.0, 100.0),
+                1,
+            ))
+        } else {
+            None
+        };
 
     (used_text, total_text, included_text, progress)
 }
@@ -267,6 +287,11 @@ pub fn extract_paid_package_quota_from_billing_policy(text: &str) -> Option<Stri
     })
 }
 
+pub fn is_unlimited_traffic_plan(billing_policy: &str) -> bool {
+    let normalized = billing_policy.replace([' ', '\u{3000}'], "");
+    normalized.contains("不限流量") || normalized.contains("无限流量")
+}
+
 pub fn normalize_included_package_text(text: &str) -> String {
     let trimmed = text.trim();
     if trimmed.is_empty() {
@@ -310,7 +335,10 @@ fn round_to(value: f64, digits: i32) -> f64 {
 
 #[cfg(test)]
 mod tests {
+    use chrono::Local;
+
     use super::*;
+    use crate::domain::models::traffic::AccountTrafficSnapshot;
 
     #[test]
     fn calculates_progress_percent() {
@@ -364,6 +392,24 @@ mod tests {
             extract_paid_package_quota_from_billing_policy("免费70GB/1GB1元（超出70GB）/校内流量"),
             None
         );
+    }
+
+    #[test]
+    fn recognizes_unlimited_traffic_billing_policy() {
+        assert!(is_unlimited_traffic_plan(
+            "Package-use-50元不限流量（仅当月有效）"
+        ));
+        assert!(is_unlimited_traffic_plan("套餐：无限流量"));
+        assert!(!is_unlimited_traffic_plan("免费70GB/1GB1元"));
+    }
+
+    #[test]
+    fn does_not_treat_unlimited_plan_as_exhausted() {
+        let mut snapshot = AccountTrafficSnapshot::loading("acc-1", Local::now());
+        snapshot.is_unlimited_plan = true;
+        snapshot.progress_percent = Some(100.0);
+
+        assert!(!is_traffic_exhausted(&snapshot));
     }
 
     #[test]

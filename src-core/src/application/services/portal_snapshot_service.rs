@@ -4,7 +4,7 @@ use crate::domain::models::traffic::{AccountTrafficSnapshot, OnlineDeviceRecord}
 use crate::domain::models::{CachedTrafficSnapshot, PortalAccount};
 use crate::domain::policies::traffic_math::{
     build_progress_percent, extract_total_quota_from_billing_policy, format_traffic_bytes_as_gb,
-    format_traffic_text_as_gb,
+    format_traffic_text_as_gb, is_unlimited_traffic_plan,
 };
 use crate::infrastructure::parsers::legacy_portal_online_info_parser::LegacyPortalOnlineInfo;
 use crate::infrastructure::parsers::legacy_portal_success_page_parser::LegacyPortalSuccessInfo;
@@ -23,6 +23,7 @@ pub fn build_single_success_snapshot_with_online_info(
     online_info: Option<&LegacyPortalOnlineInfo>,
     cached_current: Option<&CachedTrafficSnapshot>,
 ) -> AccountTrafficSnapshot {
+    let is_unlimited_plan = is_unlimited_traffic_plan(&info.billing_policy);
     let product_balance_text = extract_total_quota_from_billing_policy(&info.billing_policy)
         .or_else(|| {
             cached_current
@@ -30,6 +31,11 @@ pub fn build_single_success_snapshot_with_online_info(
                 .filter(|text| !text.trim().is_empty())
         })
         .unwrap_or_else(|| "-".to_string());
+    let product_balance_text = if is_unlimited_plan {
+        "不限流量".to_string()
+    } else {
+        product_balance_text
+    };
     let used_traffic_text = online_info
         .and_then(|info| format_traffic_bytes_as_gb(&info.used_traffic_bytes))
         .unwrap_or_else(|| format_traffic_text_as_gb(&info.used_traffic));
@@ -64,11 +70,30 @@ pub fn build_single_success_snapshot_with_online_info(
             .unwrap_or_else(|| "-".to_string()),
         status_text: "成功页同步".to_string(),
         detail_text: format!("计费方式：{}", info.billing_policy),
+        is_unlimited_plan,
         queried_at: Local::now(),
         online_devices: Vec::new(),
         matched_local_ip_device,
-        progress_percent: build_progress_percent(&used_traffic_text, &product_balance_text),
+        progress_percent: (!is_unlimited_plan)
+            .then(|| build_progress_percent(&used_traffic_text, &product_balance_text))
+            .flatten(),
     }
+}
+
+pub fn apply_success_page_unlimited_plan(
+    snapshot: &mut AccountTrafficSnapshot,
+    billing_policy: &str,
+) {
+    if !is_unlimited_traffic_plan(billing_policy) {
+        return;
+    }
+    snapshot.product_balance_text = "不限流量".to_string();
+    snapshot.included_package_text.clear();
+    snapshot.package_total_text.clear();
+    snapshot.package_available_text.clear();
+    snapshot.detail_text = format!("计费方式：{billing_policy}");
+    snapshot.is_unlimited_plan = true;
+    snapshot.progress_percent = None;
 }
 
 pub fn username_matches(stored: &str, online: &str) -> bool {
@@ -203,5 +228,27 @@ mod tests {
         let snapshot = build_single_success_snapshot(&account, &info, None);
 
         assert_eq!(snapshot.included_package_text, "含30.00GB套餐流量");
+    }
+
+    #[test]
+    fn success_page_marks_unlimited_plan_without_progress() {
+        let account = PortalAccount {
+            id: "acc-1".to_string(),
+            remark_name: "当前账号".to_string(),
+            username: "25011777".to_string(),
+        };
+        let info = LegacyPortalSuccessInfo {
+            ip: "10.0.0.1".to_string(),
+            username: "25011777".to_string(),
+            used_traffic: "79.78G".to_string(),
+            billing_policy: "Package-use-50元不限流量（仅当月有效）".to_string(),
+            paid_package_quota: None,
+        };
+
+        let snapshot = build_single_success_snapshot(&account, &info, None);
+
+        assert!(snapshot.is_unlimited_plan);
+        assert_eq!(snapshot.product_balance_text, "不限流量");
+        assert_eq!(snapshot.progress_percent, None);
     }
 }

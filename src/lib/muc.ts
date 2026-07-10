@@ -20,6 +20,7 @@ export type AccountTrafficSnapshot = {
   packageText: string;
   statusText: string;
   detailText: string;
+  isUnlimitedPlan: boolean;
   queriedAt: string;
   progressPercent: number | null;
 };

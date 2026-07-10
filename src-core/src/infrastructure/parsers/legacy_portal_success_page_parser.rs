@@ -178,6 +178,27 @@ mod tests {
     }
 
     #[test]
+    fn preserves_unlimited_billing_policy() {
+        let info = parse_legacy_portal_success_page(
+            r#"
+            <ul>
+              <li>当前的ip：192.0.2.10</li>
+              <li>上网用户：2024000000</li>
+              <li>已用流量：79.78G</li>
+              <li>计费方式：Package-use-50元不限流量（仅当月有效）</li>
+            </ul>
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            info.billing_policy,
+            "Package-use-50元不限流量（仅当月有效）"
+        );
+        assert_eq!(info.paid_package_quota, None);
+    }
+
+    #[test]
     fn rejects_missing_required_fields() {
         assert!(parse_legacy_portal_success_page("上网用户：13377235977").is_err());
     }

@@ -27,6 +27,8 @@ pub struct CachedTrafficSnapshot {
     pub package_text: String,
     pub status_text: String,
     pub detail_text: String,
+    #[serde(default)]
+    pub is_unlimited_plan: bool,
     pub queried_at: Option<DateTime<Local>>,
     pub progress_percent: Option<f64>,
 }

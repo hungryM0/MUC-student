@@ -202,13 +202,14 @@ fn load_snapshots(conn: &Connection) -> AppResult<BTreeMap<String, CachedTraffic
             package_text,
             status_text,
             detail_text,
+            is_unlimited_plan,
             queried_at,
             progress_percent
         FROM traffic_snapshots
         "#,
     )?;
     let rows = stmt.query_map([], |row| {
-        let queried_at: Option<String> = row.get(10)?;
+        let queried_at: Option<String> = row.get(11)?;
         let queried_at = queried_at
             .as_deref()
             .map(DateTime::parse_from_rfc3339)
@@ -216,7 +217,7 @@ fn load_snapshots(conn: &Connection) -> AppResult<BTreeMap<String, CachedTraffic
             .map(|value| value.map(|dt| dt.with_timezone(&Local)))
             .map_err(|err| {
                 rusqlite::Error::FromSqlConversionFailure(
-                    10,
+                    11,
                     rusqlite::types::Type::Text,
                     Box::new(err),
                 )
@@ -233,8 +234,9 @@ fn load_snapshots(conn: &Connection) -> AppResult<BTreeMap<String, CachedTraffic
                 package_text: row.get(7)?,
                 status_text: row.get(8)?,
                 detail_text: row.get(9)?,
+                is_unlimited_plan: row.get::<_, i64>(10)? != 0,
                 queried_at,
-                progress_percent: row.get(11)?,
+                progress_percent: row.get(12)?,
             },
         ))
     })?;
@@ -261,9 +263,10 @@ fn save_snapshots_tx(
                 package_text,
                 status_text,
                 detail_text,
+                is_unlimited_plan,
                 queried_at,
                 progress_percent
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
             "#,
             params![
                 account_id,
@@ -276,6 +279,7 @@ fn save_snapshots_tx(
                 snapshot.package_text,
                 snapshot.status_text,
                 snapshot.detail_text,
+                snapshot.is_unlimited_plan,
                 snapshot.queried_at.map(|value| value.to_rfc3339()),
                 snapshot.progress_percent,
             ],

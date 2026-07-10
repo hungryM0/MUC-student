@@ -236,6 +236,7 @@ impl SessionService {
             },
             status_text: "已耗尽".to_string(),
             detail_text: "Portal 返回欠费，按流量 100% 耗尽处理".to_string(),
+            is_unlimited_plan: false,
             queried_at: Some(checked_at),
             progress_percent: Some(100.0),
         };

@@ -111,6 +111,14 @@ impl AppDatabase {
                 "#,
             )?;
         }
+        if version < 2 {
+            connection.execute_batch(
+                r#"
+                ALTER TABLE traffic_snapshots ADD COLUMN is_unlimited_plan INTEGER NOT NULL DEFAULT 0;
+                PRAGMA user_version = 2;
+                "#,
+            )?;
+        }
         Ok(Self {
             connection: Arc::new(Mutex::new(connection)),
         })

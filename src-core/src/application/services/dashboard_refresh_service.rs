@@ -14,7 +14,8 @@ use crate::application::services::account_traffic_service::{
     snapshot_from_panel_home, DEFAULT_PANEL_QUERY_CONCURRENCY,
 };
 use crate::application::services::portal_snapshot_service::{
-    build_single_success_snapshot_with_online_info, username_matches,
+    apply_success_page_unlimited_plan, build_single_success_snapshot_with_online_info,
+    username_matches,
 };
 use crate::application::services::snapshot_mapper::{
     build_app_snapshot, restore_cached_snapshots, to_cached_snapshots,
@@ -110,7 +111,7 @@ impl DashboardRefreshService {
                         Some(portal_ip)
                     };
                     current_online_id = account.id.clone();
-                    let snapshot = match self
+                    let mut snapshot = match self
                         .panel_client
                         .fetch_sso_html(&account.id, &info.username, "/home")
                         .await
@@ -125,6 +126,7 @@ impl DashboardRefreshService {
                             store.cached_traffic_snapshots.get(&account.id),
                         ),
                     };
+                    apply_success_page_unlimited_plan(&mut snapshot, &info.billing_policy);
                     refreshed_account_ids.insert(account.id.clone());
                     snapshot_map.insert(account.id.clone(), snapshot);
                 }
@@ -320,6 +322,7 @@ mod tests {
                 package_text: "校园网".to_string(),
                 status_text: "已同步".to_string(),
                 detail_text: "计费策略：免费70GB".to_string(),
+                is_unlimited_plan: false,
                 queried_at: old_time,
                 online_devices: Vec::new(),
                 matched_local_ip_device: None,

@@ -1054,6 +1054,7 @@ async fn account_pool_import_restores_snapshots_and_order_by_username() {
             package_text: "校园网".to_string(),
             status_text: "已同步".to_string(),
             detail_text: "源设备缓存".to_string(),
+            is_unlimited_plan: false,
             queried_at: Some(Local::now()),
             progress_percent: Some(6.7),
         },

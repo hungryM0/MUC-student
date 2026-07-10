@@ -225,6 +225,53 @@ button {
   animation: onlinePulse 3.5s infinite ease-in-out;
 }
 
+/* 不限流量套餐：用连续流动的描边标记状态，内容区保持克制。 */
+.unlimited-plan-card {
+  border: 1px solid transparent !important;
+  background:
+    linear-gradient(var(--card), var(--card)) padding-box,
+    linear-gradient(
+        90deg,
+        #14b8a6 0%,
+        #22c55e 24%,
+        #38bdf8 48%,
+        #2dd4bf 73%,
+        #14b8a6 100%
+      )
+      border-box;
+  background-size: 100% 100%, 280% 100%;
+  box-shadow:
+    0 0 0 1px rgb(45 212 191 / 12%),
+    0 8px 24px -18px rgb(13 148 136 / 45%);
+  animation: unlimitedPlanBorderFlow 3.8s linear infinite;
+}
+
+.unlimited-plan-text {
+  color: #059669;
+}
+
+.unlimited-plan-bar {
+  background: linear-gradient(90deg, #14b8a6, #22c55e, #38bdf8, #14b8a6);
+  background-size: 240% 100%;
+  animation: unlimitedPlanBorderFlow 3.8s linear infinite;
+}
+
+@keyframes unlimitedPlanBorderFlow {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 280% 50%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .unlimited-plan-card,
+  .unlimited-plan-bar {
+    animation: none;
+  }
+}
+
 /* 添加账号 (入场) 和 删除账号 (退场) 动画 */
 @keyframes slideInUp {
   from {

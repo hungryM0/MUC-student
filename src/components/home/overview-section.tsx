@@ -24,6 +24,7 @@ export function OverviewSection({
   onLogoutLocalDevice,
 }: OverviewSectionProps) {
   const poolUsage = buildPoolUsage(snapshot?.accounts ?? []);
+  const hasUnlimitedPlan = poolUsage.hasUnlimitedPlan;
   const progressPercent = Math.round(poolUsage.totalProgress);
   const safeProgress = Math.min(100, Math.max(0, progressPercent));
   const currentOnlineRemark = snapshot?.currentOnlineAccountId
@@ -51,29 +52,40 @@ export function OverviewSection({
             <span
               className={cn(
                 "text-sm font-bold",
-                trafficProgressClasses(safeProgress).text,
+                hasUnlimitedPlan
+                  ? "unlimited-plan-text"
+                  : trafficProgressClasses(safeProgress).text,
               )}
             >
-              {safeProgress}%
+              {hasUnlimitedPlan ? "不限流量" : `${safeProgress}%`}
             </span>
           </div>
           <div className="bg-muted h-2 overflow-hidden rounded-full">
             <div
               className={cn(
                 "h-full rounded-full transition-[width] duration-500",
-                trafficProgressClasses(safeProgress).bar,
+                hasUnlimitedPlan
+                  ? "unlimited-plan-bar"
+                  : trafficProgressClasses(safeProgress).bar,
               )}
-              style={{ width: `${safeProgress}%` }}
+              style={{ width: `${hasUnlimitedPlan ? 100 : safeProgress}%` }}
             />
           </div>
           <div className="mt-2 flex flex-col gap-1">
             <div className="text-xl font-bold tracking-tight">
               {poolUsage.hasSnapshot
-                ? `${formatTrafficAmount(poolUsage.totalUsed)} / ${formatTrafficAmount(poolUsage.totalQuota)}`
+                ? hasUnlimitedPlan
+                  ? `${formatTrafficAmount(poolUsage.totalUsed)} / `
+                  : `${formatTrafficAmount(poolUsage.totalUsed)} / ${formatTrafficAmount(poolUsage.totalQuota)}`
                 : "-"}
+              {poolUsage.hasSnapshot && hasUnlimitedPlan && (
+                <span className="unlimited-plan-text">不限流量</span>
+              )}
             </div>
             <div className="truncate text-xs text-muted-foreground">
-              {snapshot?.poolQuota.productBalanceText ?? "-"}
+              {hasUnlimitedPlan
+                ? "含不限流量账号"
+                : (snapshot?.poolQuota.productBalanceText ?? "-")}
             </div>
             <div className="mt-1 whitespace-pre-wrap rounded border border-border/20 bg-muted/40 px-2 py-1.5 text-[10px] leading-relaxed text-muted-foreground">
               {snapshot?.poolQuota.includedPackageText || "套餐信息为空"}

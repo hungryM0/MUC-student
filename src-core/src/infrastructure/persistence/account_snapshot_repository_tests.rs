@@ -28,6 +28,7 @@ fn saves_cached_snapshots_and_status_order() {
         CachedTrafficSnapshot {
             used_traffic_text: "1G".to_string(),
             status_text: "已同步".to_string(),
+            is_unlimited_plan: true,
             ..Default::default()
         },
     );
@@ -50,6 +51,13 @@ fn saves_cached_snapshots_and_status_order() {
             .expect("snapshot")
             .used_traffic_text,
         "1G"
+    );
+    assert!(
+        state
+            .cached_traffic_snapshots
+            .get(&account.id)
+            .expect("snapshot")
+            .is_unlimited_plan
     );
     assert_eq!(state.current_online_account_id, account.id.clone());
     assert_eq!(state.status_card_order_snapshot, vec![account.id]);

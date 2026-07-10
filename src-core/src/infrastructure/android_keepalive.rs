@@ -84,6 +84,7 @@ mod tests {
                     package_text: "校园网".to_string(),
                     status_text: "已同步".to_string(),
                     detail_text: String::new(),
+                    is_unlimited_plan: false,
                     queried_at: Local::now(),
                     online_devices: Vec::new(),
                     matched_local_ip_device: None,

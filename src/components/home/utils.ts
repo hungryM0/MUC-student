@@ -105,6 +105,7 @@ export function formatSnapshotSyncText(snapshot: AccountDto["snapshot"]) {
 
 export function buildAccountUsage(account: AccountDto) {
   const snapshot = account.snapshot;
+  const isUnlimitedPlan = snapshot?.isUnlimitedPlan ?? false;
   const freeUsed = parseTrafficValue(snapshot?.usedTrafficText);
   const packageTotal = parseTrafficValue(snapshot?.packageTotalText);
   const packageAvailable = parseTrafficValue(snapshot?.packageAvailableText);
@@ -125,6 +126,7 @@ export function buildAccountUsage(account: AccountDto) {
       : 0;
 
   return {
+    isUnlimitedPlan,
     freeUsed,
     totalUsed,
     totalQuota,
@@ -142,6 +144,7 @@ export function buildPoolUsage(accounts: AccountDto[]) {
     freeUsed: 0,
     totalUsed: 0,
     totalQuota: 0,
+    hasUnlimitedPlan: false,
     hasSnapshot: false,
   };
 
@@ -155,6 +158,7 @@ export function buildPoolUsage(accounts: AccountDto[]) {
       freeUsed: acc.freeUsed + accountUsage.freeUsed,
       totalUsed: acc.totalUsed + accountUsage.totalUsed,
       totalQuota: acc.totalQuota + accountUsage.totalQuota,
+      hasUnlimitedPlan: acc.hasUnlimitedPlan || accountUsage.isUnlimitedPlan,
       hasSnapshot: true,
     };
   }, initial);

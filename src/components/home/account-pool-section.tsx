@@ -53,6 +53,58 @@ interface AccountPoolSectionProps {
 
 export type SortOption = "remaining" | "recent" | "name";
 
+export function sortAccounts(
+  rawAccounts: AccountDto[],
+  sortBy: SortOption,
+  lastSelectedMap: Record<string, number>,
+  selectedAccountId?: string,
+) {
+  return [...rawAccounts].sort((a, b) => {
+    const unlimitedA = a.snapshot?.isUnlimitedPlan ?? false;
+    const unlimitedB = b.snapshot?.isUnlimitedPlan ?? false;
+    if (unlimitedA !== unlimitedB) {
+      return unlimitedA ? -1 : 1;
+    }
+
+    if (sortBy === "remaining") {
+      const getRemaining = (account: AccountDto) => {
+        if (!account.snapshot) return -1;
+        const { freeUsed, freeQuota } = buildAccountUsage(account);
+        const packageAvailable = parseTrafficValue(
+          account.snapshot.packageAvailableText,
+        );
+        const freeRemaining = Math.max(0, freeQuota - freeUsed);
+        return freeRemaining + packageAvailable;
+      };
+      const remainingA = getRemaining(a);
+      const remainingB = getRemaining(b);
+      if (remainingA !== remainingB) {
+        return remainingB - remainingA;
+      }
+    } else if (sortBy === "recent") {
+      const timeA = lastSelectedMap[a.id] || 0;
+      const timeB = lastSelectedMap[b.id] || 0;
+      if (timeA !== timeB) {
+        return timeB - timeA;
+      }
+    } else {
+      const nameA = a.remarkName || "";
+      const nameB = b.remarkName || "";
+      const comparison = nameA.localeCompare(nameB, "zh-CN");
+      if (comparison !== 0) {
+        return comparison;
+      }
+    }
+
+    if (a.isCurrentOnline !== b.isCurrentOnline) {
+      return a.isCurrentOnline ? -1 : 1;
+    }
+    if (a.id === selectedAccountId) return -1;
+    if (b.id === selectedAccountId) return 1;
+    return a.id.localeCompare(b.id);
+  });
+}
+
 export function AccountPoolSection({
   snapshot,
   loading,
@@ -105,87 +157,21 @@ export function AccountPoolSection({
   }, [snapshot?.selectedAccountId]);
 
   const [displayAccounts, setDisplayAccounts] = useState<AccountDto[]>(() => {
-    const rawAccounts = snapshot?.accounts || [];
-    return [...rawAccounts].sort((a, b) => {
-      if (sortBy === "remaining") {
-        const getRemaining = (acc: AccountDto) => {
-          if (!acc.snapshot) return -1;
-          const { freeUsed, freeQuota } = buildAccountUsage(acc);
-          const packageAvailable = parseTrafficValue(
-            acc.snapshot.packageAvailableText,
-          );
-          const freeRemaining = Math.max(0, freeQuota - freeUsed);
-          return freeRemaining + packageAvailable;
-        };
-        const remA = getRemaining(a);
-        const remB = getRemaining(b);
-        if (remA !== remB) {
-          return remB - remA;
-        }
-      } else if (sortBy === "recent") {
-        const timeA = lastSelectedMap[a.id] || 0;
-        const timeB = lastSelectedMap[b.id] || 0;
-        if (timeA !== timeB) {
-          return timeB - timeA;
-        }
-      } else if (sortBy === "name") {
-        const nameA = a.remarkName || "";
-        const nameB = b.remarkName || "";
-        const cmp = nameA.localeCompare(nameB, "zh-CN");
-        if (cmp !== 0) {
-          return cmp;
-        }
-      }
-
-      if (a.isCurrentOnline !== b.isCurrentOnline) {
-        return a.isCurrentOnline ? -1 : 1;
-      }
-      if (a.id === snapshot?.selectedAccountId) return -1;
-      if (b.id === snapshot?.selectedAccountId) return 1;
-      return a.id.localeCompare(b.id);
-    });
+    return sortAccounts(
+      snapshot?.accounts || [],
+      sortBy,
+      lastSelectedMap,
+      snapshot?.selectedAccountId,
+    );
   });
 
   useEffect(() => {
-    const rawAccounts = snapshot?.accounts || [];
-    const sorted = [...rawAccounts].sort((a, b) => {
-      if (sortBy === "remaining") {
-        const getRemaining = (acc: AccountDto) => {
-          if (!acc.snapshot) return -1;
-          const { freeUsed, freeQuota } = buildAccountUsage(acc);
-          const packageAvailable = parseTrafficValue(
-            acc.snapshot.packageAvailableText,
-          );
-          const freeRemaining = Math.max(0, freeQuota - freeUsed);
-          return freeRemaining + packageAvailable;
-        };
-        const remA = getRemaining(a);
-        const remB = getRemaining(b);
-        if (remA !== remB) {
-          return remB - remA;
-        }
-      } else if (sortBy === "recent") {
-        const timeA = lastSelectedMap[a.id] || 0;
-        const timeB = lastSelectedMap[b.id] || 0;
-        if (timeA !== timeB) {
-          return timeB - timeA;
-        }
-      } else if (sortBy === "name") {
-        const nameA = a.remarkName || "";
-        const nameB = b.remarkName || "";
-        const cmp = nameA.localeCompare(nameB, "zh-CN");
-        if (cmp !== 0) {
-          return cmp;
-        }
-      }
-
-      if (a.isCurrentOnline !== b.isCurrentOnline) {
-        return a.isCurrentOnline ? -1 : 1;
-      }
-      if (a.id === snapshot?.selectedAccountId) return -1;
-      if (b.id === snapshot?.selectedAccountId) return 1;
-      return a.id.localeCompare(b.id);
-    });
+    const sorted = sortAccounts(
+      snapshot?.accounts || [],
+      sortBy,
+      lastSelectedMap,
+      snapshot?.selectedAccountId,
+    );
 
     const currentIds = displayAccounts.map((a) => a.id).join(",");
     const newIds = sorted.map((a) => a.id).join(",");
@@ -368,6 +354,7 @@ function AccountCard({
     freeProgress,
     packageProgress,
     totalProgress,
+    isUnlimitedPlan,
   } = buildAccountUsage(account);
   const accountState = account.isCurrentOnline ? "online" : "idle";
 
@@ -383,9 +370,11 @@ function AccountCard({
         isAndroid()
           ? "grid-cols-[1fr_132px] gap-x-2.5 p-3"
           : "grid-cols-[1fr_148px] gap-x-4 p-4",
-        accountState === "online"
-          ? "border-emerald-500/40 bg-emerald-500/10 shadow-[0_0_12px_rgba(16,185,129,0.15)] ring-1 ring-emerald-500/20 account-card-online"
-          : "border-border hover:bg-muted/50 hover:border-muted-foreground/20 hover:shadow-xs",
+        isUnlimitedPlan
+          ? "unlimited-plan-card"
+          : accountState === "online"
+            ? "border-emerald-500/40 bg-emerald-500/10 shadow-[0_0_12px_rgba(16,185,129,0.15)] ring-1 ring-emerald-500/20 account-card-online"
+            : "border-border hover:bg-muted/50 hover:border-muted-foreground/20 hover:shadow-xs",
         deleting && "animate-slide-out-right",
       )}
     >
@@ -414,10 +403,12 @@ function AccountCard({
           <div
             className={cn(
               "font-semibold",
-              trafficProgressClasses(Math.round(totalProgress)).text,
+              isUnlimitedPlan
+                ? "unlimited-plan-text"
+                : trafficProgressClasses(Math.round(totalProgress)).text,
             )}
           >
-            {Math.round(totalProgress)}%
+            {isUnlimitedPlan ? "不限流量" : `${Math.round(totalProgress)}%`}
           </div>
           <div
             className={cn(
@@ -425,7 +416,9 @@ function AccountCard({
               isAndroid() ? "text-[10px]" : "text-xs",
             )}
           >
-            {formatTrafficAmount(totalUsed)} / {formatTrafficAmount(totalQuota)}
+            {isUnlimitedPlan
+              ? formatTrafficAmount(totalUsed)
+              : `${formatTrafficAmount(totalUsed)} / ${formatTrafficAmount(totalQuota)}`}
           </div>
         </div>
 
@@ -480,58 +473,60 @@ function AccountCard({
         </div>
       </div>
 
-      <div className="col-span-2 mt-1">
-        <div className="grid gap-2">
-          <div className="grid gap-1">
-            <div className="flex justify-between text-[11px] text-muted-foreground">
-              <span>免费包</span>
-              <span>{Math.round(freeProgress)}%</span>
-            </div>
-            <div
-              className={cn(
-                "h-1.5 w-full overflow-hidden rounded-full",
-                accountState === "online"
-                  ? "bg-emerald-500/8 dark:bg-zinc-950/30"
-                  : "bg-muted",
-              )}
-            >
-              <div
-                className={cn(
-                  "h-full rounded-full transition-[width] duration-500 ease-out",
-                  trafficProgressClasses(
-                    Math.round(freeProgress),
-                    accountState === "online",
-                  ).bar,
-                )}
-                style={{ width: `${freeProgress}%` }}
-              />
-            </div>
-            <div className="flex justify-between text-[11px] text-muted-foreground">
-              <span>{formatTrafficAmount(freeUsed)}</span>
-              <span>{formatTrafficAmount(FREE_PRODUCT_QUOTA_GB)}</span>
-            </div>
-          </div>
-
-          {packageTotal > 0 && (
+      {!isUnlimitedPlan && (
+        <div className="col-span-2 mt-1">
+          <div className="grid gap-2">
             <div className="grid gap-1">
               <div className="flex justify-between text-[11px] text-muted-foreground">
-                <span>套餐流量</span>
-                <span>{Math.round(packageProgress)}%</span>
+                <span>免费包</span>
+                <span>{Math.round(freeProgress)}%</span>
               </div>
-              <div className="bg-muted h-1.5 overflow-hidden rounded-full">
+              <div
+                className={cn(
+                  "h-1.5 w-full overflow-hidden rounded-full",
+                  accountState === "online"
+                    ? "bg-emerald-500/8 dark:bg-zinc-950/30"
+                    : "bg-muted",
+                )}
+              >
                 <div
-                  className="h-full rounded-full bg-sky-500 transition-[width] duration-500 ease-out"
-                  style={{ width: `${packageProgress}%` }}
+                  className={cn(
+                    "h-full rounded-full transition-[width] duration-500 ease-out",
+                    trafficProgressClasses(
+                      Math.round(freeProgress),
+                      accountState === "online",
+                    ).bar,
+                  )}
+                  style={{ width: `${freeProgress}%` }}
                 />
               </div>
               <div className="flex justify-between text-[11px] text-muted-foreground">
-                <span>{formatTrafficAmount(packageUsed)}</span>
-                <span>{snapshot?.packageTotalText || "-"}</span>
+                <span>{formatTrafficAmount(freeUsed)}</span>
+                <span>{formatTrafficAmount(FREE_PRODUCT_QUOTA_GB)}</span>
               </div>
             </div>
-          )}
+
+            {packageTotal > 0 && (
+              <div className="grid gap-1">
+                <div className="flex justify-between text-[11px] text-muted-foreground">
+                  <span>套餐流量</span>
+                  <span>{Math.round(packageProgress)}%</span>
+                </div>
+                <div className="bg-muted h-1.5 overflow-hidden rounded-full">
+                  <div
+                    className="h-full rounded-full bg-sky-500 transition-[width] duration-500 ease-out"
+                    style={{ width: `${packageProgress}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-[11px] text-muted-foreground">
+                  <span>{formatTrafficAmount(packageUsed)}</span>
+                  <span>{snapshot?.packageTotalText || "-"}</span>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
