@@ -4,6 +4,8 @@ use muc_student_core::application::error::{AppError, AppResult};
 use muc_student_core::application::platform::{RuntimePathProvider, StartupController};
 #[cfg(not(target_os = "android"))]
 use std::env;
+#[cfg(windows)]
+use std::ffi::OsStr;
 #[cfg(target_os = "android")]
 use tauri::Manager;
 
@@ -64,6 +66,20 @@ impl RuntimePathProvider for TauriRuntimePathProvider {
     }
 }
 
+pub const STARTUP_ARGUMENT: &str = "--autostart";
+
+pub fn launched_from_startup() -> bool {
+    #[cfg(windows)]
+    {
+        env::args_os().any(|argument| argument == OsStr::new(STARTUP_ARGUMENT))
+    }
+
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
 #[derive(Clone)]
 pub struct RunKeyStartupController {
     #[cfg(windows)]
@@ -98,7 +114,7 @@ impl StartupController for RunKeyStartupController {
 
         let exe = env::current_exe()
             .map_err(|err| AppError::System(format!("读取程序路径失败：{err}")))?;
-        let command = format!("\"{}\"", exe.display());
+        let command = format!("\"{}\" {STARTUP_ARGUMENT}", exe.display());
         let name = wide_null(&self.app_name);
 
         unsafe {

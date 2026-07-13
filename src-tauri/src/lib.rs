@@ -4,11 +4,12 @@ mod update_feed;
 
 use std::sync::Arc;
 
+use muc_student_core::application::platform::StartupController;
 use muc_student_core::application::{
     AccountPoolImportResultDto, AppCore, AppError, AppErrorDto, AppEventSink, AppResult,
     AppSnapshotDto, IntoCommandResult,
 };
-use platform::{RunKeyStartupController, TauriRuntimePathProvider};
+use platform::{launched_from_startup, RunKeyStartupController, TauriRuntimePathProvider};
 use tauri::{Emitter, Manager};
 
 #[derive(Clone)]
@@ -52,6 +53,11 @@ async fn bootstrap_app(
     core: tauri::State<'_, ManagedAppCore>,
 ) -> Result<AppSnapshotDto, AppErrorDto> {
     core.core.bootstrap_app().await.into_command_result()
+}
+
+#[tauri::command]
+fn should_show_main_window_on_launch() -> bool {
+    !launched_from_startup()
 }
 
 #[tauri::command]
@@ -191,9 +197,13 @@ fn update_tray_menu(_show_text: String, _quit_text: String) -> Result<(), String
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default().setup(|app| {
+        let startup_controller = RunKeyStartupController::new("MUC-student");
+        if startup_controller.is_enabled()? {
+            startup_controller.set_launch_on_startup(true)?;
+        }
         let core = AppCore::build(
             Arc::new(TauriRuntimePathProvider::new(app.handle().clone())),
-            Arc::new(RunKeyStartupController::new("MUC-student")),
+            Arc::new(startup_controller),
             Arc::new(TauriEventSink::new(app.handle().clone())),
         )?;
         app.manage(ManagedAppCore {
@@ -219,6 +229,7 @@ pub fn run() {
 
     let builder = builder.invoke_handler(tauri::generate_handler![
         bootstrap_app,
+        should_show_main_window_on_launch,
         get_app_snapshot,
         select_account,
         add_account,
