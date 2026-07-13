@@ -107,11 +107,17 @@ pub fn username_matches(stored: &str, online: &str) -> bool {
     !stored_base.is_empty() && stored_base.eq_ignore_ascii_case(online_base)
 }
 
+pub fn ipv4_matches(left: &str, right: &str) -> bool {
+    let left = left.trim().parse::<std::net::Ipv4Addr>();
+    let right = right.trim().parse::<std::net::Ipv4Addr>();
+    matches!((left, right), (Ok(left), Ok(right)) if left == right)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         build_single_success_snapshot, build_single_success_snapshot_with_online_info,
-        username_matches,
+        ipv4_matches, username_matches,
     };
     use crate::domain::models::PortalAccount;
     use crate::infrastructure::parsers::legacy_portal_online_info_parser::LegacyPortalOnlineInfo;
@@ -228,6 +234,13 @@ mod tests {
         let snapshot = build_single_success_snapshot(&account, &info, None);
 
         assert_eq!(snapshot.included_package_text, "含30.00GB套餐流量");
+    }
+
+    #[test]
+    fn ipv4_match_rejects_missing_or_different_addresses() {
+        assert!(ipv4_matches("10.151.119.57", " 10.151.119.57 "));
+        assert!(!ipv4_matches("10.151.119.57", "10.151.119.58"));
+        assert!(!ipv4_matches("10.151.119.57", ""));
     }
 
     #[test]

@@ -7,6 +7,7 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Build
 import android.util.Log
+import java.net.Inet4Address
 
 object WifiNetworkBinder {
   private const val TAG = "MucWifiBinder"
@@ -20,6 +21,11 @@ object WifiNetworkBinder {
   @Volatile
   private var connectivityManager: ConnectivityManager? = null
 
+  @Volatile
+  private var currentContext = WifiNetworkContext.unavailable("尚未绑定校园网 Wi-Fi")
+
+  private val contextMonitor = Object()
+
   private val callback =
     object : ConnectivityManager.NetworkCallback() {
       override fun onAvailable(network: Network) {
@@ -27,10 +33,17 @@ object WifiNetworkBinder {
         connectivityManager?.let { bind(it, network) }
       }
 
+      override fun onLinkPropertiesChanged(network: Network, linkProperties: android.net.LinkProperties) {
+        if (boundNetwork == network) {
+          connectivityManager?.let { updateBoundContext(it, network) }
+        }
+      }
+
       override fun onLost(network: Network) {
         Log.i(TAG, "WiFi network lost: $network")
         if (boundNetwork == network) {
           boundNetwork = null
+          publishContext(WifiNetworkContext.unavailable("校园网 Wi-Fi 已断开"))
           connectivityManager?.let { clearBinding(it) }
         }
       }
@@ -70,14 +83,32 @@ object WifiNetworkBinder {
     }
   }
 
+  fun awaitContext(context: Context, timeoutMs: Long): WifiNetworkContext {
+    start(context)
+    currentContext.takeIf { it.isReady() }?.let { return it }
+
+    val deadline = System.currentTimeMillis() + timeoutMs.coerceIn(0L, 10_000L)
+    synchronized(contextMonitor) {
+      while (!currentContext.isReady()) {
+        val remaining = deadline - System.currentTimeMillis()
+        if (remaining <= 0L) {
+          break
+        }
+        contextMonitor.wait(remaining)
+      }
+    }
+    return currentContext
+  }
+
   @Suppress("DEPRECATION")
   private fun bindBestWifi(manager: ConnectivityManager) {
-    val wifiNetwork =
-      manager.allNetworks.firstOrNull { network ->
+    val wifiNetwork = manager.allNetworks
+      .filter { network ->
         manager
           .getNetworkCapabilities(network)
           ?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
       }
+      .firstOrNull { network -> findIpv4(manager, network).isNotEmpty() }
     if (wifiNetwork != null) {
       Log.i(TAG, "binding existing WiFi network: ${describeNetwork(manager, wifiNetwork)}")
       bind(manager, wifiNetwork)
@@ -96,9 +127,45 @@ object WifiNetworkBinder {
       }
     if (success) {
       boundNetwork = network
+      updateBoundContext(manager, network)
       Log.i(TAG, "bound process to WiFi network: ${describeNetwork(manager, network)}")
     } else {
+      publishContext(WifiNetworkContext.unavailable("系统拒绝绑定校园网 Wi-Fi"))
       Log.w(TAG, "bind process to WiFi network failed: ${describeNetwork(manager, network)}")
+    }
+  }
+
+  private fun updateBoundContext(manager: ConnectivityManager, network: Network) {
+    val ipv4 = findIpv4(manager, network)
+    val context =
+      if (ipv4.isEmpty()) {
+        WifiNetworkContext.unavailable("校园网 Wi-Fi 没有可用 IPv4")
+      } else {
+        WifiNetworkContext(
+          bound = true,
+          ipv4 = ipv4,
+          networkHandle = network.networkHandle.toString(),
+          detail = "校园网 Wi-Fi 已绑定",
+        )
+      }
+    publishContext(context)
+  }
+
+  private fun findIpv4(manager: ConnectivityManager, network: Network): String =
+    manager
+      .getLinkProperties(network)
+      ?.linkAddresses
+      ?.asSequence()
+      ?.map { it.address }
+      ?.filterIsInstance<Inet4Address>()
+      ?.firstOrNull { !it.isLoopbackAddress && !it.isLinkLocalAddress }
+      ?.hostAddress
+      .orEmpty()
+
+  private fun publishContext(context: WifiNetworkContext) {
+    currentContext = context
+    synchronized(contextMonitor) {
+      contextMonitor.notifyAll()
     }
   }
 
@@ -114,5 +181,18 @@ object WifiNetworkBinder {
   private fun describeNetwork(manager: ConnectivityManager?, network: Network): String {
     val capabilities = manager?.getNetworkCapabilities(network)
     return "network=$network capabilities=${capabilities ?: "unknown"}"
+  }
+}
+
+data class WifiNetworkContext(
+  val bound: Boolean,
+  val ipv4: String,
+  val networkHandle: String,
+  val detail: String,
+) {
+  fun isReady(): Boolean = bound && ipv4.isNotBlank() && networkHandle.isNotBlank()
+
+  companion object {
+    fun unavailable(detail: String) = WifiNetworkContext(false, "", "", detail)
   }
 }

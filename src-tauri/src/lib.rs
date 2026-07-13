@@ -9,6 +9,8 @@ use muc_student_core::application::{
     AccountPoolImportResultDto, AppCore, AppError, AppErrorDto, AppEventSink, AppResult,
     AppSnapshotDto, IntoCommandResult,
 };
+#[cfg(target_os = "android")]
+use platform::AndroidNetworkStatusDetector;
 use platform::{launched_from_startup, RunKeyStartupController, TauriRuntimePathProvider};
 use tauri::{Emitter, Manager};
 
@@ -196,11 +198,24 @@ fn update_tray_menu(_show_text: String, _quit_text: String) -> Result<(), String
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri::Builder::default().setup(|app| {
+    let builder = tauri::Builder::default();
+
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(plugins::android_network::init());
+
+    let builder = builder.setup(|app| {
         let startup_controller = RunKeyStartupController::new("MUC-student");
         if startup_controller.is_enabled()? {
             startup_controller.set_launch_on_startup(true)?;
         }
+        #[cfg(target_os = "android")]
+        let core = AppCore::build_with_network_status_detector(
+            Arc::new(TauriRuntimePathProvider::new(app.handle().clone())),
+            Arc::new(startup_controller),
+            Arc::new(TauriEventSink::new(app.handle().clone())),
+            Arc::new(AndroidNetworkStatusDetector::new(app.handle().clone())),
+        )?;
+        #[cfg(not(target_os = "android"))]
         let core = AppCore::build(
             Arc::new(TauriRuntimePathProvider::new(app.handle().clone())),
             Arc::new(startup_controller),

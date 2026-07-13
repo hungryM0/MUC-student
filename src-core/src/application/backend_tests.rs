@@ -269,7 +269,7 @@ async fn login_switches_online_ip_with_login_post_without_logout() {
 }
 
 #[tokio::test]
-async fn login_accepts_portal_success_when_detected_local_ip_differs() {
+async fn login_rejects_portal_success_when_detected_local_ip_differs() {
     let server = MockServer::start().await;
     let detected_ip = "10.0.0.8";
     let portal_ip = "10.151.119.57";
@@ -335,17 +335,22 @@ async fn login_accepts_portal_success_when_detected_local_ip_differs() {
         .await
         .expect("select second");
 
-    let snapshot = core.login_selected_account().await.expect("login selected");
+    let error = core
+        .login_selected_account()
+        .await
+        .expect_err("IP mismatch must reject login");
+    assert_eq!(error.code(), "NETWORK_ERROR");
 
-    assert_eq!(snapshot.current_online_account_id, second_id);
-    assert_eq!(snapshot.login_state.result_text, "成功");
+    let snapshot = core.get_snapshot().expect("snapshot after rejected login");
+    assert!(snapshot.current_online_account_id.is_empty());
+    assert_eq!(snapshot.login_state.result_text, "失败");
     let current = snapshot
         .accounts
         .iter()
         .find(|account| account.id == second_id)
         .expect("current account");
-    assert!(current.is_current_online);
-    assert!(current.can_logout_local_device);
+    assert!(!current.is_current_online);
+    assert!(!current.can_logout_local_device);
 }
 
 #[tokio::test]
@@ -1113,6 +1118,52 @@ async fn login_failure_emits_settled_state() {
     assert!(events.contains(&"start:login".to_string()));
     assert!(events.contains(&"finish:login".to_string()));
     assert_eq!(events.last(), Some(&"state:running=false".to_string()));
+}
+
+#[tokio::test]
+async fn portal_rejection_returns_error_without_marking_account_online() {
+    let server = MockServer::start().await;
+    let local_ip = "10.151.119.57";
+    Mock::given(method("GET"))
+        .and(path("/srun_portal_pc_success.php"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("not_online"))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/srun_portal_pc.php"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("E2531: User not found"))
+        .mount(&server)
+        .await;
+
+    let (core, _root, _event_sink, _panel_session_repo) =
+        build_test_core(settings_for(&server), local_ip);
+    let snapshot = core
+        .add_account(
+            "测试账号".to_string(),
+            "20260001".to_string(),
+            "wrong".to_string(),
+        )
+        .await
+        .expect("add account");
+    let account_id = snapshot.accounts[0].id.clone();
+
+    let error = core
+        .login_selected_account()
+        .await
+        .expect_err("portal rejection must fail command");
+
+    assert_eq!(error.code(), "NETWORK_ERROR");
+    let snapshot = core.get_snapshot().expect("snapshot after rejection");
+    assert_eq!(snapshot.login_state.result_text, "失败");
+    assert!(snapshot.current_online_account_id.is_empty());
+    assert!(
+        !snapshot
+            .accounts
+            .iter()
+            .find(|account| account.id == account_id)
+            .expect("account")
+            .is_current_online
+    );
 }
 
 #[tokio::test]

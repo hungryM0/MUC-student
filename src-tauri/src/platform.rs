@@ -2,12 +2,57 @@ use std::path::PathBuf;
 
 use muc_student_core::application::error::{AppError, AppResult};
 use muc_student_core::application::platform::{RuntimePathProvider, StartupController};
+#[cfg(target_os = "android")]
+use muc_student_core::domain::models::NetworkStatus;
+#[cfg(target_os = "android")]
+use muc_student_core::infrastructure::network::network_status_service::NetworkStatusDetector;
 #[cfg(not(target_os = "android"))]
 use std::env;
 #[cfg(windows)]
 use std::ffi::OsStr;
 #[cfg(target_os = "android")]
 use tauri::Manager;
+
+#[cfg(target_os = "android")]
+pub struct AndroidNetworkStatusDetector {
+    app: tauri::AppHandle,
+}
+
+#[cfg(target_os = "android")]
+impl AndroidNetworkStatusDetector {
+    pub fn new(app: tauri::AppHandle) -> Self {
+        Self { app }
+    }
+}
+
+#[cfg(target_os = "android")]
+impl NetworkStatusDetector for AndroidNetworkStatusDetector {
+    fn detect_network_status(&self) -> NetworkStatus {
+        let mut status = NetworkStatus::default();
+        match crate::plugins::android_network::await_wifi_context(&self.app, 4_000) {
+            Ok(context)
+                if context.bound
+                    && !context.ipv4.trim().is_empty()
+                    && !context.network_handle.trim().is_empty() =>
+            {
+                status.is_online = true;
+                status.status_text = "校园网 Wi-Fi 已绑定".to_string();
+                status.ip = context.ipv4;
+            }
+            Ok(context) => {
+                status.status_text = if context.detail.trim().is_empty() {
+                    "校园网 Wi-Fi 未就绪".to_string()
+                } else {
+                    context.detail
+                };
+            }
+            Err(err) => {
+                status.status_text = format!("读取 Android Wi-Fi 状态失败：{err}");
+            }
+        }
+        status
+    }
+}
 
 pub struct TauriRuntimePathProvider {
     #[cfg(target_os = "android")]
@@ -66,6 +111,7 @@ impl RuntimePathProvider for TauriRuntimePathProvider {
     }
 }
 
+#[cfg(windows)]
 pub const STARTUP_ARGUMENT: &str = "--autostart";
 
 pub fn launched_from_startup() -> bool {

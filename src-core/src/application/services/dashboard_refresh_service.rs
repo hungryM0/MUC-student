@@ -11,7 +11,7 @@ use crate::application::runtime_refresh::refresh_runtime_from_disk;
 use crate::application::services::account_traffic_service::snapshot_from_panel_home;
 use crate::application::services::portal_snapshot_service::{
     apply_success_page_unlimited_plan, build_single_success_snapshot_with_online_info,
-    username_matches,
+    ipv4_matches, username_matches,
 };
 use crate::application::services::snapshot_mapper::{
     build_app_snapshot, restore_cached_snapshots, to_cached_snapshots,
@@ -84,40 +84,34 @@ impl DashboardRefreshService {
 
         if online_probe.is_online() {
             if let Ok(info) = self.portal_status_client.fetch_success_info().await {
-                let success_account = store
-                    .accounts
-                    .iter()
-                    .find(|account| username_matches(&account.username, &info.username));
-                if let Some(account) = success_account {
-                    let portal_ip = info.ip.trim();
-                    let effective_local_ip = if portal_ip.is_empty() {
-                        local_ip
-                    } else {
-                        Some(portal_ip)
-                    };
-                    current_online_id = account.id.clone();
-                    let mut snapshot = match self
-                        .panel_client
-                        .fetch_sso_html(&account.id, &info.username, "/home")
-                        .await
-                        .and_then(|html| {
-                            snapshot_from_panel_home(account, &html, effective_local_ip)
-                        }) {
-                        Ok(snapshot) => snapshot,
-                        Err(_) => build_single_success_snapshot_with_online_info(
-                            account,
-                            &info,
-                            online_probe.online_info(),
-                            store.cached_traffic_snapshots.get(&account.id),
-                        ),
-                    };
-                    apply_success_page_unlimited_plan(&mut snapshot, &info.billing_policy);
-                    refreshed_account_ids.insert(account.id.clone());
-                    snapshot_map.insert(account.id.clone(), snapshot);
+                if local_ip.is_some_and(|local_ip| ipv4_matches(local_ip, &info.ip)) {
+                    let success_account = store
+                        .accounts
+                        .iter()
+                        .find(|account| username_matches(&account.username, &info.username));
+                    if let Some(account) = success_account {
+                        current_online_id = account.id.clone();
+                        let mut snapshot = match self
+                            .panel_client
+                            .fetch_sso_html(&account.id, &info.username, "/home")
+                            .await
+                            .and_then(|html| {
+                                snapshot_from_panel_home(account, &html, Some(info.ip.trim()))
+                            }) {
+                            Ok(snapshot) => snapshot,
+                            Err(_) => build_single_success_snapshot_with_online_info(
+                                account,
+                                &info,
+                                online_probe.online_info(),
+                                store.cached_traffic_snapshots.get(&account.id),
+                            ),
+                        };
+                        apply_success_page_unlimited_plan(&mut snapshot, &info.billing_policy);
+                        refreshed_account_ids.insert(account.id.clone());
+                        snapshot_map.insert(account.id.clone(), snapshot);
+                    }
                 }
             }
-        } else if online_probe.is_unknown() {
-            current_online_id = store.current_online_account_id.clone();
         }
         if !online_probe.is_offline() {
             mark_unrefreshed_non_current_accounts_failed(
@@ -154,12 +148,13 @@ impl DashboardRefreshService {
     }
 
     async fn check_local_online(&self, local_ip: Option<&str>) -> LocalOnlineProbe {
-        let Some(_local_ip) = local_ip else {
+        let Some(local_ip) = local_ip else {
             return LocalOnlineProbe::Unknown;
         };
         match self.portal_status_client.fetch_online_info().await {
             Ok(info) if info.ip.trim().is_empty() => LocalOnlineProbe::Offline,
-            Ok(info) => LocalOnlineProbe::Online(info),
+            Ok(info) if ipv4_matches(local_ip, &info.ip) => LocalOnlineProbe::Online(info),
+            Ok(_) => LocalOnlineProbe::Offline,
             Err(AppError::NotFound(_)) => LocalOnlineProbe::Offline,
             Err(_) => LocalOnlineProbe::Unknown,
         }
@@ -208,10 +203,6 @@ impl LocalOnlineProbe {
 
     fn is_offline(&self) -> bool {
         matches!(self, Self::Offline)
-    }
-
-    fn is_unknown(&self) -> bool {
-        matches!(self, Self::Unknown)
     }
 
     fn online_info(&self) -> Option<&LegacyPortalOnlineInfo> {

@@ -20,9 +20,10 @@ use crate::domain::models::{CachedTrafficSnapshot, NetworkStatus};
 use crate::domain::policies::traffic_math::build_auto_switch_candidate;
 use crate::infrastructure::android_keepalive::write_android_keepalive_state;
 use crate::infrastructure::network::{
-    http_transport::HttpTransport, legacy_portal_auth_client::LegacyPortalAuthClient,
+    http_transport::HttpTransport,
+    legacy_portal_auth_client::LegacyPortalAuthClient,
     legacy_portal_status_client::LegacyPortalStatusClient,
-    network_status_service::NetworkStatusService,
+    network_status_service::{NetworkStatusDetector, NetworkStatusService},
     self_service_panel_client::SelfServicePanelClient,
 };
 use crate::infrastructure::persistence::account_repository::{
@@ -59,11 +60,32 @@ impl AppCore {
         startup_controller: Arc<dyn StartupController>,
         event_sink: Arc<dyn AppEventSink>,
     ) -> AppResult<Self> {
+        let settings = AppSettings::default();
+        let network_status_service = Arc::new(NetworkStatusService::new(settings));
+        Self::build_with_network_status_detector(
+            path_provider,
+            startup_controller,
+            event_sink,
+            network_status_service,
+        )
+    }
+
+    pub fn build_with_network_status_detector(
+        path_provider: Arc<dyn RuntimePathProvider>,
+        startup_controller: Arc<dyn StartupController>,
+        event_sink: Arc<dyn AppEventSink>,
+        network_status_service: Arc<dyn NetworkStatusDetector>,
+    ) -> AppResult<Self> {
         let paths = RuntimePaths::new(
             path_provider.app_data_dir()?,
             path_provider.resource_base_dir()?,
         )?;
-        Self::build_with_paths(paths, startup_controller, event_sink)
+        Self::build_with_paths_and_network_status_detector(
+            paths,
+            startup_controller,
+            event_sink,
+            network_status_service,
+        )
     }
 
     pub fn build_with_paths(
@@ -72,12 +94,32 @@ impl AppCore {
         event_sink: Arc<dyn AppEventSink>,
     ) -> AppResult<Self> {
         let settings = AppSettings::default();
+        let network_status_service = Arc::new(NetworkStatusService::new(settings));
+        Self::build_with_paths_and_network_status_detector(
+            paths,
+            startup_controller,
+            event_sink,
+            network_status_service,
+        )
+    }
+
+    fn build_with_paths_and_network_status_detector(
+        paths: RuntimePaths,
+        startup_controller: Arc<dyn StartupController>,
+        event_sink: Arc<dyn AppEventSink>,
+        network_status_service: Arc<dyn NetworkStatusDetector>,
+    ) -> AppResult<Self> {
+        let settings = AppSettings::default();
         let vault: Arc<dyn CredentialVault> = Arc::new(SystemCredentialVault::initialize()?);
         let db = AppDatabase::open(&paths)?;
         let account_repo = AccountRepository::new(db.clone(), vault.clone());
         let snapshot_repo = AccountSnapshotRepository::new(db.clone());
         let app_state_repo = AppStateRepository::new(db.clone());
-        let account_store = account_repo.ensure_store()?;
+        let mut account_store = account_repo.ensure_store()?;
+        if !account_store.current_online_account_id.is_empty() {
+            snapshot_repo.set_current_online_account_id(&account_store.accounts, String::new())?;
+            account_store.current_online_account_id.clear();
+        }
         let app_state = app_state_repo.load_state()?;
         let mut preferences = app_state_repo.load_preferences()?;
         preferences.launch_on_startup = startup_controller.is_enabled()?;
@@ -89,7 +131,6 @@ impl AppCore {
             LegacyPortalStatusClient::new(settings.clone(), transport.clone());
         let panel_client =
             SelfServicePanelClient::new(settings.clone(), transport, panel_session_repo);
-        let network_status_service = Arc::new(NetworkStatusService::new(settings));
         let snapshots = restore_cached_snapshots(&account_store.cached_traffic_snapshots);
         let runtime = SharedRuntimeState::new(AppRuntimeState {
             account_store: account_store.clone(),

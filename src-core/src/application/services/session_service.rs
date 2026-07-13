@@ -7,7 +7,7 @@ use tokio::time::sleep;
 use crate::application::error::{AppError, AppResult};
 use crate::application::runtime::SharedRuntimeState;
 use crate::application::runtime_refresh::refresh_runtime_from_disk;
-use crate::application::services::portal_snapshot_service::username_matches;
+use crate::application::services::portal_snapshot_service::{ipv4_matches, username_matches};
 use crate::domain::models::{CachedTrafficSnapshot, LoginResult, PortalAccount};
 use crate::infrastructure::network::legacy_portal_auth_client::{
     is_portal_arrearage_response, LegacyPortalAuthClient,
@@ -82,32 +82,36 @@ impl SessionService {
             let mut state = self.state.write();
             state.network = network.clone();
         }
-        let local_ip = if network.ip == "unknown" {
-            None
-        } else {
-            Some(network.ip.as_str())
-        };
+        if network.ip == "unknown" || network.ip.trim().is_empty() {
+            return Err(AppError::Network(format!(
+                "未识别到校园网 Wi-Fi IPv4，拒绝登录：{}",
+                network.status_text
+            )));
+        }
+        let local_ip = network.ip.as_str();
 
-        let mut current_online_account = None;
-        if let Some(local_ip) = local_ip {
-            let current_online = self
-                .detect_local_online_account(&store.accounts, local_ip)
-                .await;
-            if let Some(current) = current_online {
-                if let LocalOnlineAccount::Known(account) = &current {
-                    {
-                        let mut state = self.state.write();
-                        state.current_online_account_id = account.id.clone();
-                        state.account_store.current_online_account_id = account.id.clone();
-                    }
-                } else {
+        let current_online = self
+            .detect_local_online_account(&store.accounts, local_ip)
+            .await;
+        match current_online.as_ref() {
+            Some(LocalOnlineAccount::Known(account)) => {
+                self.snapshot_repo
+                    .set_current_online_account_id(&store.accounts, account.id.clone())?;
+                {
                     let mut state = self.state.write();
-                    state.current_online_account_id.clear();
-                    state.account_store.current_online_account_id.clear();
+                    state.current_online_account_id = account.id.clone();
+                    state.account_store.current_online_account_id = account.id.clone();
                 }
-                current_online_account = Some(current);
+            }
+            Some(LocalOnlineAccount::Unknown) | None => {
+                self.snapshot_repo
+                    .set_current_online_account_id(&store.accounts, String::new())?;
+                let mut state = self.state.write();
+                state.current_online_account_id.clear();
+                state.account_store.current_online_account_id.clear();
             }
         }
+        let current_online_account = current_online;
 
         let detected_current_id = current_online_account
             .as_ref()
@@ -149,6 +153,21 @@ impl SessionService {
             }
         }
 
+        if login_result.success {
+            match self
+                .confirm_and_persist_online_account(&target, local_ip)
+                .await
+            {
+                Ok(()) => {
+                    self.app_state_repo.mark_account_used(&target.account.id)?;
+                }
+                Err(err) => {
+                    login_result.success = false;
+                    login_result.message = err.to_string();
+                }
+            }
+        }
+
         let mut app_state = self.app_state_repo.load_state()?;
         app_state.last_login_time = Some(login_result.checked_at);
         app_state.last_login_result = if login_result.success {
@@ -161,12 +180,10 @@ impl SessionService {
         if !login_result.success && is_portal_arrearage_response(&login_result.response_text) {
             self.persist_arrearage_snapshot(&target, login_result.checked_at)?;
         }
-        if login_result.success {
-            self.confirm_and_persist_online_account(&target, local_ip)
-                .await?;
-            self.app_state_repo.mark_account_used(&target.account.id)?;
-        }
         self.refresh_runtime_from_disk()?;
+        if !login_result.success {
+            return Err(AppError::Network(login_result.message));
+        }
         Ok(())
     }
 
@@ -174,11 +191,8 @@ impl SessionService {
         &self,
         accounts: &[PortalAccount],
         target: &AccountWithPassword,
-        local_ip: Option<&str>,
+        local_ip: &str,
     ) -> AppResult<LoginResult> {
-        let Some(local_ip) = local_ip else {
-            return self.auth_client.login_target_account(target).await;
-        };
         let Some(current) = self.detect_local_online_account(accounts, local_ip).await else {
             return self.auth_client.login_target_account(target).await;
         };
@@ -198,7 +212,7 @@ impl SessionService {
             });
         }
         let mut login_result = self.auth_client.login_target_account(target).await?;
-        if login_result.already_online && self.confirm_target_online(target, Some(local_ip)).await {
+        if login_result.already_online && self.confirm_target_online(target, local_ip).await {
             login_result.success = true;
             login_result.message =
                 format!("Portal 已确认切换到：{}", target.account.display_name());
@@ -271,7 +285,7 @@ impl SessionService {
         local_ip: &str,
     ) -> Option<LocalOnlineAccount> {
         let success_info = self.portal_status_client.fetch_success_info().await.ok()?;
-        if !local_ip.trim().is_empty() && success_info.ip.trim().is_empty() {
+        if !ipv4_matches(local_ip, &success_info.ip) {
             return None;
         }
 
@@ -285,11 +299,7 @@ impl SessionService {
         })
     }
 
-    async fn confirm_target_online(
-        &self,
-        target: &AccountWithPassword,
-        local_ip: Option<&str>,
-    ) -> bool {
+    async fn confirm_target_online(&self, target: &AccountWithPassword, local_ip: &str) -> bool {
         for attempt in 0..Self::CONFIRM_TARGET_MAX_ATTEMPTS {
             if self.confirm_target_online_once(target, local_ip).await {
                 return true;
@@ -304,18 +314,19 @@ impl SessionService {
     async fn confirm_target_online_once(
         &self,
         target: &AccountWithPassword,
-        _local_ip: Option<&str>,
+        local_ip: &str,
     ) -> bool {
         let Ok(info) = self.portal_status_client.fetch_success_info().await else {
             return false;
         };
-        username_matches(&target.account.username, &info.username)
+        ipv4_matches(local_ip, &info.ip)
+            && username_matches(&target.account.username, &info.username)
     }
 
     async fn confirm_and_persist_online_account(
         &self,
         target: &AccountWithPassword,
-        local_ip: Option<&str>,
+        local_ip: &str,
     ) -> AppResult<()> {
         if !self.confirm_target_online(target, local_ip).await {
             return Err(AppError::Network(format!(
