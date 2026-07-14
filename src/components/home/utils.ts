@@ -103,6 +103,16 @@ export function formatSnapshotSyncText(snapshot: AccountDto["snapshot"]) {
   return `${Math.floor(elapsedHours / 24)} 天前同步`;
 }
 
+export function hasKnownTrafficSnapshot(
+  snapshot: AccountDto["snapshot"],
+): snapshot is NonNullable<AccountDto["snapshot"]> {
+  return (
+    snapshot !== null &&
+    snapshot.statusText !== "查询中..." &&
+    snapshot.statusText !== "查询失败"
+  );
+}
+
 export function buildAccountUsage(account: AccountDto) {
   const snapshot = account.snapshot;
   const isUnlimitedPlan = snapshot?.isUnlimitedPlan ?? false;

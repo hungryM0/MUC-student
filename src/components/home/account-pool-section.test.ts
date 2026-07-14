@@ -16,6 +16,7 @@ function account(
       isUnlimitedPlan,
       usedTrafficText: "1.00GB",
       packageAvailableText: "0GB",
+      statusText: "已同步",
     } as AccountDto["snapshot"],
     isCurrentOnline,
     canLogoutLocalDevice: false,
@@ -48,4 +49,16 @@ describe("账号池排序", () => {
       ).toEqual(["unlimited-a", "unlimited-b"]);
     },
   );
+
+  it("剩余量排序把未知流量账号放在已知账号之后", () => {
+    const unknown = account("unknown", "未知", false);
+    if (unknown.snapshot) {
+      unknown.snapshot.statusText = "查询失败";
+    }
+    const accounts = [unknown, account("known", "已知", false)];
+
+    const result = sortAccounts(accounts, "remaining", {}, "");
+
+    expect(result.map((item) => item.id)).toEqual(["known", "unknown"]);
+  });
 });

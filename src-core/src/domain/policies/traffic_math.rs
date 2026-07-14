@@ -26,7 +26,7 @@ pub fn build_auto_switch_candidate(
         .filter(|account| {
             snapshots
                 .get(&account.id)
-                .is_some_and(|snapshot| !is_traffic_exhausted(snapshot))
+                .is_some_and(has_available_traffic)
         })
         .collect();
 
@@ -59,6 +59,13 @@ fn is_traffic_exhausted(snapshot: &AccountTrafficSnapshot) -> bool {
         && snapshot
             .progress_percent
             .is_some_and(|percent| percent >= 100.0)
+}
+
+fn has_available_traffic(snapshot: &AccountTrafficSnapshot) -> bool {
+    snapshot.is_unlimited_plan
+        || snapshot
+            .progress_percent
+            .is_some_and(|percent| percent < 100.0)
 }
 
 pub fn build_status_card_order(
@@ -338,7 +345,21 @@ mod tests {
     use chrono::Local;
 
     use super::*;
-    use crate::domain::models::traffic::AccountTrafficSnapshot;
+    use crate::domain::models::{AccountStore, AccountTrafficSnapshot, PortalAccount};
+
+    fn account(id: &str) -> PortalAccount {
+        PortalAccount {
+            id: id.to_string(),
+            remark_name: id.to_string(),
+            username: id.to_string(),
+        }
+    }
+
+    fn snapshot(id: &str, progress_percent: Option<f64>) -> AccountTrafficSnapshot {
+        let mut snapshot = AccountTrafficSnapshot::loading(id, Local::now());
+        snapshot.progress_percent = progress_percent;
+        snapshot
+    }
 
     #[test]
     fn calculates_progress_percent() {
@@ -410,6 +431,49 @@ mod tests {
         snapshot.progress_percent = Some(100.0);
 
         assert!(!is_traffic_exhausted(&snapshot));
+    }
+
+    #[test]
+    fn auto_switch_skips_candidates_with_unknown_traffic() {
+        let store = AccountStore {
+            selected_account_id: "current".to_string(),
+            accounts: vec![account("current"), account("unknown"), account("available")],
+            ..Default::default()
+        };
+        let snapshots = BTreeMap::from([
+            ("current".to_string(), snapshot("current", Some(100.0))),
+            ("unknown".to_string(), snapshot("unknown", None)),
+            ("available".to_string(), snapshot("available", Some(42.0))),
+        ]);
+
+        let candidate = build_auto_switch_candidate(
+            &store,
+            &snapshots,
+            &["unknown".to_string(), "available".to_string()],
+        )
+        .expect("known available candidate");
+
+        assert_eq!(candidate.id, "available");
+    }
+
+    #[test]
+    fn auto_switch_accepts_unlimited_candidate_without_progress() {
+        let store = AccountStore {
+            selected_account_id: "current".to_string(),
+            accounts: vec![account("current"), account("unlimited")],
+            ..Default::default()
+        };
+        let mut unlimited = snapshot("unlimited", None);
+        unlimited.is_unlimited_plan = true;
+        let snapshots = BTreeMap::from([
+            ("current".to_string(), snapshot("current", Some(100.0))),
+            ("unlimited".to_string(), unlimited),
+        ]);
+
+        let candidate =
+            build_auto_switch_candidate(&store, &snapshots, &[]).expect("unlimited candidate");
+
+        assert_eq!(candidate.id, "unlimited");
     }
 
     #[test]

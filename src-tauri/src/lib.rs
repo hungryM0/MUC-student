@@ -4,7 +4,6 @@ mod update_feed;
 
 use std::sync::Arc;
 
-use muc_student_core::application::platform::StartupController;
 use muc_student_core::application::{
     AccountPoolImportResultDto, AppCore, AppError, AppErrorDto, AppEventSink, AppResult,
     AppSnapshotDto, IntoCommandResult,
@@ -205,9 +204,7 @@ pub fn run() {
 
     let builder = builder.setup(|app| {
         let startup_controller = RunKeyStartupController::new("MUC-student");
-        if startup_controller.is_enabled()? {
-            startup_controller.set_launch_on_startup(true)?;
-        }
+        startup_controller.migrate_startup_command_if_needed()?;
         #[cfg(target_os = "android")]
         let core = AppCore::build_with_network_status_detector(
             Arc::new(TauriRuntimePathProvider::new(app.handle().clone())),

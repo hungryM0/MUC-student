@@ -15,7 +15,9 @@ use crate::application::runtime::{AppRuntimeState, SharedRuntimeState};
 use crate::application::runtime_refresh::refresh_runtime_from_disk;
 use crate::application::services::dashboard_refresh_service::DashboardRefreshService;
 use crate::application::services::session_service::SessionService;
-use crate::application::services::snapshot_mapper::{build_app_snapshot, restore_cached_snapshots};
+use crate::application::services::snapshot_mapper::{
+    build_app_snapshot, remove_expired_unlimited_snapshots, restore_cached_snapshots,
+};
 use crate::domain::models::{CachedTrafficSnapshot, NetworkStatus};
 use crate::domain::policies::traffic_math::build_auto_switch_candidate;
 use crate::infrastructure::android_keepalive::write_android_keepalive_state;
@@ -116,9 +118,14 @@ impl AppCore {
         let snapshot_repo = AccountSnapshotRepository::new(db.clone());
         let app_state_repo = AppStateRepository::new(db.clone());
         let mut account_store = account_repo.ensure_store()?;
-        if !account_store.current_online_account_id.is_empty() {
-            snapshot_repo.set_current_online_account_id(&account_store.accounts, String::new())?;
+        let had_current_online_account = !account_store.current_online_account_id.is_empty();
+        if had_current_online_account {
             account_store.current_online_account_id.clear();
+        }
+        let removed_expired_snapshots =
+            remove_expired_unlimited_snapshots(&mut account_store.cached_traffic_snapshots);
+        if had_current_online_account || removed_expired_snapshots {
+            snapshot_repo.save_store_state(&account_store)?;
         }
         let app_state = app_state_repo.load_state()?;
         let mut preferences = app_state_repo.load_preferences()?;

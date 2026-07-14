@@ -1,3 +1,5 @@
+#[cfg(windows)]
+use std::path::Path;
 use std::path::PathBuf;
 
 use muc_student_core::application::error::{AppError, AppResult};
@@ -147,6 +149,80 @@ impl RunKeyStartupController {
             Self {}
         }
     }
+
+    pub fn migrate_startup_command_if_needed(&self) -> AppResult<()> {
+        #[cfg(all(windows, not(debug_assertions)))]
+        {
+            let Some(command) = self.read_startup_command()? else {
+                return Ok(());
+            };
+            let current_exe = env::current_exe()
+                .map_err(|err| AppError::System(format!("读取程序路径失败：{err}")))?;
+            if should_migrate_startup_command(&command, &current_exe) {
+                self.set_launch_on_startup(true)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    fn read_startup_command(&self) -> AppResult<Option<String>> {
+        use windows::core::PCWSTR;
+        use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS};
+        use windows::Win32::System::Registry::{RegQueryValueExW, KEY_READ, REG_SZ};
+
+        let name = wide_null(&self.app_name);
+        unsafe {
+            let key = open_run_key(KEY_READ)?;
+            let result = (|| {
+                let mut value_type = Default::default();
+                let mut byte_len = 0u32;
+                let code = RegQueryValueExW(
+                    key,
+                    PCWSTR(name.as_ptr()),
+                    None,
+                    Some(&mut value_type),
+                    None,
+                    Some(&mut byte_len),
+                );
+                if code == ERROR_FILE_NOT_FOUND {
+                    return Ok(None);
+                }
+                if code != ERROR_SUCCESS {
+                    return Err(AppError::System(format!("读取开机自启命令失败：{code:?}")));
+                }
+                if value_type != REG_SZ || byte_len == 0 {
+                    return Ok(None);
+                }
+
+                let mut value = vec![0u16; (byte_len as usize).div_ceil(2)];
+                let mut actual_byte_len = byte_len;
+                let code = RegQueryValueExW(
+                    key,
+                    PCWSTR(name.as_ptr()),
+                    None,
+                    Some(&mut value_type),
+                    Some(value.as_mut_ptr().cast::<u8>()),
+                    Some(&mut actual_byte_len),
+                );
+                if code != ERROR_SUCCESS {
+                    return Err(AppError::System(format!("读取开机自启命令失败：{code:?}")));
+                }
+                let used_units = (actual_byte_len as usize / 2).min(value.len());
+                let value = &value[..used_units];
+                let end = value
+                    .iter()
+                    .position(|unit| *unit == 0)
+                    .unwrap_or(value.len());
+                String::from_utf16(&value[..end])
+                    .map(Some)
+                    .map_err(|err| AppError::System(format!("开机自启命令编码无效：{err}")))
+            })();
+            close_key(key);
+            result
+        }
+    }
 }
 
 #[cfg(windows)]
@@ -189,25 +265,58 @@ impl StartupController for RunKeyStartupController {
     }
 
     fn is_enabled(&self) -> AppResult<bool> {
-        use windows::core::PCWSTR;
-        use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS};
-        use windows::Win32::System::Registry::{RegQueryValueExW, KEY_READ};
-
-        let name = wide_null(&self.app_name);
-        unsafe {
-            let key = open_run_key(KEY_READ)?;
-            let code = RegQueryValueExW(key, PCWSTR(name.as_ptr()), None, None, None, None);
-            let result = if code == ERROR_SUCCESS {
-                Ok(true)
-            } else if code == ERROR_FILE_NOT_FOUND {
-                Ok(false)
-            } else {
-                Err(AppError::System(format!("读取开机自启状态失败：{code:?}")))
-            };
-            close_key(key);
-            result
-        }
+        let Some(command) = self.read_startup_command()? else {
+            return Ok(false);
+        };
+        let current_exe = env::current_exe()
+            .map_err(|err| AppError::System(format!("读取程序路径失败：{err}")))?;
+        Ok(startup_command_targets_executable(&command, &current_exe))
     }
+}
+
+#[cfg(all(windows, any(not(debug_assertions), test)))]
+fn should_migrate_startup_command(command: &str, current_exe: &Path) -> bool {
+    startup_command_targets_executable(command, current_exe)
+        && !startup_command_has_argument(command, STARTUP_ARGUMENT)
+}
+
+#[cfg(windows)]
+fn startup_command_targets_executable(command: &str, current_exe: &Path) -> bool {
+    let Some((stored_exe, _)) = split_startup_command(command) else {
+        return false;
+    };
+    paths_match(Path::new(stored_exe), current_exe)
+}
+
+#[cfg(all(windows, any(not(debug_assertions), test)))]
+fn startup_command_has_argument(command: &str, expected: &str) -> bool {
+    split_startup_command(command).is_some_and(|(_, arguments)| {
+        arguments
+            .split_whitespace()
+            .any(|argument| argument.trim_matches('"').eq_ignore_ascii_case(expected))
+    })
+}
+
+#[cfg(windows)]
+fn split_startup_command(command: &str) -> Option<(&str, &str)> {
+    let command = command.trim();
+    if let Some(rest) = command.strip_prefix('"') {
+        let end = rest.find('"')?;
+        let executable = rest[..end].trim();
+        return (!executable.is_empty()).then_some((executable, rest[end + 1..].trim()));
+    }
+
+    let end = command.find(char::is_whitespace).unwrap_or(command.len());
+    let executable = command[..end].trim();
+    (!executable.is_empty()).then_some((executable, command[end..].trim()))
+}
+
+#[cfg(windows)]
+fn paths_match(left: &Path, right: &Path) -> bool {
+    let left = left.canonicalize().unwrap_or_else(|_| left.to_path_buf());
+    let right = right.canonicalize().unwrap_or_else(|_| right.to_path_buf());
+    left.to_string_lossy()
+        .eq_ignore_ascii_case(&right.to_string_lossy())
 }
 
 #[cfg(not(windows))]
@@ -268,4 +377,38 @@ unsafe fn close_key(key: windows::Win32::System::Registry::HKEY) {
 #[cfg(windows)]
 fn wide_null(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_quoted_startup_command() {
+        assert_eq!(
+            split_startup_command(r#""C:\Program Files\MUC-student\MUC-student.exe" --autostart"#),
+            Some((
+                r#"C:\Program Files\MUC-student\MUC-student.exe"#,
+                "--autostart"
+            ))
+        );
+    }
+
+    #[test]
+    fn migrates_only_the_same_executable_without_startup_argument() {
+        let current = Path::new(r#"C:\Program Files\MUC-student\MUC-student.exe"#);
+
+        assert!(should_migrate_startup_command(
+            r#""c:\program files\muc-student\muc-student.exe""#,
+            current
+        ));
+        assert!(!should_migrate_startup_command(
+            r#""C:\Program Files\MUC-student\MUC-student.exe" --autostart"#,
+            current
+        ));
+        assert!(!should_migrate_startup_command(
+            r#""D:\Portable\MUC-student.exe""#,
+            current
+        ));
+    }
 }

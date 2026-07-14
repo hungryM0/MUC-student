@@ -32,6 +32,7 @@ import {
   buildAccountUsage,
   formatSnapshotSyncText,
   formatTrafficAmount,
+  hasKnownTrafficSnapshot,
   parseTrafficValue,
   trafficProgressClasses,
 } from "./utils";
@@ -68,10 +69,11 @@ export function sortAccounts(
 
     if (sortBy === "remaining") {
       const getRemaining = (account: AccountDto) => {
-        if (!account.snapshot) return -1;
+        const snapshot = account.snapshot;
+        if (!hasKnownTrafficSnapshot(snapshot)) return -1;
         const { freeUsed, freeQuota } = buildAccountUsage(account);
         const packageAvailable = parseTrafficValue(
-          account.snapshot.packageAvailableText,
+          snapshot.packageAvailableText,
         );
         const freeRemaining = Math.max(0, freeQuota - freeUsed);
         return freeRemaining + packageAvailable;
@@ -356,6 +358,7 @@ function AccountCard({
     totalProgress,
     isUnlimitedPlan,
   } = buildAccountUsage(account);
+  const hasKnownTraffic = hasKnownTrafficSnapshot(snapshot);
   const accountState = account.isCurrentOnline ? "online" : "idle";
 
   return (
@@ -393,7 +396,7 @@ function AccountCard({
           )}
         >
           <span>{snapshot?.usedTrafficText ?? "-"}</span>
-          <span>{snapshot?.onlineDeviceCountText ?? "0"} 设备</span>
+          <span>{snapshot?.onlineDeviceCountText ?? "-"} 设备</span>
           <span>{formatSnapshotSyncText(snapshot)}</span>
         </div>
       </div>
@@ -403,12 +406,18 @@ function AccountCard({
           <div
             className={cn(
               "font-semibold",
-              isUnlimitedPlan
-                ? "unlimited-plan-text"
-                : trafficProgressClasses(Math.round(totalProgress)).text,
+              !hasKnownTraffic
+                ? "text-muted-foreground"
+                : isUnlimitedPlan
+                  ? "unlimited-plan-text"
+                  : trafficProgressClasses(Math.round(totalProgress)).text,
             )}
           >
-            {isUnlimitedPlan ? "不限流量" : `${Math.round(totalProgress)}%`}
+            {!hasKnownTraffic
+              ? "-"
+              : isUnlimitedPlan
+                ? "不限流量"
+                : `${Math.round(totalProgress)}%`}
           </div>
           <div
             className={cn(
@@ -416,9 +425,11 @@ function AccountCard({
               isAndroid() ? "text-[10px]" : "text-xs",
             )}
           >
-            {isUnlimitedPlan
-              ? formatTrafficAmount(totalUsed)
-              : `${formatTrafficAmount(totalUsed)} / ${formatTrafficAmount(totalQuota)}`}
+            {!hasKnownTraffic
+              ? "未查询"
+              : isUnlimitedPlan
+                ? formatTrafficAmount(totalUsed)
+                : `${formatTrafficAmount(totalUsed)} / ${formatTrafficAmount(totalQuota)}`}
           </div>
         </div>
 
@@ -473,7 +484,7 @@ function AccountCard({
         </div>
       </div>
 
-      {!isUnlimitedPlan && (
+      {hasKnownTraffic && !isUnlimitedPlan && (
         <div className="col-span-2 mt-1">
           <div className="grid gap-2">
             <div className="grid gap-1">

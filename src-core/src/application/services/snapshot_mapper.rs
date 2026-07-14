@@ -54,6 +54,7 @@ pub fn restore_cached_snapshots(
     let now = Local::now();
     cached
         .iter()
+        .filter(|(_, snapshot)| !is_expired_unlimited_snapshot(snapshot, &now))
         .map(|(account_id, snapshot)| {
             (
                 account_id.clone(),
@@ -70,8 +71,7 @@ pub fn restore_cached_snapshots(
                     package_text: snapshot.package_text.clone(),
                     status_text: snapshot.status_text.clone(),
                     detail_text: snapshot.detail_text.clone(),
-                    is_unlimited_plan: snapshot.is_unlimited_plan
-                        && is_in_same_month(snapshot.queried_at.as_ref(), &now),
+                    is_unlimited_plan: snapshot.is_unlimited_plan,
                     queried_at: snapshot.queried_at.unwrap_or_else(Local::now),
                     online_devices: Vec::new(),
                     matched_local_ip_device: None,
@@ -80,6 +80,22 @@ pub fn restore_cached_snapshots(
             )
         })
         .collect()
+}
+
+pub fn remove_expired_unlimited_snapshots(
+    cached: &mut BTreeMap<String, CachedTrafficSnapshot>,
+) -> bool {
+    let now = Local::now();
+    let before = cached.len();
+    cached.retain(|_, snapshot| !is_expired_unlimited_snapshot(snapshot, &now));
+    cached.len() != before
+}
+
+fn is_expired_unlimited_snapshot(
+    snapshot: &CachedTrafficSnapshot,
+    reference: &DateTime<Local>,
+) -> bool {
+    snapshot.is_unlimited_plan && !is_in_same_month(snapshot.queried_at.as_ref(), reference)
 }
 
 fn is_in_same_month(value: Option<&DateTime<Local>>, reference: &DateTime<Local>) -> bool {
@@ -125,7 +141,7 @@ mod tests {
 
     use chrono::{Duration, Local};
 
-    use super::restore_cached_snapshots;
+    use super::{remove_expired_unlimited_snapshots, restore_cached_snapshots};
     use crate::domain::models::CachedTrafficSnapshot;
 
     #[test]
@@ -169,7 +185,7 @@ mod tests {
     }
 
     #[test]
-    fn restore_cached_snapshots_only_keeps_unlimited_status_for_the_current_month() {
+    fn restore_cached_snapshots_discards_expired_unlimited_snapshots() {
         let now = Local::now();
         let mut cached = BTreeMap::new();
         cached.insert(
@@ -197,11 +213,40 @@ mod tests {
                 .expect("current snapshot")
                 .is_unlimited_plan
         );
-        assert!(
-            !snapshots
-                .get("expired")
-                .expect("expired snapshot")
-                .is_unlimited_plan
-        );
+        assert!(!snapshots.contains_key("expired"));
+    }
+
+    #[test]
+    fn remove_expired_unlimited_snapshots_reports_and_removes_only_expired_entries() {
+        let now = Local::now();
+        let mut cached = BTreeMap::from([
+            (
+                "current".to_string(),
+                CachedTrafficSnapshot {
+                    is_unlimited_plan: true,
+                    queried_at: Some(now),
+                    ..Default::default()
+                },
+            ),
+            (
+                "expired".to_string(),
+                CachedTrafficSnapshot {
+                    is_unlimited_plan: true,
+                    queried_at: Some(now - Duration::days(32)),
+                    ..Default::default()
+                },
+            ),
+            (
+                "finite".to_string(),
+                CachedTrafficSnapshot {
+                    queried_at: Some(now - Duration::days(32)),
+                    ..Default::default()
+                },
+            ),
+        ]);
+
+        assert!(remove_expired_unlimited_snapshots(&mut cached));
+        assert_eq!(cached.len(), 2);
+        assert!(!cached.contains_key("expired"));
     }
 }
