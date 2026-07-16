@@ -12,6 +12,7 @@ export interface UpdateProgress {
     contentLength?: number;
     chunkLength?: number;
     downloaded?: number;
+    speedBytesPerSecond?: number;
   };
 }
 
@@ -126,29 +127,46 @@ export async function downloadAndInstall(
 
   let downloaded = 0;
   let contentLength = 0;
+  let startedAt = 0;
 
   await desktopUpdate.downloadAndInstall((event) => {
     switch (event.event) {
       case "Started":
         contentLength = event.data.contentLength!;
+        startedAt = performance.now();
         onProgress?.({
           event: "Started",
           data: { ...event.data, downloaded: 0 },
         });
         break;
-      case "Progress":
+      case "Progress": {
         downloaded += event.data.chunkLength;
+        const elapsedSeconds = (performance.now() - startedAt) / 1000;
         onProgress?.({
           event: "Progress",
-          data: { ...event.data, contentLength, downloaded },
+          data: {
+            ...event.data,
+            contentLength,
+            downloaded,
+            speedBytesPerSecond:
+              elapsedSeconds > 0 ? downloaded / elapsedSeconds : 0,
+          },
         });
         break;
-      case "Finished":
+      }
+      case "Finished": {
+        const elapsedSeconds = (performance.now() - startedAt) / 1000;
         onProgress?.({
           event: "Finished",
-          data: { contentLength, downloaded },
+          data: {
+            contentLength,
+            downloaded,
+            speedBytesPerSecond:
+              elapsedSeconds > 0 ? downloaded / elapsedSeconds : 0,
+          },
         });
         break;
+      }
     }
   });
 

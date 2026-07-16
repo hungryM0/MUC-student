@@ -124,6 +124,12 @@ describe("updater", () => {
 
   it("downloads desktop update, reports accumulated progress, and relaunches", async () => {
     const onProgress = vi.fn();
+    const performanceNowMock = vi
+      .spyOn(performance, "now")
+      .mockReturnValueOnce(1000)
+      .mockReturnValueOnce(2000)
+      .mockReturnValueOnce(3000)
+      .mockReturnValueOnce(4000);
     const update = {
       downloadAndInstall: vi.fn(async (callback) => {
         callback({ event: "Started", data: { contentLength: 10 } });
@@ -142,16 +148,31 @@ describe("updater", () => {
     });
     expect(onProgress).toHaveBeenNthCalledWith(2, {
       event: "Progress",
-      data: { chunkLength: 4, contentLength: 10, downloaded: 4 },
+      data: {
+        chunkLength: 4,
+        contentLength: 10,
+        downloaded: 4,
+        speedBytesPerSecond: 4,
+      },
     });
     expect(onProgress).toHaveBeenNthCalledWith(3, {
       event: "Progress",
-      data: { chunkLength: 6, contentLength: 10, downloaded: 10 },
+      data: {
+        chunkLength: 6,
+        contentLength: 10,
+        downloaded: 10,
+        speedBytesPerSecond: 5,
+      },
     });
     expect(onProgress).toHaveBeenNthCalledWith(4, {
       event: "Finished",
-      data: { contentLength: 10, downloaded: 10 },
+      data: {
+        contentLength: 10,
+        downloaded: 10,
+        speedBytesPerSecond: 10 / 3,
+      },
     });
     expect(relaunchMock).toHaveBeenCalledOnce();
+    performanceNowMock.mockRestore();
   });
 });

@@ -29,6 +29,23 @@ function getUpdateNotes(update: Update | AndroidUpdate | null) {
   return details.body ?? details.notes;
 }
 
+function formatDownloadSpeed(bytesPerSecond?: number) {
+  if (!bytesPerSecond || bytesPerSecond < 0) {
+    return "0 B/s";
+  }
+
+  const units = ["B/s", "KB/s", "MB/s", "GB/s"];
+  let value = bytesPerSecond;
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  return `${value >= 100 ? value.toFixed(0) : value.toFixed(2)} ${units[unitIndex]}`;
+}
+
 export function UpdaterDialog({
   manualCheck = false,
   onCheckComplete,
@@ -94,6 +111,13 @@ export function UpdaterDialog({
                     : `正在安装版本 ${update?.version}...`}
                 </p>
                 {!android && <Progress value={getProgressPercentage()} />}
+                {!android &&
+                  progress?.data?.speedBytesPerSecond !== undefined && (
+                    <p className="text-muted-foreground text-sm">
+                      下载速度：
+                      {formatDownloadSpeed(progress.data.speedBytesPerSecond)}
+                    </p>
+                  )}
               </div>
             ) : (
               <div className="space-y-2">
