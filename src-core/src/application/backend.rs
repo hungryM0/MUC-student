@@ -6,7 +6,7 @@ use tokio::sync::Mutex;
 use tokio::time::sleep;
 
 use crate::application::account_pool_transfer::{
-    decode_account_pool, encode_account_pool, AccountPoolEntry, AccountPoolState,
+    decode_account_pool, encode_account_pool, AccountPoolEntry,
 };
 use crate::application::dto::{AccountPoolImportResultDto, AppSnapshotDto};
 use crate::application::error::{AppError, AppResult};
@@ -18,7 +18,7 @@ use crate::application::services::session_service::SessionService;
 use crate::application::services::snapshot_mapper::{
     build_app_snapshot, remove_expired_unlimited_snapshots, restore_cached_snapshots,
 };
-use crate::domain::models::{CachedTrafficSnapshot, NetworkStatus};
+use crate::domain::models::NetworkStatus;
 use crate::domain::policies::traffic_math::build_auto_switch_candidate;
 use crate::infrastructure::android_keepalive::write_android_keepalive_state;
 use crate::infrastructure::network::{
@@ -264,38 +264,13 @@ impl AppCore {
                         remark_name: item.account.remark_name,
                         username: item.account.username,
                         password: item.password,
-                        cached_traffic_snapshot: store
-                            .cached_traffic_snapshots
-                            .get(&item.account.id)
-                            .cloned(),
                     })
             })
             .collect::<AppResult<Vec<_>>>()?;
-        let current_online_username = store
-            .accounts
-            .iter()
-            .find(|account| account.id == store.current_online_account_id)
-            .map(|account| account.username.clone());
-        let status_card_order_usernames = store
-            .status_card_order_snapshot
-            .iter()
-            .filter_map(|account_id| {
-                store
-                    .accounts
-                    .iter()
-                    .find(|account| account.id == *account_id)
-                    .map(|account| account.username.clone())
-            })
-            .collect();
-        let state = AccountPoolState {
-            current_online_username,
-            status_card_order_usernames,
-        };
-
         if accounts.is_empty() {
             return Err(AppError::Validation("没有可导出的账号".to_string()));
         }
-        encode_account_pool(accounts, state, &passphrase)
+        encode_account_pool(accounts, &passphrase)
     }
 
     pub async fn import_account_pool(
@@ -318,21 +293,8 @@ impl AppCore {
             .iter()
             .map(|item| item.username.clone())
             .collect::<Vec<_>>();
-        let snapshots_by_username = pool
-            .accounts
-            .iter()
-            .filter_map(|item| {
-                item.cached_traffic_snapshot
-                    .clone()
-                    .map(|snapshot| (item.username.clone(), snapshot))
-            })
-            .collect::<std::collections::BTreeMap<_, _>>();
         let stats = self.account_repo.import_accounts(records)?;
-        self.apply_imported_account_pool_state(
-            &import_usernames,
-            &snapshots_by_username,
-            pool.state,
-        )?;
+        self.reorder_imported_accounts(&import_usernames)?;
         self.refresh_runtime_from_disk()?;
         let snapshot = self.emit_state()?;
         Ok(AccountPoolImportResultDto {
@@ -342,23 +304,8 @@ impl AppCore {
         })
     }
 
-    fn apply_imported_account_pool_state(
-        &self,
-        import_usernames: &[String],
-        snapshots_by_username: &std::collections::BTreeMap<String, CachedTrafficSnapshot>,
-        pool_state: AccountPoolState,
-    ) -> AppResult<()> {
+    fn reorder_imported_accounts(&self, import_usernames: &[String]) -> AppResult<()> {
         let mut store = self.account_repo.load_store()?;
-        let id_by_username = store
-            .accounts
-            .iter()
-            .map(|account| (account.username.clone(), account.id.clone()))
-            .collect::<std::collections::BTreeMap<_, _>>();
-
-        let imported_username_set = import_usernames
-            .iter()
-            .cloned()
-            .collect::<std::collections::HashSet<_>>();
         let mut sorted_accounts = Vec::with_capacity(store.accounts.len());
         for username in import_usernames {
             if let Some(index) = store
@@ -371,31 +318,6 @@ impl AppCore {
         }
         sorted_accounts.extend(store.accounts);
         store.accounts = sorted_accounts;
-
-        for (username, snapshot) in snapshots_by_username {
-            if let Some(account_id) = id_by_username.get(username) {
-                store
-                    .cached_traffic_snapshots
-                    .insert(account_id.clone(), snapshot.clone());
-            }
-        }
-        for account in &store.accounts {
-            if imported_username_set.contains(&account.username)
-                && !snapshots_by_username.contains_key(&account.username)
-            {
-                store.cached_traffic_snapshots.remove(&account.id);
-            }
-        }
-
-        store.status_card_order_snapshot = pool_state
-            .status_card_order_usernames
-            .into_iter()
-            .filter_map(|username| id_by_username.get(&username).cloned())
-            .collect();
-        store.current_online_account_id = pool_state
-            .current_online_username
-            .and_then(|username| id_by_username.get(&username).cloned())
-            .unwrap_or_default();
 
         self.account_repo.save_store(&store)
     }

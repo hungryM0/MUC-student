@@ -6,8 +6,6 @@ use base64::Engine;
 use serde::{Deserialize, Serialize};
 
 use crate::application::error::{AppError, AppResult};
-use crate::domain::models::CachedTrafficSnapshot;
-
 const CODE_PREFIX: &str = "MUCPOOL1.";
 const ASSOCIATED_DATA: &[u8] = b"MUC-student account pool v1";
 const SALT_LEN: usize = 16;
@@ -15,22 +13,11 @@ const NONCE_LEN: usize = 12;
 const KEY_LEN: usize = 32;
 const MIN_PAYLOAD_LEN: usize = SALT_LEN + NONCE_LEN + 16;
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct AccountPoolState {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub current_online_username: Option<String>,
-    #[serde(default)]
-    pub status_card_order_usernames: Vec<String>,
-}
-
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountPoolPlaintext {
     pub version: u8,
     pub accounts: Vec<AccountPoolEntry>,
-    #[serde(default)]
-    pub state: AccountPoolState,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -39,21 +26,14 @@ pub struct AccountPoolEntry {
     pub remark_name: String,
     pub username: String,
     pub password: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cached_traffic_snapshot: Option<CachedTrafficSnapshot>,
 }
 
-pub fn encode_account_pool(
-    accounts: Vec<AccountPoolEntry>,
-    state: AccountPoolState,
-    passphrase: &str,
-) -> AppResult<String> {
+pub fn encode_account_pool(accounts: Vec<AccountPoolEntry>, passphrase: &str) -> AppResult<String> {
     require_passphrase(passphrase)?;
 
     let plaintext = AccountPoolPlaintext {
         version: 1,
         accounts,
-        state,
     };
     let plaintext = serde_json::to_vec(&plaintext)
         .map_err(|err| AppError::Internal(format!("序列化号池失败：{err}")))?;
@@ -150,11 +130,7 @@ fn nonce_from_slice(nonce: &[u8]) -> AppResult<&Nonce<<Aes256Gcm as AeadCore>::N
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        decode_account_pool, encode_account_pool, AccountPoolEntry, AccountPoolPlaintext,
-        AccountPoolState,
-    };
-    use crate::domain::models::CachedTrafficSnapshot;
+    use super::{decode_account_pool, encode_account_pool, AccountPoolEntry, AccountPoolPlaintext};
 
     #[test]
     fn roundtrips_encrypted_pool_code() {
@@ -162,32 +138,20 @@ mod tests {
             remark_name: "主号".to_string(),
             username: "20260001".to_string(),
             password: "secret-1".to_string(),
-            cached_traffic_snapshot: Some(CachedTrafficSnapshot {
-                used_traffic_text: "1.00GB".to_string(),
-                status_text: "已同步".to_string(),
-                ..Default::default()
-            }),
         }];
-        let state = AccountPoolState {
-            current_online_username: Some("20260001".to_string()),
-            status_card_order_usernames: vec!["20260001".to_string()],
-        };
 
-        let code =
-            encode_account_pool(accounts.clone(), state.clone(), "share-pass").expect("encode");
+        let code = encode_account_pool(accounts.clone(), "share-pass").expect("encode");
         assert!(code.starts_with("MUCPOOL1."));
         assert!(!code.contains("20260001"));
         assert!(!code.contains("secret-1"));
-        assert!(!code.contains("1.00GB"));
 
         let decoded = decode_account_pool(&code, "share-pass").expect("decode");
         assert_eq!(decoded.version, 1);
         assert_eq!(decoded.accounts, accounts);
-        assert_eq!(decoded.state, state);
     }
 
     #[test]
-    fn defaults_optional_state_for_old_plaintext_shape() {
+    fn ignores_legacy_cached_state_fields() {
         let decoded: AccountPoolPlaintext = serde_json::from_str(
             r#"{
                 "version": 1,
@@ -195,15 +159,16 @@ mod tests {
                     {
                         "remarkName": "主号",
                         "username": "20260001",
-                        "password": "secret-1"
+                        "password": "secret-1",
+                        "cachedTrafficSnapshot": {"statusText": "已同步"}
                     }
-                ]
+                ],
+                "state": {"currentOnlineUsername": "20260001"}
             }"#,
         )
         .expect("decode old plaintext");
 
-        assert_eq!(decoded.state, Default::default());
-        assert_eq!(decoded.accounts[0].cached_traffic_snapshot, None);
+        assert_eq!(decoded.accounts[0].username, "20260001");
     }
 
     #[test]
@@ -213,9 +178,7 @@ mod tests {
                 remark_name: "主号".to_string(),
                 username: "20260001".to_string(),
                 password: "secret-1".to_string(),
-                cached_traffic_snapshot: None,
             }],
-            Default::default(),
             "share-pass",
         )
         .expect("encode");
