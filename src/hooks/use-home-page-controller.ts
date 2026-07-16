@@ -311,6 +311,7 @@ export function useHomePageController() {
       setAccountPoolResult(
         `导入 ${result.importedCount} 个，覆盖 ${result.overwrittenCount} 个`,
       );
+      setAccountPoolMode(null);
     } catch (error) {
       setErrorText(readErrorMessage(error));
     } finally {
